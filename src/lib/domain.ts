@@ -8,6 +8,13 @@ import type {
   Tender,
 } from "./types";
 
+/** Replace an item by id, including when a previous save already reached the server. */
+export function saveMenuItem(menu: Product[], item: Product): Product[] {
+  return menu.some((product) => product.id === item.id)
+    ? menu.map((product) => (product.id === item.id ? item : product))
+    : [...menu, item];
+}
+
 function scale(currency: string) {
   return 10 ** currencyDigits(currency);
 }

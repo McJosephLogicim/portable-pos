@@ -25,7 +25,7 @@ import type {
   RegisterState,
   Settings,
 } from "@/lib/types";
-import { amountText, parseMoney } from "@/lib/domain";
+import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
@@ -126,7 +126,11 @@ export function SubPage({
 }
 
 /** Edits a copy of the settings and saves it with one tap, behind the owner PIN. */
-export function useDraft(props: SettingsProps) {
+export function useDraft(
+  props: SettingsProps,
+  saveLabel = "Save changes",
+  savedLabel = "Saved",
+) {
   const business = props.state.business!;
   const initial: SettingsInput = {
     name: business.name,
@@ -139,11 +143,11 @@ export function useDraft(props: SettingsProps) {
   const [error, setError] = useState("");
   const withPin = usePin();
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  async function save(label = "Saved") {
+  async function save() {
     setBusy(true);
     setError("");
     try {
-      if (await withPin((pin) => props.onSave(draft, pin))) props.onSaved(label);
+      if (await withPin((pin) => props.onSave(draft, pin))) props.onSaved(savedLabel);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -163,7 +167,7 @@ export function useDraft(props: SettingsProps) {
           disabled={!dirty || busy || !props.online}
           onClick={() => void save()}
         >
-          {busy ? "Saving…" : props.online ? "Save changes" : "Connect to save"}
+          {busy ? "Saving…" : props.online ? saveLabel : "Connect to save"}
         </button>
       </div>
     ) : null;
@@ -866,6 +870,7 @@ export function ItemSheet({
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
+  const [itemId] = useState(() => product?.id ?? crypto.randomUUID());
   const [name, setName] = useState(product?.name ?? "");
   const [tracked, setTracked] = useState(Boolean(product?.stock));
   const [count, setCount] = useState("");
@@ -902,6 +907,11 @@ export function ItemSheet({
       busy={busy}
       footer={
         <>
+          {error && (
+            <p className="alert" role="alert">
+              {error}
+            </p>
+          )}
           <button
             className="btn block"
             disabled={busy || !name.trim() || !price.trim() || (askCount && !count.trim())}
@@ -925,7 +935,7 @@ export function ItemSheet({
                 return onSave(
                   {
                     ...rest,
-                    id: product?.id ?? crypto.randomUUID(),
+                    id: itemId,
                     name: name.trim(),
                     category: category.trim(),
                     price: parseMoney(price, currency),
@@ -1146,11 +1156,6 @@ export function ItemSheet({
           </button>
         ))}
       </div>
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
     </Sheet>
   );
 }
@@ -1246,9 +1251,7 @@ function MenuPage(props: SettingsProps) {
           onClose={() => setEditing(null)}
           onSave={(item, count) =>
             save(
-              editing === "new"
-                ? [...menu, item]
-                : menu.map((p) => (p.id === item.id ? item : p)),
+              saveMenuItem(menu, item),
               editing === "new" ? "Added " + item.name : "Saved " + item.name,
               count !== undefined ? { [item.id]: count } : undefined,
             )

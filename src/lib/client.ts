@@ -38,6 +38,38 @@ export function parseKey(key: string) {
   const [userId, businessId] = key.split("@");
   return { userId, businessId: businessId || undefined };
 }
+async function post(
+  path: string,
+  init: RequestInit,
+  timeout: number,
+  connectionError: string,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(path, {
+      ...init,
+      method: "POST",
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    try {
+      return { response, data: JSON.parse(text) };
+    } catch {
+      return { response, data: null };
+    }
+  } catch (error) {
+    throw new Error(
+      controller.signal.aborted
+        ? "The server took too long to respond. Try again."
+        : connectionError,
+      { cause: error },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function sessionFor(key: string, what: string) {
   const { userId, businessId } = parseKey(key);
   const {
@@ -60,26 +92,30 @@ export async function api(
   body: Record<string, unknown>,
 ): Promise<Bootstrap> {
   const { headers: auth } = await sessionFor(key, "sync this register");
-  async function post<T>(command: Record<string, unknown>): Promise<T> {
-    const response = await fetch("/api/pos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...auth },
-      body: JSON.stringify(command),
-      cache: "no-store",
-      signal: AbortSignal.timeout(20000),
-    });
-    const data = await response.json().catch(() => null);
+  async function send<T>(command: Record<string, unknown>): Promise<T> {
+    const { response, data } = await post(
+      "/api/pos",
+      {
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify(command),
+        cache: "no-store",
+      },
+      20_000,
+      command.action === "bootstrap" || command.action === "historyPage"
+        ? "Couldn't load the register. Check your connection and try again."
+        : "Couldn't confirm the save. Check your connection and try again.",
+    );
     if (!response.ok || !data)
       throw new RequestFailure(
         response.status,
-        data?.error || "The register could not reach the server. Try again.",
+        data?.error || "The register couldn't get a response. Try again.",
       );
     return data;
   }
-  const data = await post<Bootstrap & { nextSales?: string }>(body);
+  const data = await send<Bootstrap & { nextSales?: string }>(body);
   let cursor = data.nextSales;
   while (cursor) {
-    const page = await post<{ sales: Sale[]; nextSales?: string }>({
+    const page = await send<{ sales: Sale[]; nextSales?: string }>({
       action: "historyPage",
       cursor,
     });
@@ -92,13 +128,12 @@ export async function api(
 /** Upload a photo and return the address it is served from. Proofs stay private. */
 export async function uploadImage(key: string, photo: Blob, proof = false): Promise<string> {
   const { headers } = await sessionFor(key, "add photos");
-  const response = await fetch("/api/images" + (proof ? "?proof=1" : ""), {
-    method: "POST",
-    headers: { "Content-Type": photo.type, ...headers },
-    body: photo,
-    signal: AbortSignal.timeout(30000),
-  });
-  const data = await response.json().catch(() => null);
+  const { response, data } = await post(
+    "/api/images" + (proof ? "?proof=1" : ""),
+    { headers: { "Content-Type": photo.type, ...headers }, body: photo },
+    30_000,
+    "Couldn't upload the photo. Check your connection and try again.",
+  );
   if (!response.ok || !data?.url)
     throw new RequestFailure(response.status, data?.error || "The photo didn't upload. Try again.");
   return data.url as string;
