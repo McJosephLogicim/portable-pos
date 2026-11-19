@@ -174,13 +174,13 @@ export async function runPlan(
         businessId: business.id,
         email: m.email,
         name: m.name,
-        roles: m.roles,
+        roles: ["cashier", "server"],
         rate: m.rate,
       });
     else if (JSON.stringify(old) !== JSON.stringify(m))
       await tx
         .update(members)
-        .set({ name: m.name, roles: m.roles, rate: m.rate })
+        .set({ name: m.name, roles: ["cashier", "server"], rate: m.rate })
         .where(eq(members.id, m.id));
   }
   if (JSON.stringify(after.organizers) !== JSON.stringify(before.organizers))

@@ -1023,7 +1023,7 @@ export function SellScreen({
       {adding && (
         <ItemSheet
           currency={currency}
-          categories={Array.from(new Set(state.menu.map((m) => m.category).filter(Boolean)))}
+          menu={state.menu}
           liveShift
           onClose={() => setAdding(false)}
           onSave={async (item, count) => {

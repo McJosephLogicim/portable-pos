@@ -24,15 +24,21 @@ One payment method applies to each sale. A new register starts with cash, card a
 
 The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. A new item goes on sale on the till open on that phone right away. Edits to items already on the till apply from the next shift. Switch on **Track stock** for a set supply, like bread or pastries. The opening screen asks for a count of each one. Each sale takes the count down, a reversal puts it back, and the item sells out at zero, offline too.
 
+When adding an item, categories, pick-one choices, add-ons and options already on the menu are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
+
 Settings › Opening checklist holds the steps to tick before the till opens. The ticked list is saved with the shift.
+
+Items and checklist steps can carry a photo, taken with the camera or picked from the gallery. The phone shrinks it to a JPEG of at most 640 pixels before upload. Photos are stored in Postgres (`portable_pos.images`, 400 KB each at most), served from `/api/images/<id>` with a long cache, and kept by the service worker for offline use. Only the owner adds photos.
 
 ## Team and schedule
 
-Only the owner invites people (Settings › Team). An invite is an email plus a role: cashier, server, or both. The person joins the first time they sign in with that address, once Supabase has confirmed it. Cashiers run the till. Servers see only the schedule.
+Only the owner invites people (Settings › Team). An invite is a name, an email and their usual pay. The person joins the first time they sign in with that address, once Supabase has confirmed it. Roles belong to each shift: a person joins a seat as cashier or server and can switch on that shift until it ends. The owner can change anyone's role. Anyone on the team can run the till.
 
 The Schedule tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
 
 When the till opens, it asks which scheduled shift it's for. That shift's profit is the till's net sales minus rent, salaries and any incentives. Cost of goods isn't counted. Rent, other people's pay, and profit are visible only to the owner.
+
+Each shift shows its best sellers and sales by hour. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The Till tab ends with leaderboards for events, organizers, places and people, for this month or the last 60 days. The owner sees them ranked by sales with profit; everyone else sees them ranked by quotas hit, then shifts worked.
 
 Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. Both need a connection. Without one, the typed name can still be saved as the location.
 

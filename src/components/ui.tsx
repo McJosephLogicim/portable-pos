@@ -13,6 +13,7 @@ import {
 import {
   Banknote,
   Building2,
+  Camera,
   CreditCard,
   Delete,
   Smartphone,
@@ -85,13 +86,188 @@ export function errorText(error: unknown) {
     : "That didn't save. Check the connection and try again.";
 }
 
-export function haptic(ms = 8) {
+/** A short buzz on phones that support it: a number, or a pattern of buzz and pause. */
+export function haptic(ms: number | number[] = 8) {
   try {
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches)
       navigator.vibrate?.(ms);
   } catch {
     /* not supported */
   }
+}
+export const buzz = {
+  tap: () => haptic(6),
+  tick: () => haptic(10),
+  success: () => haptic([14, 60, 22]),
+  big: () => haptic([18, 50, 18, 50, 40]),
+  error: () => haptic([30, 40, 30]),
+};
+
+/* ---------- celebration ---------- */
+
+const CelebrateContext = createContext<(origin?: { x: number; y: number }) => void>(() => {});
+/** A short burst of confetti from a point, for a finished sale, a full checklist or a quota hit. */
+export function useCelebrate() {
+  return useContext(CelebrateContext);
+}
+const confettiColors = ["#0a0a0a", "#0a0a0a", "#8c8c8c", "#1e9e5a", "#f2c94c", "#ff7a59"];
+export function CelebrateProvider({ children }: { children: ReactNode }) {
+  const [bursts, setBursts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const fire = useCallback((origin?: { x: number; y: number }) => {
+    buzz.success();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = Date.now() + Math.random();
+    const x = origin?.x ?? innerWidth / 2;
+    const y = origin?.y ?? innerHeight * 0.4;
+    setBursts((b) => [...b, { id, x, y }]);
+    setTimeout(() => setBursts((b) => b.filter((p) => p.id !== id)), 1400);
+  }, []);
+  return (
+    <CelebrateContext.Provider value={fire}>
+      {children}
+      {bursts.map((b) => (
+        <div key={b.id} className="confetti" style={{ left: b.x, top: b.y }} aria-hidden="true">
+          {Array.from({ length: 22 }, (_, i) => {
+            const angle = (i / 22) * Math.PI * 2 + (i % 3) * 0.2;
+            const distance = 70 + ((i * 37) % 70);
+            return (
+              <i
+                key={i}
+                style={
+                  {
+                    "--dx": `${Math.cos(angle) * distance}px`,
+                    "--dy": `${Math.sin(angle) * distance - 40}px`,
+                    "--r": `${(i * 47) % 360}deg`,
+                    background: confettiColors[i % confettiColors.length],
+                    animationDelay: `${(i % 4) * 18}ms`,
+                    borderRadius: i % 3 ? "2px" : "50%",
+                  } as React.CSSProperties
+                }
+              />
+            );
+          })}
+        </div>
+      ))}
+    </CelebrateContext.Provider>
+  );
+}
+/** The center of an element, for where confetti starts. */
+export function centerOf(el: Element | null | undefined) {
+  if (!el) return undefined;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+/** Counts up to a number when it changes, like a scoreboard. */
+export function useCountUp(value: number, ms = 600) {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    const start = from.current;
+    if (start === value || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      from.current = value;
+      setShown(value);
+      return;
+    }
+    let frame = 0;
+    const began = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - began) / ms);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setShown(Math.round(start + (value - start) * eased));
+      if (t < 1) frame = requestAnimationFrame(step);
+      else from.current = value;
+    };
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      from.current = value;
+    };
+  }, [value, ms]);
+  return shown;
+}
+
+/* ---------- photos ---------- */
+
+type Upload = (file: File) => Promise<string>;
+const PhotoContext = createContext<Upload>(async () => {
+  throw Error("Photos are unavailable.");
+});
+export const PhotoProvider = PhotoContext.Provider;
+
+/** A square photo slot. Tap to take or choose a photo; it shrinks and uploads it. */
+export function PhotoPicker({
+  value,
+  onChange,
+  label,
+  size = "large",
+  disabled,
+}: {
+  value?: string;
+  onChange: (url: string | undefined) => void;
+  label: string;
+  size?: "large" | "small";
+  disabled?: boolean;
+}) {
+  const upload = useContext(PhotoContext);
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div className={"photo-pick " + size}>
+      <button
+        type="button"
+        className={"photo-slot" + (value ? " has" : "")}
+        aria-label={value ? "Change " + label : "Add " + label}
+        disabled={busy || disabled}
+        onClick={() => {
+          buzz.tap();
+          input.current?.click();
+        }}
+      >
+        {value ? <img src={value} alt="" /> : <Camera size={size === "large" ? 26 : 18} strokeWidth={1.6} />}
+        {busy && <span className="photo-busy" />}
+      </button>
+      {size === "small" && value && !busy && (
+        <button type="button" className="photo-clear" aria-label={"Remove " + label} onClick={() => onChange(undefined)}>
+          <X size={12} strokeWidth={2.6} />
+        </button>
+      )}
+      {size === "large" && (
+        <span className="stack gap-4 grow">
+          <span className="strong">{value ? "Photo" : "Add a photo"}</span>
+          <span className="label">{error || (value ? "Tap it to take another." : "Take one or pick from your gallery.")}</span>
+          {value && (
+            <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} onClick={() => onChange(undefined)}>
+              Remove photo
+            </button>
+          )}
+        </span>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setBusy(true);
+          setError("");
+          try {
+            onChange(await upload(file));
+            buzz.success();
+          } catch (err) {
+            setError(errorText(err));
+            buzz.error();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </div>
+  );
 }
 
 /** Bottom sheet on phones, centered dialog on wide screens. Uses the native dialog for focus. */

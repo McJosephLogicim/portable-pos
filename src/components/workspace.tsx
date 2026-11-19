@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
-import { SalesScreen } from "./sales";
+import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { ScheduleScreen } from "./schedule";
 import { Account, Setup } from "./account";
-import { PinProvider, Toast } from "./ui";
-import { api, authClient, RequestFailure } from "@/lib/client";
+import { buzz, CelebrateProvider, PhotoProvider, PinProvider, Toast } from "./ui";
+import { blobToDataUrl, compressPhoto } from "@/lib/photo";
+import { api, authClient, RequestFailure, uploadImage } from "@/lib/client";
 import {
   beginClose,
   cancelClose,
@@ -99,6 +100,7 @@ export function Workspace() {
     [pending, setPending] = useState(false),
     [bootError, setBootError] = useState(""),
     [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
+    [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
     [toast, setToast] = useState("");
   const active = useRef<string | null>(null),
     syncBusy = useRef(false);
@@ -328,11 +330,9 @@ export function Workspace() {
       : online
         ? "Online"
         : "Offline";
-  const me = state?.me;
-  // Servers who don't run the till only need the schedule.
-  const till = !me || me.owner || me.roles.includes("cashier");
-  const shown = tabs.filter((t) => till || t.id === "schedule" || t.id === "settings");
-  const view: Tab = till || tab === "settings" ? tab : "schedule";
+  // Roles are picked per shift, so everyone sees every tab.
+  const shown = tabs;
+  const view: Tab = tab;
   const sellable = Boolean(
     state?.shift &&
       !state.shift.closedAt &&
@@ -340,10 +340,17 @@ export function Workspace() {
       state.shift.deviceId === state.deviceId,
   );
   const go = (t: Tab) => {
+    if (t !== tab) buzz.tap();
     setTab(t);
     if (t === "settings") setSettingsPage(null);
     window.scrollTo(0, 0);
   };
+  async function upload(file: File) {
+    const photo = await compressPhoto(file);
+    if (!key || key === DEMO) return blobToDataUrl(photo);
+    if (!navigator.onLine) throw Error("Connect to add photos.");
+    return uploadImage(key, photo);
+  }
   const reverse = (saleId: string, reason: string, pin: string) =>
     owner({ action: "reverse", saleId, reason, pin });
 
@@ -373,6 +380,10 @@ export function Workspace() {
         demo={demo}
         onAction={owner}
         onSaved={setToast}
+        onSales={(focus: SalesFocus) => {
+          setSalesFocus(focus);
+          go("sales");
+        }}
       />
     );
   else if (view === "settings")
@@ -395,7 +406,14 @@ export function Workspace() {
     );
   else if (tab === "sales")
     screen = (
-      <SalesScreen state={state} online={online} onReverse={reverse} onSell={() => go("sell")} />
+      <SalesScreen
+        state={state}
+        online={online}
+        onReverse={reverse}
+        onSell={() => go("sell")}
+        focus={salesFocus}
+        onFocus={setSalesFocus}
+      />
     );
   else if (tab === "shift" || !sellable) {
     const elsewhere = state.shift && !state.shift.closedAt && state.shift.deviceId !== state.deviceId;
@@ -412,6 +430,11 @@ export function Workspace() {
           online={online}
           onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
           onSchedule={() => go("schedule")}
+          demo={demo}
+          onSales={(focus: SalesFocus) => {
+            setSalesFocus(focus);
+            go("sales");
+          }}
           onClose={(countedCash, pin) => owner({ action: "close", countedCash, pin })}
           onSell={() => go("sell")}
           onGoMenu={() => {
@@ -439,6 +462,8 @@ export function Workspace() {
     );
 
   return (
+    <CelebrateProvider>
+    <PhotoProvider value={upload}>
     <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
       {(notice || (syncErr && !bootError)) && (
         <div className="page narrow" style={{ paddingBottom: 0, marginBottom: -14 }}>
@@ -473,10 +498,14 @@ export function Workspace() {
             <button
               key={t.id}
               aria-current={view === t.id ? "page" : undefined}
-              onClick={() => go(t.id)}
+              aria-label={t.name}
+              onClick={() => {
+                setSalesFocus(null);
+                go(t.id);
+              }}
             >
-              <t.icon size={21} strokeWidth={view === t.id ? 2 : 1.7} />
-              {t.name}
+              <t.icon size={23} strokeWidth={view === t.id ? 2.1 : 1.7} aria-hidden="true" />
+              <span className="sr-only">{t.name}</span>
               {t.id === "settings" && (syncErr || !online) && <span className="tab-dot" />}
             </button>
           ))}
@@ -494,5 +523,7 @@ export function Workspace() {
         />
       )}
     </PinProvider>
+    </PhotoProvider>
+    </CelebrateProvider>
   );
 }

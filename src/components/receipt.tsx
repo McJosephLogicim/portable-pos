@@ -145,6 +145,7 @@ export function ReceiptSheet({
   pending,
   canReverse,
   reverseBlocked,
+  pastReasons = [],
   onReverse,
   onClose,
 }: {
@@ -154,6 +155,8 @@ export function ReceiptSheet({
   pending?: boolean;
   canReverse: boolean;
   reverseBlocked?: string;
+  /** Reasons typed on earlier reversals, offered again as chips. */
+  pastReasons?: string[];
   onReverse: (reason: string, pin: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -199,7 +202,7 @@ export function ReceiptSheet({
             : `Refund it in ${sale.payment.name} first, then record it here.`}
         </p>
         <div className="chips" role="group" aria-label="Reason">
-          {reasons.map((r) => (
+          {Array.from(new Set([...pastReasons, ...reasons])).slice(0, 6).map((r) => (
             <button
               key={r}
               type="button"

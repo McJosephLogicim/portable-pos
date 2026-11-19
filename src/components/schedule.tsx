@@ -38,10 +38,12 @@ import type {
   Tag,
 } from "@/lib/types";
 import { Combobox } from "./combobox";
+import { ShiftSales } from "./insights";
+import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
 import { Avatar, RolePicker } from "./team";
-import { errorText, formatMoney, Money, MoneyField, Sheet, usePin } from "./ui";
+import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, Sheet, useCelebrate, usePin } from "./ui";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -51,6 +53,7 @@ export interface ScheduleProps {
   demo: boolean;
   onAction: Act;
   onSaved: (text: string) => void;
+  onSales: (focus: SalesFocus) => void;
 }
 
 const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
@@ -214,6 +217,7 @@ function BookingCard({
 
 function PersonPicker({
   team,
+  currency,
   title,
   exclude,
   roleHint,
@@ -221,6 +225,7 @@ function PersonPicker({
   onClose,
 }: {
   team: Member[];
+  currency: string;
   title: string;
   exclude: string[];
   roleHint?: Role;
@@ -245,7 +250,7 @@ function PersonPicker({
       {member ? (
         <div className="field">
           <span>Working as</span>
-          <RolePicker value={role} onChange={setRole} allowed={member.roles} single />
+          <RolePicker value={role} onChange={setRole} single />
         </div>
       ) : people.length ? (
         <div className="card card-list">
@@ -255,18 +260,16 @@ function PersonPicker({
               type="button"
               className="list-row"
               onClick={() => {
-                if (m.roles.length === 1) onPick(m, m.roles[0]);
-                else {
-                  setMember(m);
-                  setRole([roleHint && m.roles.includes(roleHint) ? roleHint : m.roles[0]]);
-                }
+                buzz.tap();
+                setMember(m);
+                setRole([roleHint ?? "cashier"]);
               }}
             >
               <Avatar name={m.name} dim={!m.joined} />
               <span className="grow stack">
                 <span className="ellipsis">{m.owner ? m.name + " (you)" : m.name}</span>
                 <span className="label">
-                  {m.roles.map((r) => roleNames[r]).join(" and ")}
+                  {m.rate ? formatMoney(m.rate, currency) + " a shift" : "No set pay"}
                   {m.joined ? "" : " · invite pending"}
                 </span>
               </span>
@@ -313,19 +316,30 @@ function BookingSheet({
   const over = Date.parse(b.endsAt) <= Date.now();
   const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0 }) : null;
   const team = state.team ?? [];
-  const joinable = me.roles.filter(() => !mine && open > 0 && !over);
+  const joinable: Role[] = !mine && open > 0 && !over ? ["cashier", "server"] : [];
+  const celebrate = useCelebrate();
+  const [switching, setSwitching] = useState(false);
+  const tills = useMemo(
+    () => state.shifts.filter((s) => s.bookingId === b.id).map((s) => s.id),
+    [state.shifts, b.id],
+  );
 
-  async function run(input: OwnerAction, label: string, owner = true) {
+  async function run(input: OwnerAction, label: string, owner = true, from?: Element | null) {
     setBusy(true);
     setError("");
     try {
       const done = owner
         ? await withPin((pin) => props.onAction({ ...input, pin } as OwnerAction))
         : (await props.onAction(input), true);
-      if (done) props.onSaved(label);
+      if (done) {
+        props.onSaved(label);
+        if (from) celebrate(centerOf(from));
+        else buzz.tick();
+      }
       return done;
     } catch (e) {
       setError(errorText(e));
+      buzz.error();
       return false;
     } finally {
       setBusy(false);
@@ -348,14 +362,19 @@ function BookingSheet({
         footer={
           !me.owner &&
           (mine ? (
-            !started && (
-              <button
-                className="btn secondary block"
-                disabled={!online || busy}
-                onClick={() => void run({ action: "leave", bookingId: b.id, memberId: me.memberId }, "You left the shift", false)}
-              >
-                Leave this shift
-              </button>
+            !over && (
+              <div className="grid-2">
+                <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
+                  Switch to {mine.role === "cashier" ? "server" : "cashier"}
+                </button>
+                <button
+                  className="btn secondary block"
+                  disabled={!online || busy || started}
+                  onClick={() => void run({ action: "leave", bookingId: b.id, memberId: me.memberId }, "You left the shift", false)}
+                >
+                  {started ? "Started" : "Leave"}
+                </button>
+              </div>
             )
           ) : joinable.length ? (
             <div className={joinable.length === 2 ? "grid-2" : "stack"}>
@@ -364,7 +383,9 @@ function BookingSheet({
                   key={r}
                   className={"btn block" + (joinable.length === 2 && r === "server" ? " secondary" : "")}
                   disabled={!online || busy}
-                  onClick={() => void run({ action: "join", bookingId: b.id, role: r }, "You're on the shift", false)}
+                  onClick={(e) =>
+                    void run({ action: "join", bookingId: b.id, role: r }, "You're on the shift", false, e.currentTarget)
+                  }
                 >
                   Join as {roleNames[r].toLowerCase()}
                 </button>
@@ -517,6 +538,18 @@ function BookingSheet({
           </div>
         )}
 
+        <ShiftSales
+          state={state}
+          shiftIds={tills}
+          menu={state.menu}
+          currency={currency}
+          label={bookingTitle(b)}
+          onSales={(focus) => {
+            onClose();
+            props.onSales(focus);
+          }}
+        />
+
         {error && (
           <p className="alert" role="alert">
             {error}
@@ -562,7 +595,7 @@ function BookingSheet({
                         action: "assign",
                         bookingId: b.id,
                         memberId: me.memberId,
-                        role: me.roles.includes(s.role) ? s.role : me.roles[0],
+                        role: s.role,
                         replace: s.memberId,
                       },
                       "You took over from " + s.name,
@@ -572,6 +605,17 @@ function BookingSheet({
                   Take over this shift
                 </button>
               )}
+              <button
+                className="btn secondary block"
+                onClick={() => {
+                  const s = managing;
+                  setManaging(null);
+                  const role = s.role === "cashier" ? "server" : "cashier";
+                  void run({ action: "role", bookingId: b.id, memberId: s.memberId, role }, `${s.name} is now ${role}`);
+                }}
+              >
+                Make {managing.role === "cashier" ? "server" : "cashier"}
+              </button>
               <button
                 className="btn secondary block"
                 onClick={() => {
@@ -603,9 +647,35 @@ function BookingSheet({
           </p>
         </Sheet>
       )}
+      {switching && mine && (
+        <Sheet
+          title={"Switch to " + (mine.role === "cashier" ? "server" : "cashier")}
+          onClose={() => setSwitching(false)}
+          footer={
+            <button
+              className="btn block"
+              onClick={(e) => {
+                const role = mine.role === "cashier" ? "server" : "cashier";
+                const from = e.currentTarget;
+                setSwitching(false);
+                void run({ action: "role", bookingId: b.id, memberId: me.memberId, role }, "You're " + role + " on this shift", false, from);
+              }}
+            >
+              Switch
+            </button>
+          }
+        >
+          <p className="muted">
+            {mine.role === "cashier"
+              ? "You'll serve on this shift. Someone else runs the till."
+              : "You'll run the till on this shift: sell, open and close it."}
+          </p>
+        </Sheet>
+      )}
       {picking && (
         <PersonPicker
           team={team}
+          currency={state.business!.currency}
           title={picking.replace ? "Swap " + picking.replace.name + " for" : "Assign someone"}
           exclude={b.staff.map((s) => s.memberId)}
           roleHint={picking.replace?.role}
@@ -689,6 +759,11 @@ function BookingEditor({
   });
   const [locating, setLocating] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [staffing, setStaffing] = useState<string | null>(null);
+  const celebrate = useCelebrate();
+  const staffed = d.staff.find((x) => x.memberId === staffing);
+  const setStaff = (memberId: string, patch: Partial<Draft["staff"][number]>) =>
+    setD((x) => ({ ...x, staff: x.staff.map((y) => (y.memberId === memberId ? { ...y, ...patch } : y)) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
@@ -704,7 +779,7 @@ function BookingEditor({
     return v.trim() ? parseMoney(v, currency) : 0;
   }
 
-  async function save() {
+  async function save(from?: Element) {
     setBusy(true);
     setError("");
     try {
@@ -739,10 +814,13 @@ function BookingEditor({
       });
       if (done) {
         props.onSaved(bulk ? `Added ${days.length} shifts` : booking ? "Shift saved" : "Shift added");
+        if (booking) buzz.tick();
+        else celebrate(from ? centerOf(from) : undefined);
         onClose();
       }
     } catch (e) {
       setError(errorText(e));
+      buzz.error();
     } finally {
       setBusy(false);
     }
@@ -757,7 +835,7 @@ function BookingEditor({
         onClose={onClose}
         busy={busy}
         footer={
-          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={() => void save()}>
+          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={(e) => void save(e.currentTarget)}>
             {busy
               ? "Saving…"
               : bulk
@@ -773,7 +851,7 @@ function BookingEditor({
         <div className="card card-pad stack gap-14">
           <Combobox
             label="Organizer"
-            placeholder="Who runs the market or event"
+            placeholder="Who runs the market"
             options={organizers}
             value={d.organizer}
             onChange={(o) => set({ organizer: o, event: o?.id === d.organizer?.id ? d.event : null })}
@@ -836,7 +914,7 @@ function BookingEditor({
         <div className="card card-pad stack gap-14">
           {bulk ? (
             <>
-              <div className="grid-2">
+              <div className="grid-2 dates">
                 <label className="field">
                   <span>From</span>
                   <input className="input" type="date" value={d.day} onChange={(e) => e.target.value && set({ day: e.target.value })} />
@@ -927,38 +1005,16 @@ function BookingEditor({
               </div>
             </div>
             {d.staff.map((s) => (
-              <div className="list-row" key={s.memberId}>
+              <button type="button" className="list-row" key={s.memberId} onClick={() => setStaffing(s.memberId)}>
                 <Avatar name={s.name} />
                 <span className="grow stack">
                   <span className="ellipsis">{s.name}</span>
-                  <span className="label">{roleNames[s.role]}</span>
+                  <span className="label ellipsis">
+                    {roleNames[s.role]} · {s.salary.trim() ? formatMoney(parse(s.salary), currency) : "No pay set"}
+                  </span>
                 </span>
-                <span className="money-input salary">
-                  <input
-                    className="input"
-                    inputMode="decimal"
-                    aria-label={"Salary for " + s.name}
-                    placeholder="0"
-                    value={s.salary}
-                    onChange={(e) =>
-                      set({
-                        staff: d.staff.map((x) =>
-                          x.memberId === s.memberId ? { ...x, salary: e.target.value.replace(/[^\d.]/g, "") } : x,
-                        ),
-                      })
-                    }
-                  />
-                  <span className="prefix">{formatMoney(0, currency).replace(/[\d.,\s]/g, "")}</span>
-                </span>
-                <button
-                  type="button"
-                  className="round flat"
-                  aria-label={"Remove " + s.name}
-                  onClick={() => set({ staff: d.staff.filter((x) => x.memberId !== s.memberId) })}
-                >
-                  <X size={16} />
-                </button>
-              </div>
+                <ChevronRight size={18} className="chev" />
+              </button>
             ))}
             <button type="button" className="list-row" onClick={() => setAdding(true)}>
               <span className="avatar seat" aria-hidden="true">
@@ -999,9 +1055,43 @@ function BookingEditor({
           }}
         />
       )}
+      {staffed && (
+        <Sheet
+          title={staffed.name}
+          onClose={() => setStaffing(null)}
+          footer={
+            <>
+              <button className="btn block" onClick={() => setStaffing(null)}>
+                Done
+              </button>
+              <button
+                className="btn ghost danger compact block"
+                onClick={() => {
+                  setStaffing(null);
+                  set({ staff: d.staff.filter((x) => x.memberId !== staffed.memberId) });
+                }}
+              >
+                <X size={16} /> Take off this shift
+              </button>
+            </>
+          }
+        >
+          <div className="field">
+            <span>Working as</span>
+            <RolePicker value={[staffed.role]} onChange={(r) => setStaff(staffed.memberId, { role: r[0] })} single />
+          </div>
+          <MoneyField
+            label="Pay for this shift"
+            value={staffed.salary}
+            onChange={(v) => setStaff(staffed.memberId, { salary: v })}
+            currency={currency}
+          />
+        </Sheet>
+      )}
       {adding && (
         <PersonPicker
           team={team}
+          currency={state.business!.currency}
           title="Assign someone"
           exclude={d.staff.map((s) => s.memberId)}
           onClose={() => setAdding(false)}

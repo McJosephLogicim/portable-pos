@@ -5,6 +5,8 @@ import { CalendarDays, Check, ChevronRight, Wallet } from "lucide-react";
 import type { Booking, Business, RegisterState, Shift } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
 import type { Opening } from "@/lib/demo";
+import { Leaderboards, ShiftSales } from "./insights";
+import type { SalesFocus } from "./sales";
 import { currencyDigits } from "@/lib/settings";
 import { shiftCurrency } from "./receipt";
 import {
@@ -14,6 +16,10 @@ import {
   Money,
   MoneyField,
   Sheet,
+  buzz,
+  centerOf,
+  useCelebrate,
+  useCountUp,
   usePin,
 } from "./ui";
 
@@ -79,6 +85,8 @@ function OpenShift({
   const uncounted = tracked.filter((p) => !(counts[p.id] ?? "").trim()).length;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const ready = value !== undefined && !uncounted && !unticked;
+  const celebrate = useCelebrate();
+  const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
   const time = new Intl.DateTimeFormat("en", { timeZone: business.timeZone, hour: "numeric", minute: "2-digit" });
   if (!state.menu.length)
     return (
@@ -183,7 +191,15 @@ function OpenShift({
       )}
       {checklist.length > 0 && (
         <div className="stack gap-10">
-          <p className="group-title">Before you open</p>
+          <div className="between section-head">
+            <p className="group-title">Before you open</p>
+            <span className="label">
+              {checked.length} of {checklist.length}
+            </span>
+          </div>
+          <span className="bar wide" aria-hidden="true">
+            <i style={{ width: `${(checked.length / checklist.length) * 100}%` }} />
+          </span>
           <div className="card card-list">
             {checklist.map((c) => {
               const on = checked.includes(c.id);
@@ -194,12 +210,32 @@ function OpenShift({
                   role="checkbox"
                   aria-checked={on}
                   className="list-row"
-                  onClick={() => setChecked(on ? checked.filter((x) => x !== c.id) : [...checked, c.id])}
+                  onClick={(e) => {
+                    const next = on ? checked.filter((x) => x !== c.id) : [...checked, c.id];
+                    setChecked(next);
+                    if (on) buzz.tap();
+                    else if (next.length === checklist.length) celebrate(centerOf(e.currentTarget));
+                    else buzz.tick();
+                  }}
                 >
                   <span className={"tick" + (on ? " on" : "")}>
                     <Check size={14} strokeWidth={2.6} />
                   </span>
-                  <span className={"grow" + (on ? " g" : "")}>{c.text}</span>
+                  <span className={"grow check-text" + (on ? " done" : "")}>{c.text}</span>
+                  {c.image && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="check-photo"
+                      aria-label={"See photo for " + c.text}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPhoto(c);
+                      }}
+                    >
+                      <img src={c.image} alt="" />
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -225,12 +261,14 @@ function OpenShift({
             setBusy(true);
             setError("");
             try {
+              const button = document.activeElement;
               await onOpen({
                 openingCash: value!,
                 stock: Object.fromEntries(tracked.map((p) => [p.id, Number(counts[p.id])])),
                 checked,
                 ...(bookingId ? { bookingId } : {}),
               });
+              celebrate(centerOf(button));
             } catch (e) {
               setError(errorText(e));
             } finally {
@@ -249,6 +287,11 @@ function OpenShift({
                   : `Open with ${formatMoney(value, currency)}`}
         </button>
       </div>
+      {photo?.image && (
+        <Sheet title={photo.text} onClose={() => setPhoto(null)}>
+          <img src={photo.image} alt={photo.text} className="photo-full" />
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -330,11 +373,13 @@ function ShiftDetails({
   state,
   business,
   onDismiss,
+  onSales,
 }: {
   shift: Shift;
   state: RegisterState;
   business: Business;
   onDismiss: () => void;
+  onSales: (focus: SalesFocus) => void;
 }) {
   const totals = shiftTotals(shift, state.sales);
   const currency = shiftCurrency(shift, business);
@@ -385,6 +430,14 @@ function ShiftDetails({
           </div>
         )}
       </div>
+      <ShiftSales
+        state={state}
+        shiftIds={[shift.id]}
+        menu={[...shift.menu, ...state.menu]}
+        currency={currency}
+        label={`Shift ${shift.number}`}
+        onSales={onSales}
+      />
     </Sheet>
   );
 }
@@ -397,6 +450,8 @@ export function ShiftScreen({
   onSell,
   onGoMenu,
   onSchedule,
+  onSales,
+  demo,
 }: {
   state: RegisterState;
   online: boolean;
@@ -405,12 +460,15 @@ export function ShiftScreen({
   onSell: () => void;
   onGoMenu: () => void;
   onSchedule: () => void;
+  onSales: (focus: SalesFocus) => void;
+  demo: boolean;
 }) {
   const [closing, setClosing] = useState(false);
   const [detail, setDetail] = useState<Shift | null>(null);
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const totals = shift ? shiftTotals(shift, state.sales) : null;
+  const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
   const external = Boolean(shift && shift.deviceId !== state.deviceId);
   const canClose = online && !state.pending.length && !external;
@@ -443,7 +501,7 @@ export function ShiftScreen({
       {shift && totals ? (
         <>
           <h1 className="headline">
-            <Money value={totals.total} currency={currency} />{" "}
+            <Money value={total} currency={currency} />{" "}
             <span className="g">
               sold since {time.format(new Date(shift.openedAt))}.
             </span>
@@ -509,6 +567,14 @@ export function ShiftScreen({
               <ChevronRight size={18} className="chev" />
             </button>
           )}
+          <ShiftSales
+            state={state}
+            shiftIds={[shift.id]}
+            menu={shift.menu}
+            currency={currency}
+            label={`Shift ${shift.number}`}
+            onSales={onSales}
+          />
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
@@ -584,6 +650,7 @@ export function ShiftScreen({
           </div>
         </div>
       )}
+      <Leaderboards state={state} demo={demo} />
       {closing && shift && totals && (
         <CloseSheet
           shift={shift}
@@ -599,6 +666,10 @@ export function ShiftScreen({
           state={state}
           business={business}
           onDismiss={() => setDetail(null)}
+          onSales={(f) => {
+            setDetail(null);
+            onSales(f);
+          }}
         />
       )}
     </div>
