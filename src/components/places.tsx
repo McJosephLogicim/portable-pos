@@ -222,7 +222,7 @@ export function LocationPicker({
             autoFocus
             enterKeyHint="search"
             aria-label="Search places"
-            placeholder="Search a mall, park or address"
+            placeholder="Mall, park or address"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -27,12 +27,15 @@ import { amountText, parseMoney } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
+import { SuggestInput } from "./combobox";
 import {
+  buzz,
   errorText,
   formatMoney,
   MethodIcon,
   Money,
   MoneyField,
+  PhotoPicker,
   Sheet,
   Switch,
   usePin,
@@ -85,7 +88,7 @@ export function Row({
   return (
     <button className="list-row" onClick={onClick}>
       <span className="well">{icon}</span>
-      <span className="grow">{title}</span>
+      <span className="grow row-title">{title}</span>
       {detail !== undefined && <span className="label end">{detail}</span>}
       <ChevronRight size={18} className="chev" />
     </button>
@@ -721,10 +724,43 @@ type GroupDraft = Omit<OptionGroup, "options"> & {
   options: { id: string; name: string; price: string }[];
 };
 
+/** Categories, choices and options already on the menu, so they're picked instead of retyped. */
+function reusable(menu: Product[], skip: string | undefined, currency: string) {
+  const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
+  const groups = new Map<string, { key: string; name: string; required: boolean; detail: string; options: { name: string; price: string }[] }>();
+  const options = new Map<string, { key: string; name: string; price: string; detail: string }>();
+  for (const item of menu) {
+    if (item.id === skip) continue;
+    for (const g of item.groups ?? []) {
+      const opts = g.options.map((o) => ({ name: o.name, price: o.price ? amountText(o.price, currency) : "" }));
+      const key = (g.required ? "1" : "0") + g.name.toLocaleLowerCase() + "|" + opts.map((o) => o.name + o.price).join(",");
+      if (!groups.has(key))
+        groups.set(key, {
+          key,
+          name: g.name,
+          required: g.required,
+          options: opts,
+          detail: `${g.options.map((o) => o.name).join(", ")} · from ${item.name}`,
+        });
+      for (const o of g.options) {
+        const okey = o.name.toLocaleLowerCase() + "|" + o.price;
+        if (!options.has(okey))
+          options.set(okey, {
+            key: okey,
+            name: o.name,
+            price: o.price ? amountText(o.price, currency) : "",
+            detail: o.price ? "+" + formatMoney(o.price, currency) : "No extra charge",
+          });
+      }
+    }
+  }
+  return { categories, groups: [...groups.values()], options: [...options.values()] };
+}
+
 export function ItemSheet({
   product,
   currency,
-  categories,
+  menu,
   liveShift = false,
   onSave,
   onRemove,
@@ -732,7 +768,8 @@ export function ItemSheet({
 }: {
   product?: Product;
   currency: string;
-  categories: string[];
+  /** The rest of the menu, whose categories, choices and options can be reused. */
+  menu: Product[];
   /** A new item goes on sale on the shift open on this phone, so ask how many there are. */
   liveShift?: boolean;
   onSave: (p: Product, count?: number) => Promise<boolean>;
@@ -745,6 +782,8 @@ export function ItemSheet({
   const askCount = tracked && liveShift && !product;
   const [price, setPrice] = useState(product ? amountText(product.price, currency) : "");
   const [category, setCategory] = useState(product?.category ?? "");
+  const [image, setImage] = useState(product?.image);
+  const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
     (product?.groups ?? []).map((g) => ({
       ...g,
@@ -792,7 +831,7 @@ export function ItemSheet({
                     })),
                   };
                 });
-                const { stock: _, ...rest } = product ?? ({} as Partial<Product>);
+                const { stock: _, image: _image, ...rest } = product ?? ({} as Partial<Product>);
                 return onSave(
                   {
                     ...rest,
@@ -801,6 +840,7 @@ export function ItemSheet({
                     category: category.trim(),
                     price: parseMoney(price, currency),
                     groups: saved,
+                    ...(image ? { image } : {}),
                     ...(tracked ? { stock: true } : {}),
                   },
                   askCount ? Number(count) : undefined,
@@ -822,6 +862,9 @@ export function ItemSheet({
         </>
       }
     >
+      <div className="card card-pad">
+        <PhotoPicker value={image} onChange={setImage} label="item photo" />
+      </div>
       <div className="card card-pad stack gap-14">
         <label className="field">
           <span>Name</span>
@@ -835,22 +878,34 @@ export function ItemSheet({
           />
         </label>
         <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
-        <label className="field">
+        <div className="field">
           <span>Category</span>
+          {reuse.categories.length > 0 && (
+            <div className="chips wrap" role="group" aria-label="Categories used before">
+              {reuse.categories.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={category.trim() === c}
+                  onClick={() => {
+                    buzz.tap();
+                    setCategory(category.trim() === c ? "" : c);
+                  }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
           <input
             className="input"
+            aria-label="Category"
             maxLength={60}
-            list="menu-categories"
-            placeholder="e.g. Drinks"
+            placeholder={reuse.categories.length ? "Or type a new one" : "e.g. Drinks"}
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           />
-          <datalist id="menu-categories">
-            {categories.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-        </label>
+        </div>
       </div>
       <div className="card card-pad stack gap-12">
         <div className="row gap-12">
@@ -891,30 +946,51 @@ export function ItemSheet({
               Remove
             </button>
           </div>
-          <input
-            className="input"
-            aria-label="Choice name"
-            maxLength={60}
+          <SuggestInput
+            label="Choice name"
             placeholder={g.required ? "e.g. Size" : "e.g. Extras"}
             value={g.name}
-            onChange={(e) => setGroup(g.id, (x) => ({ ...x, name: e.target.value }))}
+            newText="New choice"
+            suggestions={reuse.groups
+              .filter((r) => r.required === g.required && !groups.some((x) => x.name.trim() === r.name && x.id !== g.id))
+              .map((r) => ({ key: r.key, name: r.name, detail: r.detail }))}
+            onChange={(name) => setGroup(g.id, (x) => ({ ...x, name }))}
+            onPick={(pick) => {
+              const r = reuse.groups.find((x) => x.key === pick.key)!;
+              buzz.tick();
+              setGroup(g.id, (x) => ({
+                ...x,
+                name: r.name,
+                options: r.options.map((o) => ({ id: crypto.randomUUID(), name: o.name, price: o.price })),
+              }));
+            }}
           />
           {g.options.map((o, i) => (
-            <div className="row gap-8" key={o.id}>
-              <input
-                className="input grow"
-                aria-label={`Option ${i + 1} name`}
-                maxLength={60}
+            <div className="option-row" key={o.id}>
+              <SuggestInput
+                className="grow"
+                label={`Option ${i + 1} name`}
                 placeholder={g.required ? (i ? "Large" : "Regular") : "Extra shot"}
                 value={o.name}
-                onChange={(e) =>
+                newText="New option"
+                suggestions={reuse.options
+                  .filter((r) => !g.options.some((x) => x.name.trim() === r.name))
+                  .map((r) => ({ key: r.key, name: r.name, detail: r.detail }))}
+                onChange={(name) =>
                   setGroup(g.id, (x) => ({
                     ...x,
-                    options: x.options.map((r) => (r.id === o.id ? { ...r, name: e.target.value } : r)),
+                    options: x.options.map((r) => (r.id === o.id ? { ...r, name } : r)),
                   }))
                 }
+                onPick={(pick) => {
+                  const r = reuse.options.find((x) => x.key === pick.key)!;
+                  setGroup(g.id, (x) => ({
+                    ...x,
+                    options: x.options.map((y) => (y.id === o.id ? { ...y, name: r.name, price: r.price } : y)),
+                  }));
+                }}
               />
-              <span className="money-input" style={{ width: 110, flex: "none" }}>
+              <span className="money-input option-price">
                 <input
                   className="input"
                   aria-label={`Option ${i + 1} extra price`}
@@ -1075,7 +1151,7 @@ function MenuPage(props: SettingsProps) {
         <ItemSheet
           product={editing === "new" ? undefined : editing}
           currency={business.currency}
-          categories={categories}
+          menu={menu}
           liveShift={live}
           onClose={() => setEditing(null)}
           onSave={(item, count) =>

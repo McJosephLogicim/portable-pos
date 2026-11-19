@@ -14,6 +14,7 @@ import {
   type Plan,
 } from "../src/lib/team";
 import type { Booking, Me, Member, Product, Shift } from "../src/lib/types";
+import { readImage, saveImage } from "../src/server/images";
 import { runCommand } from "../src/server/register";
 
 const owner: Member = { id: "o", name: "Owner", email: "o@x.co", roles: ["cashier", "server"], rate: 0, owner: true, joined: true };
@@ -39,7 +40,6 @@ const plan: Plan = { members: [owner, bea, paolo], organizers: [], bookings: [bo
 
 test("only the owner plans; teammates join open seats in their role", () => {
   assert.throws(() => applyPlan(plan, asBea, { action: "deleteBooking", bookingId: "k" }, later), /owner/);
-  assert.throws(() => applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "server" }, later), /not set up/);
   const joined = applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "cashier" }, later);
   assert.deepEqual(joined.bookings[0].staff, [{ memberId: "b", name: "Bea", role: "cashier", salary: 70000 }]);
   const full = applyPlan(joined, asOwner, { action: "assign", bookingId: "k", memberId: "p", role: "server" }, later);
@@ -50,6 +50,10 @@ test("only the owner plans; teammates join open seats in their role", () => {
   assert.throws(() => applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "b" }, Date.parse(booking.startsAt) + 1), /started/);
   assert.equal(applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "b" }, later).bookings[0].staff.length, 0);
   assert.throws(() => applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "o" }, later), /owner/);
+  // Roles are per shift: Bea can switch herself, not others.
+  const switched = applyPlan(joined, asBea, { action: "role", bookingId: "k", memberId: "b", role: "server" }, later);
+  assert.equal(switched.bookings[0].staff[0].role, "server");
+  assert.throws(() => applyPlan(full, asBea, { action: "role", bookingId: "k", memberId: "p", role: "cashier" }, later), /owner/);
 });
 
 test("removing someone opens their future seats and keeps past names", () => {
@@ -59,7 +63,7 @@ test("removing someone opens their future seats and keeps past names", () => {
   assert.equal(next.members.length, 2);
   assert.equal(next.bookings.find((b) => b.id === "past")!.staff.length, 1);
   assert.equal(next.bookings.find((b) => b.id === "k")!.staff.length, 0);
-  assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "B2", email: "BEA@x.co", roles: ["server"], rate: 0 }), /already/);
+  assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "B2", email: "BEA@x.co", rate: 0 }), /already/);
 });
 
 test("profit is sales minus rent, pay, and the incentive once the quota is hit", () => {
@@ -131,8 +135,8 @@ test(
     const bread = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
     await o({ action: "menu", menu: [bread], pin });
     await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }] } });
-    let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), roles: ["cashier"], rate: 70000, pin });
-    snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, roles: ["server"], rate: 60000, pin });
+    let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), rate: 70000, pin });
+    snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, rate: 60000, pin });
     assert.equal(snap.team!.length, 3);
     assert.equal(snap.me!.owner, true);
     // An unconfirmed address can't claim the invite.
@@ -146,8 +150,6 @@ test(
     await assert.rejects(bea({ action: "setup", name: "Mine", currency: "PHP", timeZone: "UTC", pin }), { status: 409 });
     const paolo = as(paoloUser);
     const asPaolo = await paolo({ action: "bootstrap" });
-    assert.deepEqual(asPaolo.menu, []);
-    await assert.rejects(paolo({ action: "open", deviceId: randomUUID(), openingCash: 0 }), /cashiers/);
 
     const id = randomUUID();
     const start = new Date(Date.now() + 3600000).toISOString();
@@ -187,5 +189,15 @@ test(
     snap = await o({ action: "removeMember", memberId: asPaolo.me!.memberId, pin });
     assert.equal(snap.bookings![0].staff.length, 1);
     assert.equal((await paolo({ action: "bootstrap" })).business, null);
+    // Photos: only the owner adds them, and they come back byte for byte.
+    const photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const url = await saveImage(ownerUser, "image/jpeg", photo);
+    assert.match(url, /^\/api\/images\/[0-9a-f-]{36}$/);
+    const stored = await readImage(url.split("/").pop()!);
+    assert.equal(stored!.type, "image/jpeg");
+    assert.deepEqual(Buffer.from(stored!.data), photo);
+    await assert.rejects(saveImage(beaUser, "image/jpeg", photo), /owner/);
+    await assert.rejects(saveImage(ownerUser, "image/svg+xml", photo), /JPEG/);
+    assert.equal(await readImage("../etc"), null);
   },
 );

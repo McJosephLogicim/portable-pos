@@ -88,14 +88,19 @@ const settings = z.object({
     )
     .max(24),
   checklist: z
-    .array(z.object({ id: key, text: z.string().trim().min(1).max(120) }))
+    .array(
+      z.object({
+        id: key,
+        text: z.string().trim().min(1).max(120),
+        image: z.string().max(512).regex(/^\/(?!\/)/).optional(),
+      }),
+    )
     .max(30)
     .optional(),
 });
 
 const counts = z.record(key, z.number().int().min(0).max(99999));
 const role = z.enum(["cashier", "server"]);
-const roles = z.array(role).min(1, "Pick cashier, server, or both.").max(2);
 const tag = z.object({ id: key, name: z.string().trim().min(1).max(80) });
 const booking = z.object({
   id: z.uuid(),
@@ -132,7 +137,6 @@ export const planCommand = z.discriminatedUnion("action", [
     action: z.literal("invite"),
     name,
     email: z.string().trim().max(254),
-    roles,
     rate: amount,
     pin: ownerPin,
   }),
@@ -140,7 +144,6 @@ export const planCommand = z.discriminatedUnion("action", [
     action: z.literal("member"),
     memberId: z.uuid(),
     name,
-    roles,
     rate: amount,
     pin: ownerPin,
   }),
@@ -172,6 +175,13 @@ export const planCommand = z.discriminatedUnion("action", [
     pin: ownerPin.optional(),
   }),
   z.object({ action: z.literal("join"), bookingId: z.uuid(), role }),
+  z.object({
+    action: z.literal("role"),
+    bookingId: z.uuid(),
+    memberId: z.uuid(),
+    role,
+    pin: ownerPin.optional(),
+  }),
 ]);
 
 const command = z.discriminatedUnion("action", [

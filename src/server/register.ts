@@ -18,17 +18,17 @@ import { presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
 const ownerActions = ["menu", "settings", ...ownerPlanActions];
-const tillActions = ["sync", "open", "reverse", "close"];
 
 export async function runCommand(who: string | Actor, input: unknown) {
   const actor: Actor = typeof who === "string" ? { id: who } : who;
   const cmd = parseCommand(input);
-  if (pinActions.includes(cmd.action) || cmd.action === "leave") {
+  const selfAction = cmd.action === "leave" || cmd.action === "role";
+  if (pinActions.includes(cmd.action) || selfAction) {
     // Joining by invite happens here too, so the PIN is checked against the right business.
     const access = await getDb().transaction((tx) => resolveAccess(tx, actor));
     ensure(access, "Create your business first.", 404);
     // Taking yourself off a shift needs no PIN. Taking someone else off does.
-    if (cmd.action !== "leave" || cmd.memberId !== access.member.id) {
+    if (!selfAction || cmd.memberId !== access.member.id) {
       const pin = "pin" in cmd ? cmd.pin : undefined;
       ensure(pin, "Enter the owner PIN.", 403);
       await verifyPin(access.business.id, pin);
@@ -59,11 +59,6 @@ export async function runCommand(who: string | Actor, input: unknown) {
     const { business, member } = access;
     const me = presentMe(member);
     ensure(!ownerActions.includes(cmd.action) || me.owner, "Only the owner can change this.", 400);
-    ensure(
-      !tillActions.includes(cmd.action) || me.owner || me.roles.includes("cashier"),
-      "Only cashiers can use the till.",
-      400,
-    );
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
       await runPlan(tx, business, me, cmd as PlanCommand);

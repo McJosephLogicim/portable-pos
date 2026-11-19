@@ -14,6 +14,8 @@ function assetURL(input, base = ROOT) {
   const url = new URL(input, base);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/_next/static/")) return url.href;
+  // Uploaded photos never change under the same id.
+  if (/^\/api\/images\/[0-9a-f-]{36}$/.test(url.pathname)) return url.href;
   if (url.pathname.startsWith("/api/")) return;
   if (
     url.pathname.startsWith("/menu/") &&

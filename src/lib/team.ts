@@ -19,14 +19,8 @@ export interface Plan {
 export type BookingInput = Omit<Booking, "sales">;
 
 export type PlanCommand =
-  | { action: "invite"; name: string; email: string; roles: Role[]; rate: number }
-  | {
-      action: "member";
-      memberId: string;
-      name: string;
-      roles: Role[];
-      rate: number;
-    }
+  | { action: "invite"; name: string; email: string; rate: number }
+  | { action: "member"; memberId: string; name: string; rate: number }
   | { action: "removeMember"; memberId: string }
   | { action: "organizers"; organizers: Organizer[] }
   | { action: "booking"; booking: BookingInput }
@@ -41,6 +35,7 @@ export type PlanCommand =
       replace?: string;
     }
   | { action: "leave"; bookingId: string; memberId: string }
+  | { action: "role"; bookingId: string; memberId: string; role: Role }
   | { action: "join"; bookingId: string; role: Role };
 
 export const planActions = [
@@ -54,10 +49,11 @@ export const planActions = [
   "assign",
   "leave",
   "join",
+  "role",
 ] as const;
-/** Everything except joining or leaving your own shift needs the owner. */
+/** Everything except joining, leaving or switching roles on your own shift needs the owner. */
 export const ownerPlanActions = planActions.filter(
-  (a) => a !== "join" && a !== "leave",
+  (a) => a !== "join" && a !== "leave" && a !== "role",
 );
 
 export class PlanError extends Error {
@@ -100,10 +96,6 @@ function checkBooking(b: BookingInput, members: Member[]) {
     ids.add(slot.memberId);
     const member = members.find((m) => m.id === slot.memberId);
     check(member, "Someone on this shift is no longer on the team.", 404);
-    check(
-      member.roles.includes(slot.role),
-      `${member.name} isn't set up as a ${roleNames[slot.role].toLowerCase()}.`,
-    );
   }
   check(!b.event || b.organizer, "Pick the organizer for this event.");
 }
@@ -149,7 +141,6 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
         "Someone on the team already uses that email.",
         409,
       );
-      check(cmd.roles.length, "Pick cashier, server, or both.");
       check(members.length < 100, "A team can have up to 100 people.");
       return {
         ...plan,
@@ -159,7 +150,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
             id: crypto.randomUUID(),
             name: cmd.name.trim(),
             email,
-            roles: [...new Set(cmd.roles)],
+            roles: ["cashier", "server"],
             rate: cmd.rate,
             owner: false,
             joined: false,
@@ -170,8 +161,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "member": {
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person left the team.", 404);
-      check(cmd.roles.length, "Pick cashier, server, or both.");
-      const next = { ...member, name: cmd.name.trim(), roles: [...new Set(cmd.roles)], rate: cmd.rate };
+      const next = { ...member, name: cmd.name.trim(), rate: cmd.rate };
       return {
         ...plan,
         members: members.map((m) => (m.id === member.id ? next : m)),
@@ -232,10 +222,6 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
       const booking = find(cmd.bookingId);
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person left the team.", 404);
-      check(
-        member.roles.includes(cmd.role),
-        `${member.name} isn't set up as a ${roleNames[cmd.role].toLowerCase()}.`,
-      );
       const slot: StaffSlot = { memberId: member.id, name: member.name, role: cmd.role, salary: member.rate };
       let staff = booking.staff;
       if (cmd.replace && cmd.replace !== member.id) {
@@ -260,9 +246,18 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
       );
       return put({ ...booking, staff: booking.staff.filter((s) => s.memberId !== cmd.memberId) });
     }
+    case "role": {
+      const booking = find(cmd.bookingId);
+      check(me.owner || cmd.memberId === me.memberId, "Only the owner can change someone else's role.", 400);
+      check(me.owner || Date.parse(booking.endsAt) > now, "This shift is over.", 409);
+      check(booking.staff.some((s) => s.memberId === cmd.memberId), "They're not on this shift.", 409);
+      return put({
+        ...booking,
+        staff: booking.staff.map((s) => (s.memberId === cmd.memberId ? { ...s, role: cmd.role } : s)),
+      });
+    }
     case "join": {
       const booking = find(cmd.bookingId);
-      check(me.roles.includes(cmd.role), `You're not set up as a ${roleNames[cmd.role].toLowerCase()}.`, 400);
       check(Date.parse(booking.endsAt) > now, "This shift is over.", 409);
       if (booking.staff.some((s) => s.memberId === me.memberId)) return plan;
       check(booking.staff.length < booking.seats, "This shift just filled up.", 409);
@@ -289,6 +284,7 @@ export function redactBooking(b: Booking, me: Me): Booking {
   if (me.owner) return b;
   return {
     ...b,
+    hit: b.quota > 0 && (b.sales ?? 0) >= b.quota,
     rent: undefined,
     sales: undefined,
     staff: b.staff.map((s) => (s.memberId === me.memberId ? s : { ...s, salary: undefined })),

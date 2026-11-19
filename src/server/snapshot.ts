@@ -163,7 +163,8 @@ export async function snapshot(
   const [member] = await tx.select().from(members).where(eq(members.id, access.member.id));
   if (!business) return empty;
   const me = presentMe(member ?? access.member);
-  const till = me.owner || me.roles.includes("cashier");
+  // Roles are picked per shift, so everyone on the team can run the till.
+  const till = true;
 
   // Two months back for the books, and everything ahead.
   const since = new Date(Date.now() - 62 * 86400000).toISOString();

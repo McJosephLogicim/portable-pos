@@ -18,6 +18,8 @@ export interface Discount {
 export interface ChecklistItem {
   id: string;
   text: string;
+  /** A photo of how it should look. */
+  image?: string;
 }
 export interface Settings {
   receiptNote: string;
@@ -170,6 +172,8 @@ export interface Booking {
   incentive: number;
   /** Owner only: net sales rung up on tills opened for this shift. */
   sales?: number;
+  /** Whether sales reached the quota. Shared with the team, unlike the sales figure. */
+  hit?: boolean;
 }
 export interface Bootstrap {
   business: Business | null;

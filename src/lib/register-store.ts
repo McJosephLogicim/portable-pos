@@ -52,6 +52,10 @@ function openDatabase(): Promise<IDBDatabase> {
         db.close();
         opening = undefined;
       };
+      // Safari closes idle connections when the app is backgrounded. Reopen on next use.
+      db.onclose = () => {
+        opening = undefined;
+      };
       resolve(db);
     };
   }).catch((error) => {
@@ -59,6 +63,29 @@ function openDatabase(): Promise<IDBDatabase> {
     throw error;
   });
   return opening;
+}
+
+/**
+ * Start a transaction, reopening the database once if the browser closed the
+ * connection behind our back ("The database connection is closing" in Safari).
+ */
+async function begin(
+  stores: string,
+  mode: IDBTransactionMode = "readonly",
+  options?: IDBTransactionOptions,
+): Promise<IDBTransaction> {
+  for (let attempt = 0; ; attempt++) {
+    const db = await openDatabase();
+    try {
+      return db.transaction(stores, mode, options);
+    } catch (error) {
+      if (attempt > 0 || !(error instanceof DOMException) || error.name !== "InvalidStateError") throw error;
+      opening = undefined;
+      try {
+        db.close();
+      } catch {}
+    }
+  }
 }
 
 function emptyRegister(deviceId: string): RegisterState {
@@ -78,11 +105,10 @@ function emptyRegister(deviceId: string): RegisterState {
 let thisDevice: Promise<string> | undefined;
 function deviceId(): Promise<string> {
   if (thisDevice) return thisDevice;
-  thisDevice = openDatabase()
+  thisDevice = begin(SETTINGS, "readwrite")
     .then(
-      (db) =>
+      (tx) =>
         new Promise<string>((resolve, reject) => {
-          const tx = db.transaction(SETTINGS, "readwrite");
           const store = tx.objectStore(SETTINGS);
           const request = store.get("device");
           let id: string;
@@ -106,9 +132,10 @@ function deviceId(): Promise<string> {
 }
 
 export async function loadRegister(key: string): Promise<RegisterState> {
-  const [db, id] = await Promise.all([openDatabase(), deviceId()]);
+  const id = await deviceId();
+  const tx = await begin(REGISTERS);
   return new Promise((resolve, reject) => {
-    const request = db.transaction(REGISTERS).objectStore(REGISTERS).get(key);
+    const request = tx.objectStore(REGISTERS).get(key);
     request.onsuccess = () =>
       resolve(request.result ? upgrade(request.result) : emptyRegister(id));
     request.onerror = () => reject(request.error);
@@ -140,9 +167,9 @@ async function updateRegister(
   key: string,
   update: (current: RegisterState) => RegisterState | null,
 ): Promise<RegisterState> {
-  const [db, id] = await Promise.all([openDatabase(), deviceId()]);
+  const id = await deviceId();
+  const tx = await begin(REGISTERS, "readwrite", { durability: "strict" });
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(REGISTERS, "readwrite", { durability: "strict" });
     const store = tx.objectStore(REGISTERS);
     const request = store.get(key);
     let result: RegisterState;

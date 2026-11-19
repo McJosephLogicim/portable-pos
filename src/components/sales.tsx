@@ -6,16 +6,27 @@ import type { RegisterState, Shift } from "@/lib/types";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { formatMoney, Money } from "./ui";
 
+/** Narrow the sales list to some tills, and optionally one item, from a shift's summary. */
+export interface SalesFocus {
+  shiftIds: string[];
+  productId?: string;
+  label: string;
+}
+
 export function SalesScreen({
   state,
   online,
   onReverse,
   onSell,
+  focus,
+  onFocus,
 }: {
   state: RegisterState;
   online: boolean;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
   onSell: () => void;
+  focus: SalesFocus | null;
+  onFocus: (focus: SalesFocus | null) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [scope, setScope] = useState<"shift" | "all">("shift");
@@ -29,9 +40,11 @@ export function SalesScreen({
   const pending = new Set(state.pending.map((e) => e.id));
   const mine = Boolean(shift && shift.deviceId === state.deviceId);
   const canReverse = Boolean(online && mine && state.pending.length === 0);
-  const listScope = shift ? scope : "all";
+  const listScope = focus ? "all" : shift ? scope : "all";
   const q = query.trim().toLowerCase();
   const sales = [...state.sales]
+    .filter((s) => !focus || focus.shiftIds.includes(s.shiftId))
+    .filter((s) => !focus?.productId || s.lines.some((l) => l.productId === focus.productId))
     .filter((s) => listScope === "all" || s.shiftId === shift!.id)
     .filter((s) => shifts.has(s.shiftId))
     .filter((s) => {
@@ -72,7 +85,7 @@ export function SalesScreen({
               <Money value={sum} currency={currency} />{" "}
               <span className="g">
                 from {live.length} {live.length === 1 ? "sale" : "sales"}
-                {listScope === "shift" ? " this shift." : "."}
+                {focus ? "." : listScope === "shift" ? " this shift." : "."}
               </span>
             </>
           ) : (
@@ -106,7 +119,14 @@ export function SalesScreen({
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
-      {shift && state.sales.some((s) => s.shiftId !== shift.id) && (
+      {focus && (
+        <div className="chips" role="group" aria-label="Filter">
+          <button type="button" aria-pressed="true" onClick={() => onFocus(null)}>
+            {focus.label} <X size={14} aria-label="Show all sales" />
+          </button>
+        </div>
+      )}
+      {!focus && shift && state.sales.some((s) => s.shiftId !== shift.id) && (
         <div className="segmented" role="group" aria-label="Show">
           <button aria-pressed={scope === "shift"} onClick={() => setScope("shift")}>
             This shift
@@ -188,6 +208,14 @@ export function SalesScreen({
           shift={openShift}
           business={business}
           pending={pending.has(open.id)}
+          pastReasons={Array.from(
+            new Set(
+              state.sales
+                .filter((s) => s.reversedAt && s.reason)
+                .sort((a, b) => (b.reversedAt ?? "").localeCompare(a.reversedAt ?? ""))
+                .map((s) => s.reason!.trim()),
+            ),
+          ).slice(0, 3)}
           canReverse={canReverse && open.shiftId === shift?.id}
           reverseBlocked={
             open.shiftId !== shift?.id

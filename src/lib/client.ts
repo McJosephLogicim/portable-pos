@@ -68,3 +68,23 @@ export async function api(
   }
   return data;
 }
+
+/** Upload a photo and return the address it is served from. */
+export async function uploadImage(userId: string, photo: Blob): Promise<string> {
+  const {
+    data: { session },
+    error,
+  } = await authClient().auth.getSession();
+  if (error || !session || session.user.id !== userId)
+    throw Error("Sign back into this owner account to add photos.");
+  const response = await fetch("/api/images", {
+    method: "POST",
+    headers: { "Content-Type": photo.type, Authorization: `Bearer ${session.access_token}` },
+    body: photo,
+    signal: AbortSignal.timeout(30000),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.url)
+    throw new RequestFailure(response.status, data?.error || "The photo didn't upload. Try again.");
+  return data.url as string;
+}

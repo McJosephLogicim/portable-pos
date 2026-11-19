@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Banknote, Check, ChevronRight, HandPlatter, Link, Plus, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
-import { roleNames, rolesText } from "@/lib/team";
+import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
-import { errorText, formatMoney, MoneyField, Sheet, usePin } from "./ui";
+import { errorText, formatMoney, MoneyField, PhotoPicker, Sheet, usePin } from "./ui";
 
 export function initials(name: string) {
   return (
@@ -76,13 +76,12 @@ function MemberSheet({
 }: {
   member?: Member;
   currency: string;
-  onSave: (input: { name: string; email: string; roles: Role[]; rate: number }) => Promise<boolean>;
+  onSave: (input: { name: string; email: string; rate: number }) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member?.name ?? "");
   const [email, setEmail] = useState(member?.email ?? "");
-  const [roles, setRoles] = useState<Role[]>(member?.roles ?? ["cashier"]);
   const [rate, setRate] = useState(member && member.rate ? amountText(member.rate, currency) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -98,7 +97,7 @@ function MemberSheet({
       setBusy(false);
     }
   }
-  const valid = name.trim() && roles.length && (member || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
+  const valid = name.trim() && (member || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   return (
     <Sheet
       title={member ? member.name : "Invite someone"}
@@ -114,7 +113,6 @@ function MemberSheet({
                 onSave({
                   name: name.trim(),
                   email: email.trim(),
-                  roles,
                   rate: rate.trim() ? parseMoney(rate, currency) : 0,
                 }),
               )
@@ -158,19 +156,10 @@ function MemberSheet({
           </label>
         )}
       </div>
-      <div className="field">
-        <span>What they do</span>
-        <RolePicker value={roles} onChange={setRoles} />
-        <p className="label" style={{ marginTop: 4 }}>
-          {roles.includes("cashier")
-            ? "Cashiers run the till: they sell, open and close shifts."
-            : roles.length
-              ? "Servers see the schedule and join shifts. They don't use the till."
-              : "Pick one or both."}
-        </p>
-      </div>
       <MoneyField label="Pay for one shift" value={rate} onChange={setRate} currency={currency} />
-      <p className="label">Used as their salary when they join a shift. You can change it per shift.</p>
+      <p className="label">
+        Their salary when they join a shift. You can change it per shift. They pick cashier or server on each shift.
+      </p>
       {!member && (
         <div className="notice">
           <span className="grow">They join by signing in with this email. Send them the app link.</span>
@@ -235,10 +224,10 @@ export function TeamPage(props: SettingsProps) {
             <Avatar name={m.name} dim={!m.joined} />
             <span className="grow stack">
               <span className="ellipsis">
-                {m.name} {m.owner && <span className="g">· Owner</span>}
+                {m.name}
               </span>
               <span className="label ellipsis">
-                {m.joined ? rolesText(m.roles) : "Invite sent to " + m.email}
+                {m.joined ? (m.owner ? "Owner" : m.email) : "Invite sent to " + m.email}
               </span>
             </span>
             {m.rate > 0 && <span className="label end">{formatMoney(m.rate, currency)}</span>}
@@ -247,8 +236,7 @@ export function TeamPage(props: SettingsProps) {
         ))}
       </div>
       <p className="label">
-        Only you can invite people, plan shifts and see pay. Cashiers run the till. Servers see the schedule and join open
-        shifts.
+        Only you invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.
       </p>
       {editing && (
         <MemberSheet
@@ -259,7 +247,7 @@ export function TeamPage(props: SettingsProps) {
             editing === "new"
               ? act({ action: "invite", ...input }, "Invited " + input.name)
               : act(
-                  { action: "member", memberId: editing.id, name: input.name, roles: input.roles, rate: input.rate },
+                  { action: "member", memberId: editing.id, name: input.name, rate: input.rate },
                   "Saved " + input.name,
                 )
           }
@@ -306,6 +294,14 @@ export function ChecklistPage(props: SettingsProps) {
           {list.map((item, i) => (
             <div className="list-row" key={item.id}>
               <span className="step-num">{i + 1}</span>
+              <PhotoPicker
+                size="small"
+                value={item.image}
+                label={"photo for step " + (i + 1)}
+                onChange={(image) =>
+                  set(list.map((x) => (x.id === item.id ? { id: x.id, text: x.text, ...(image ? { image } : {}) } : x)))
+                }
+              />
               <input
                 className="inline-input grow"
                 aria-label={`Step ${i + 1}`}
@@ -345,7 +341,8 @@ export function ChecklistPage(props: SettingsProps) {
         </button>
       </form>
       <p className="label">
-        Whoever opens the till ticks every step first. The ticked list is kept with the shift.
+        Whoever opens the till ticks every step first. Add a photo to show how it should look. The ticked list
+        is kept with the shift.
       </p>
       {bar}
     </SubPage>

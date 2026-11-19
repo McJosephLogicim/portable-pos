@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -162,5 +163,26 @@ export const bookings = register
       incentive: money("incentive").default(0).notNull(),
     },
     (t) => [index().on(t.businessId, t.startsAt)],
+  )
+  .enableRLS();
+
+const bytes = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+/** Photos of menu items and checklist steps. Served by id, which is never reused. */
+export const images = register
+  .table(
+    "images",
+    {
+      id: uuid().primaryKey(),
+      businessId: uuid("business_id")
+        .references(() => businesses.id)
+        .notNull(),
+      type: text().notNull(),
+      data: bytes().notNull(),
+      createdAt: date("created_at").notNull(),
+    },
+    (t) => [index().on(t.businessId)],
   )
   .enableRLS();
