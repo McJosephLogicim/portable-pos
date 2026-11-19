@@ -7,20 +7,11 @@ type Ctx = CanvasRenderingContext2D;
 type Img = HTMLImageElement | null;
 
 const W = 540;
-const PAD = 18;
-const INNER = W - PAD * 2;
-const CP = 20; // card padding
-const L = PAD + CP;
-const R = W - PAD - CP;
-const bg = "#f3f1ec";
-const ink2 = "#6b6b6b";
-const ink3 = "#9a9a9a";
-const line = "#efefef";
-const green = "#16a34a";
-const red = "#dc2626";
-const amber = "#b45309";
-/** Colors for the payment donut, after the brand color. */
-const palette = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#64748b"];
+const G = 20; // page gutter
+const CARD = W - G * 2;
+const P = 20; // card padding
+const L = G + P;
+const R = W - G - P;
 
 function loadImage(src: string) {
   return new Promise<Img>((resolve) => {
@@ -35,7 +26,7 @@ function loadImage(src: string) {
 
 function rr(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, Math.min(r, h / 2, w / 2));
+  ctx.roundRect(x, y, w, h, Math.max(0, Math.min(r, h / 2, w / 2)));
 }
 
 /** Draw an image to fill a box, cropped to the middle, with rounded corners. */
@@ -48,26 +39,39 @@ function cover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, w: number,
   ctx.restore();
 }
 
-function mix(hex: string, other: string, amount: number) {
-  const a = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const b = [1, 3, 5].map((i) => parseInt(other.slice(i, i + 2), 16));
-  return "#" + a.map((v, i) => Math.round(v * (1 - amount) + b[i] * amount).toString(16).padStart(2, "0")).join("");
-}
-
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 }
 
 /**
- * The shift report as a picture for the group chat. It leads with the money, shows
- * where it came from, what sold with each item's photo, what's left in stock, and
- * whether the drawer matches, each in its own card so it reads at a glance on a phone.
+ * The shift report as a picture for the group chat, drawn like a screen of the app:
+ * grey page, white cards, one black card, a sentence that says what happened, and
+ * real photos of what sold.
  */
 export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
   await document.fonts?.ready;
   const font = (size: number, weight = 400) => `${weight} ${size}px ${family}`;
-  const ink = getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#0a0a0a";
+  const canvasBg = v("--canvas", "#ededed");
+  const surface = v("--surface", "#ffffff");
+  const muted = v("--surface-muted", "#f2f2f2");
+  const ink = v("--ink", "#0a0a0a");
+  const ink2 = v("--ink-secondary", "#6b6b6b");
+  const ink3 = v("--ink-tertiary", "#8c8c8c");
+  const line = v("--line", "#ebebeb");
+  const track = v("--track", "#eeeeee");
+  const accent = v("--accent", "#0a0a0a");
+  const onAccent = v("--on-accent", "#ffffff");
+  const danger = v("--danger", "#d93025");
+  const dangerDot = v("--danger-dot", "#e5484d");
+  const success = v("--success", "#1e9e5a");
+  const px = (name: string, fallback: number) => parseFloat(v(name, "")) || fallback;
+  const rLg = Math.min(px("--radius-lg", 24), 28);
+  const rMd = Math.min(px("--radius-md", 20), 24);
+  const rSm = Math.min(px("--radius-sm", 14), 18);
+
   const m = document.createElement("canvas").getContext("2d")!;
   const width = (text: string, f: string) => {
     m.font = f;
@@ -79,614 +83,375 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
     while (t.length > 1 && width(t + "…", f) > max) t = t.slice(0, -1);
     return t + "…";
   };
-  const brand = r.business.brand && /^#[0-9a-f]{6}$/i.test(r.business.brand) ? r.business.brand : "#111111";
-  const soft = mix(brand, "#ffffff", 0.88);
+  /** Wrap words that keep their own color, like the app's black-and-grey headlines. */
+  const wrap = (parts: { text: string; color: string }[], f: string, max: number) => {
+    const words = parts.flatMap((p) => p.text.split(/(?<= )/).filter(Boolean).map((w) => ({ w, color: p.color })));
+    const lines: { w: string; color: string; x: number }[][] = [[]];
+    let x = 0;
+    for (const word of words) {
+      const ww = width(word.w.trimEnd(), f);
+      if (x > 0 && x + ww > max) {
+        lines.push([]);
+        x = 0;
+      }
+      lines[lines.length - 1].push({ ...word, x });
+      x += width(word.w, f);
+    }
+    return lines;
+  };
 
-  // Load every picture first so drawing is one pass.
-  const top = r.sold.slice(0, 6);
+  const sold = r.sold.slice(0, 12);
   const [logo, ...pics] = await Promise.all([
     r.business.logo ? loadImage(r.business.logo) : Promise.resolve(null),
-    ...top.map((s) => (s.image ? loadImage(s.image) : Promise.resolve(null))),
+    ...sold.map((s) => (s.image ? loadImage(s.image) : Promise.resolve(null))),
   ]);
-  const faces = await Promise.all(r.people.slice(0, 6).map((p) => (r.faces[p] ? loadImage(r.faces[p]) : Promise.resolve(null))));
+  const people = r.people.slice(0, 8);
+  const faces = await Promise.all(people.map((p) => (r.faces[p] ? loadImage(r.faces[p]) : Promise.resolve(null))));
   const payFaces = await Promise.all(r.payBack.map((p) => (r.faces[p.name] ? loadImage(r.faces[p.name]) : Promise.resolve(null))));
 
   const ops: ((ctx: Ctx) => void)[] = [];
-  let y = PAD;
+  let y = 28;
 
-  const avatar = (ctx: Ctx, name: string, img: Img, x: number, cy: number, size: number, ring: string, fill: string, color: string) => {
-    ctx.fillStyle = ring;
+  const text = (ctx: Ctx, s: string, x: number, ty: number, f: string, color: string, align: CanvasTextAlign = "left") => {
+    ctx.font = f;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.fillText(s, x, ty);
+    ctx.textAlign = "left";
+  };
+  const dot = (ctx: Ctx, x: number, cy: number, color: string) => {
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(x + size / 2, cy, size / 2 + 2.5, 0, Math.PI * 2);
+    ctx.arc(x + 4, cy, 4, 0, Math.PI * 2);
     ctx.fill();
-    if (img) cover(ctx, img, x, cy - size / 2, size, size, size / 2);
-    else {
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.arc(x + size / 2, cy, size / 2, 0, Math.PI * 2);
-      ctx.fill();
+  };
+  const bar = (ctx: Ctx, x: number, ty: number, w: number, frac: number, color = accent) => {
+    ctx.fillStyle = track;
+    rr(ctx, x, ty, w, 3, 1.5);
+    ctx.fill();
+    if (frac > 0) {
       ctx.fillStyle = color;
-      ctx.font = font(size * 0.36, 700);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(initials(name), x + size / 2, cy + 1);
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
+      rr(ctx, x, ty, Math.max(3, w * Math.min(1, frac)), 3, 1.5);
+      ctx.fill();
     }
   };
-
-  /* ---------- hero ---------- */
-  {
+  const avatar = (ctx: Ctx, name: string, img: Img, x: number, ty: number, size: number) => {
+    if (img) return cover(ctx, img, x, ty, size, size, size / 2);
+    ctx.fillStyle = muted;
+    ctx.beginPath();
+    ctx.arc(x + size / 2, ty + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.textBaseline = "middle";
+    text(ctx, initials(name), x + size / 2, ty + size / 2 + 0.5, font(size * 0.34, 500), ink2, "center");
+    ctx.textBaseline = "top";
+  };
+  /** A white card, with an optional section title and a grey note on the right. */
+  const card = (h: number, draw: (ctx: Ctx, top: number) => void, title?: string, note?: string) => {
     const t = y;
-    const x = PAD + 22;
-    const hasPeople = r.people.length > 0;
-    const h = 236 + (hasPeople ? 58 : 0);
-    const avg = r.sales.count ? Math.round(r.sales.total / r.sales.count) : 0;
-    const stats = [
-      `${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"}`,
-      r.sales.count ? `avg ${fmt(avg)}` : "",
-      r.peak && r.sales.count > 1 ? `busiest ${r.peak.hour}` : "",
-    ].filter(Boolean);
-    const where = [r.place, r.hours].filter(Boolean).join("  ·  ");
+    const head = title ? 40 : 0;
+    const total = P + head + h + P;
     ops.push((ctx) => {
-      const g = ctx.createLinearGradient(PAD, t, W - PAD, t + h);
-      g.addColorStop(0, mix(brand, "#ffffff", 0.08));
-      g.addColorStop(0.55, brand);
-      g.addColorStop(1, mix(brand, "#000000", 0.55));
-      ctx.fillStyle = g;
-      rr(ctx, PAD, t, INNER, h, 30);
-      ctx.fill();
-      // Soft light circles for depth.
       ctx.save();
-      rr(ctx, PAD, t, INNER, h, 30);
-      ctx.clip();
-      ctx.fillStyle = "rgba(255,255,255,0.08)";
-      ctx.beginPath();
-      ctx.arc(W - PAD - 40, t + 30, 120, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.05)";
-      ctx.beginPath();
-      ctx.arc(W - PAD - 10, t + h - 10, 90, 0, Math.PI * 2);
+      ctx.shadowColor = "rgba(0,0,0,0.05)";
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 8;
+      ctx.fillStyle = surface;
+      rr(ctx, G, t, CARD, total, rLg);
       ctx.fill();
       ctx.restore();
-
-      ctx.textBaseline = "top";
-      let nx = x;
-      if (logo) {
-        ctx.fillStyle = "#fff";
-        rr(ctx, x - 2, t + 20, 48, 48, 14);
-        ctx.fill();
-        cover(ctx, logo, x, t + 22, 44, 44, 12);
-        nx = x + 58;
-      }
-      ctx.font = font(11.5, 700);
-      ctx.fillStyle = "rgba(255,255,255,0.62)";
-      ctx.fillText(`SHIFT ${r.number} REPORT`, nx, t + 24);
-      ctx.font = font(20, 700);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(fit(r.business.name, font(20, 700), R - nx - 110), nx, t + 41);
-      // Date chip
-      const date = r.date;
-      const dw = width(date, font(13, 600)) + 24;
-      ctx.fillStyle = "rgba(255,255,255,0.16)";
-      rr(ctx, W - PAD - 20 - dw, t + 26, dw, 30, 15);
-      ctx.fill();
-      ctx.fillStyle = "#fff";
-      ctx.font = font(13, 600);
-      ctx.fillText(date, W - PAD - 20 - dw + 12, t + 34);
-
-      ctx.font = font(13, 500);
-      ctx.fillStyle = "rgba(255,255,255,0.72)";
-      ctx.fillText(fit(where, font(13, 500), INNER - 44), x, t + 84);
-
-      ctx.font = font(12, 600);
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.fillText("NET SALES", x, t + 118);
-      ctx.font = font(48, 700);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(fmt(r.sales.total), x - 1, t + 134);
-
-      let sx = x;
-      ctx.font = font(13, 600);
-      for (const s of stats) {
-        const sw = width(s, font(13, 600)) + 22;
-        ctx.fillStyle = "rgba(255,255,255,0.14)";
-        rr(ctx, sx, t + 196, sw, 28, 14);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.fillText(s, sx + 11, t + 203);
-        sx += sw + 8;
-      }
-
-      if (hasPeople) {
-        ctx.fillStyle = "rgba(255,255,255,0.14)";
-        ctx.fillRect(x, t + 238, INNER - 44, 1);
-        let px = x;
-        r.people.slice(0, 6).forEach((name, i) => {
-          avatar(ctx, name, faces[i], px, t + 266, 30, "rgba(255,255,255,0.35)", "#ffffff", brand);
-          const first = name.split(" ")[0];
-          ctx.font = font(13, 600);
-          ctx.fillStyle = "#fff";
-          ctx.textBaseline = "middle";
-          ctx.fillText(first, px + 38, t + 267);
-          ctx.textBaseline = "top";
-          px += 38 + width(first, font(13, 600)) + 18;
-        });
-      }
+      if (title) text(ctx, title, L, t + P, font(18, 500), ink);
+      if (title && note) text(ctx, note, R, t + P + 3, font(14), ink3, "right");
+      draw(ctx, t + P + head);
     });
-    y = t + h + 12;
-  }
+    y += total + 12;
+  };
+  const divider = (ctx: Ctx, ty: number) => {
+    ctx.fillStyle = line;
+    ctx.fillRect(L, ty, R - L, 1);
+  };
 
-  /* ---------- three tiles ---------- */
+  /* ---------- header: the business and the shift ---------- */
   {
     const t = y;
-    const tw = (INNER - 16) / 3;
-    const itemsSold = r.sold.reduce((s, i) => s + i.quantity, 0);
-    const diff = r.cash.difference;
-    const tiles: { label: string; value: string; note: string; tone?: string }[] = [
-      {
-        label: "Cash on hand",
-        value: fmt(r.cash.counted ?? r.cash.expected),
-        note: diff === undefined ? "expected so far" : diff === 0 ? "✓ matches" : differenceText(diff, fmt),
-        tone: diff === undefined ? ink3 : diff === 0 ? green : diff < 0 ? red : amber,
-      },
-      {
-        label: "Expenses",
-        value: fmt(r.tillExpenses + r.pocketExpenses),
-        note: r.expenses.length ? `${r.expenses.length} logged` : "none",
-      },
-      {
-        label: "Items sold",
-        value: String(itemsSold),
-        note: `${r.sold.length} ${r.sold.length === 1 ? "kind" : "kinds"}`,
-      },
+    const where = [r.date, r.hours].join(" · ");
+    ops.push((ctx) => {
+      const size = 44;
+      if (logo) cover(ctx, logo, G, t, size, size, rSm);
+      else {
+        const g = ctx.createLinearGradient(0, t, 0, t + size);
+        g.addColorStop(0, "#3a3a3a");
+        g.addColorStop(1, "#0e0e0e");
+        ctx.fillStyle = accent === "#0a0a0a" ? g : accent;
+        rr(ctx, G, t, size, size, rSm);
+        ctx.fill();
+        ctx.textBaseline = "middle";
+        text(ctx, initials(r.business.name), G + size / 2, t + size / 2 + 0.5, font(16, 500), onAccent, "center");
+        ctx.textBaseline = "top";
+      }
+      text(ctx, fit(r.business.name, font(16, 500), W - G * 2 - 60), G + size + 12, t + 3, font(16, 500), ink);
+      text(ctx, fit(`Shift ${r.number} · ${where}`, font(13), W - G * 2 - 60), G + size + 12, t + 25, font(13), ink2);
+    });
+    y += 44 + 26;
+  }
+
+  /* ---------- the sentence ---------- */
+  {
+    const t = y;
+    const f = font(30, 500);
+    const sales = `${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"}`;
+    const only = r.methods.length === 1 ? ` ${r.methods[0].name.toLowerCase() === "cash" ? "in cash" : `by ${r.methods[0].name}`}` : "";
+    const parts = [
+      { text: `${fmt(r.sales.total)} in sales `, color: ink },
+      { text: `from ${sales}${only}${r.place ? ` at ${r.place}` : ""}${r.closed ? "." : " so far."}`, color: ink3 },
     ];
+    const lines = wrap(parts, f, W - G * 2);
+    ops.push((ctx) => {
+      ctx.font = f;
+      lines.forEach((ln, i) =>
+        ln.forEach((w) => {
+          ctx.fillStyle = w.color;
+          ctx.fillText(w.w, G + w.x, t + i * 34);
+        }),
+      );
+    });
+    y += lines.length * 34 + 20;
+  }
+
+  /* ---------- the drawer: the one black card ---------- */
+  {
+    const t = y;
+    const h = 142;
+    const counted = r.cash.counted;
+    const diff = r.cash.difference;
+    ops.push((ctx) => {
+      const g = ctx.createRadialGradient(G, t, 0, G, t, CARD * 1.2);
+      if (accent === "#0a0a0a") {
+        g.addColorStop(0, "#333333");
+        g.addColorStop(0.45, "#111111");
+        g.addColorStop(1, "#050505");
+        ctx.fillStyle = g;
+      } else ctx.fillStyle = accent;
+      rr(ctx, G, t, CARD, h, rLg);
+      ctx.fill();
+      const soft = onAccent === "#ffffff" ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.55)";
+      text(ctx, counted !== undefined ? "Cash on hand" : "Expected in the drawer", L, t + 22, font(14), soft);
+      text(ctx, fmt(counted ?? r.cash.expected), L, t + 44, font(44, 500), onAccent);
+      if (counted !== undefined && diff !== undefined) {
+        dot(ctx, L, t + 112, diff === 0 ? success : dangerDot);
+        text(
+          ctx,
+          diff === 0 ? `Matches the ${fmt(r.cash.expected)} expected` : `${differenceText(diff, fmt)} of the ${fmt(r.cash.expected)} expected`,
+          L + 16,
+          t + 104,
+          font(14),
+          onAccent,
+        );
+      } else text(ctx, `Float ${fmt(r.cash.float)} plus cash sales, less till expenses`, L, t + 104, font(14), soft);
+    });
+    y += h + 12;
+  }
+
+  /* ---------- three numbers ---------- */
+  {
+    const t = y;
+    const avg = r.sales.count ? Math.round(r.sales.total / r.sales.count) : 0;
+    const items = r.sold.reduce((n, s) => n + s.quantity, 0);
+    const tiles = [
+      { label: "Items sold", value: String(round(items)), note: `${r.sold.length} ${r.sold.length === 1 ? "kind" : "kinds"}` },
+      { label: "Average sale", value: fmt(avg), note: r.peak && r.sales.count > 1 ? `Busiest at ${r.peak.hour}` : "per sale" },
+      { label: "Expenses", value: fmt(r.tillExpenses + r.pocketExpenses), note: `${r.expenses.length} logged` },
+    ];
+    const gap = 10;
+    const tw = (CARD - gap * 2) / 3;
+    const h = 112;
     ops.push((ctx) => {
       tiles.forEach((tile, i) => {
-        const x = PAD + i * (tw + 8);
-        ctx.fillStyle = "#fff";
-        rr(ctx, x, t, tw, 92, 20);
+        const x = G + i * (tw + gap);
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.05)";
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 8;
+        ctx.fillStyle = surface;
+        rr(ctx, x, t, tw, h, rMd);
         ctx.fill();
-        ctx.textBaseline = "top";
-        ctx.font = font(11.5, 600);
-        ctx.fillStyle = ink3;
-        ctx.fillText(tile.label.toUpperCase(), x + 14, t + 14);
-        ctx.font = font(21, 700);
-        ctx.fillStyle = ink;
-        ctx.fillText(fit(tile.value, font(21, 700), tw - 28), x + 14, t + 36);
-        ctx.font = font(12.5, 600);
-        ctx.fillStyle = tile.tone ?? ink2;
-        ctx.fillText(fit(tile.note, font(12.5, 600), tw - 28), x + 14, t + 66);
+        ctx.restore();
+        text(ctx, tile.label, x + 16, t + 18, font(13), ink2);
+        const vf = font(24, 500);
+        let size = 24;
+        while (size > 15 && width(tile.value, font(size, 500)) > tw - 32) size--;
+        text(ctx, tile.value, x + 16, t + 42, size === 24 ? vf : font(size, 500), ink);
+        text(ctx, fit(tile.note, font(12.5), tw - 32), x + 16, t + 80, font(12.5), ink3);
       });
     });
-    y = t + 92 + 12;
+    y += h + 12;
   }
 
-  /* ---------- cards ---------- */
-  function card(title: string, body: () => void, right?: string) {
-    const t = y;
-    const box = { h: 0 };
-    ops.push((ctx) => {
-      ctx.fillStyle = "#fff";
-      rr(ctx, PAD, t, INNER, box.h, 24);
-      ctx.fill();
-      ctx.textBaseline = "top";
-      ctx.font = font(16, 700);
-      ctx.fillStyle = ink;
-      ctx.fillText(title, L, t + 20);
-      if (right) {
-        ctx.font = font(13, 600);
-        ctx.fillStyle = ink3;
-        ctx.textAlign = "right";
-        ctx.fillText(right, R, t + 22);
-        ctx.textAlign = "left";
-      }
-    });
-    y = t + 54;
-    body();
-    y += 14;
-    box.h = y - t;
-    y += 12;
+  /* ---------- who worked ---------- */
+  if (people.length) {
+    const row = 52;
+    card(people.length * row - 8, (ctx, top) => {
+      people.forEach((p, i) => {
+        const ty = top + i * row;
+        if (i) divider(ctx, ty - 8);
+        avatar(ctx, p, faces[i], L, ty, 36);
+        text(ctx, fit(p, font(15, 500), R - L - 52), L + 50, ty + 9, font(15, 500), ink);
+      });
+    }, "On shift", r.place ? undefined : r.hours);
   }
 
-  /* payments donut */
-  if (r.methods.length) {
-    card("Where the money came from", () => {
-      const t = y;
-      const size = 132;
-      const total = r.methods.reduce((s, x) => s + x.amount, 0) || 1;
-      const colors = r.methods.map((_, i) => (i === 0 ? brand : palette[(i - 1) % palette.length]));
-      const rows = r.methods.length;
-      const h = Math.max(size, rows * 46);
-      ops.push((ctx) => {
-        const cx = L + size / 2;
-        const cy = t + h / 2;
-        let a = -Math.PI / 2;
-        ctx.lineWidth = 20;
-        ctx.lineCap = "butt";
-        r.methods.forEach((x, i) => {
-          const sweep = (x.amount / total) * Math.PI * 2;
-          ctx.strokeStyle = colors[i];
-          ctx.beginPath();
-          ctx.arc(cx, cy, size / 2 - 10, a, a + Math.max(sweep - 0.03, 0.01));
-          ctx.stroke();
-          a += sweep;
-        });
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = font(22, 800);
-        ctx.fillStyle = ink;
-        ctx.fillText(String(r.sales.count), cx, cy - 7);
-        ctx.font = font(12, 600);
-        ctx.fillStyle = ink3;
-        ctx.fillText(r.sales.count === 1 ? "sale" : "sales", cx, cy + 14);
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        const lx = L + size + 22;
-        const top0 = cy - (rows * 46) / 2;
-        r.methods.forEach((x, i) => {
-          const ry = top0 + i * 46;
-          ctx.fillStyle = colors[i];
-          rr(ctx, lx, ry + 6, 12, 12, 4);
+  /* ---------- what sold ---------- */
+  if (sold.length) {
+    const row = 72;
+    const more = r.sold.length - sold.length;
+    card(sold.length * row - 12 + (more ? 28 : 0), (ctx, top) => {
+      sold.forEach((s, i) => {
+        const ty = top + i * row;
+        if (i) divider(ctx, ty - 12);
+        const size = 56;
+        const img = pics[i];
+        if (img) cover(ctx, img, L, ty, size, size, rSm);
+        else {
+          ctx.fillStyle = muted;
+          rr(ctx, L, ty, size, size, rSm);
           ctx.fill();
-          ctx.font = font(15, 600);
-          ctx.fillStyle = ink;
-          ctx.fillText(fit(x.name, font(15, 600), R - lx - 110), lx + 20, ry + 3);
-          ctx.font = font(12.5, 500);
-          ctx.fillStyle = ink3;
-          ctx.fillText(`${Math.round((x.amount / total) * 100)}% · ${x.count} ${x.count === 1 ? "sale" : "sales"}`, lx + 20, ry + 23);
-          ctx.font = font(15, 700);
-          ctx.fillStyle = ink;
-          ctx.textAlign = "right";
-          ctx.fillText(fmt(x.amount), R, ry + 3);
-          ctx.textAlign = "left";
-        });
-      });
-      y = t + h;
-      if (r.sales.discounts) {
-        const dt = y + 10;
-        ops.push((ctx) => {
-          ctx.font = font(13, 500);
-          ctx.fillStyle = ink2;
-          ctx.fillText(`Discounts given: ${fmt(r.sales.discounts)}`, L, dt);
-        });
-        y = dt + 22;
-      }
-    }, fmt(r.sales.total));
-  }
-
-  /* sales by hour */
-  if (r.hourly.length > 1) {
-    card("Sales by hour", () => {
-      const t = y;
-      const ch = 96;
-      const max = Math.max(...r.hourly.map((h) => h.total), 1);
-      const n = r.hourly.length;
-      const gap = 6;
-      const bw = (R - L - gap * (n - 1)) / n;
-      ops.push((ctx) => {
-        r.hourly.forEach((h, i) => {
-          const bh = Math.max(4, (h.total / max) * ch);
-          const x = L + i * (bw + gap);
-          ctx.fillStyle = h.label === r.peak?.hour ? brand : soft;
-          rr(ctx, x, t + ch - bh, bw, bh, Math.min(8, bw / 2));
-          ctx.fill();
-          if (n <= 12 || i % 2 === 0) {
-            ctx.font = font(10.5, 600);
-            ctx.fillStyle = ink3;
-            ctx.textAlign = "center";
-            ctx.fillText(h.label.replace(" ", ""), x + bw / 2, t + ch + 8);
-            ctx.textAlign = "left";
-          }
-        });
-      });
-      y = t + ch + 26;
-    }, r.peak ? `busiest ${r.peak.hour}` : undefined);
-  }
-
-  /* best sellers with photos */
-  if (top.length) {
-    card("Best sellers", () => {
-      const cols = 3;
-      const gap = 10;
-      const tw = (R - L - gap * (cols - 1)) / cols;
-      const th = tw + 58;
-      const rows = Math.ceil(top.length / cols);
-      const t = y;
-      ops.push((ctx) => {
-        top.forEach((s, i) => {
-          const x = L + (i % cols) * (tw + gap);
-          const ty = t + Math.floor(i / cols) * (th + gap);
-          const img = pics[i];
-          if (img) cover(ctx, img, x, ty, tw, tw, 16);
-          else {
-            const g = ctx.createLinearGradient(x, ty, x + tw, ty + tw);
-            g.addColorStop(0, mix(brand, "#ffffff", 0.75));
-            g.addColorStop(1, mix(brand, "#ffffff", 0.55));
-            ctx.fillStyle = g;
-            rr(ctx, x, ty, tw, tw, 16);
-            ctx.fill();
-            ctx.fillStyle = mix(brand, "#000000", 0.2);
-            ctx.font = font(28, 700);
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(initials(s.name), x + tw / 2, ty + tw / 2);
-            ctx.textAlign = "left";
-            ctx.textBaseline = "top";
-          }
-          // Rank and quantity badges
-          ctx.fillStyle = i === 0 ? brand : "rgba(0,0,0,0.55)";
-          rr(ctx, x + 8, ty + 8, 26, 22, 11);
-          ctx.fill();
-          ctx.fillStyle = "#fff";
-          ctx.font = font(12, 700);
-          ctx.textAlign = "center";
-          ctx.fillText(String(i + 1), x + 21, ty + 12);
-          ctx.textAlign = "left";
-          const q = `×${s.quantity}`;
-          const qw = width(q, font(15, 700)) + 18;
-          ctx.fillStyle = "#fff";
-          rr(ctx, x + tw - qw - 8, ty + tw - 36, qw, 28, 14);
-          ctx.fill();
-          ctx.fillStyle = ink;
-          ctx.font = font(15, 700);
-          ctx.fillText(q, x + tw - qw + 1, ty + tw - 30);
-          ctx.font = font(13.5, 600);
-          ctx.fillStyle = ink;
-          ctx.fillText(fit(s.name, font(13.5, 600), tw), x, ty + tw + 10);
-          ctx.font = font(12.5, 500);
-          ctx.fillStyle = ink3;
-          ctx.fillText(fmt(s.revenue), x, ty + tw + 30);
-        });
-      });
-      y = t + rows * th + (rows - 1) * gap;
-      const rest = r.sold.slice(top.length);
-      if (rest.length) {
-        const rt = y + 12;
-        const text = rest.map((s) => `${s.name} ×${s.quantity}`).join("  ·  ");
-        const lines: string[] = [];
-        let cur = "";
-        for (const part of text.split("  ·  ")) {
-          const next = cur ? cur + "  ·  " + part : part;
-          if (width(next, font(13, 500)) > R - L && cur) {
-            lines.push(cur);
-            cur = part;
-          } else cur = next;
-        }
-        if (cur) lines.push(cur);
-        ops.push((ctx) => {
-          ctx.font = font(13, 500);
-          ctx.fillStyle = ink2;
-          lines.forEach((l, i) => ctx.fillText(l, L, rt + i * 20));
-        });
-        y = rt + lines.length * 20;
-      }
-    }, `${r.sold.reduce((s, i) => s + i.quantity, 0)} items`);
-  }
-
-  /* stock bars */
-  if (r.stock.length) {
-    card("Stock", () => {
-      for (const s of r.stock) {
-        const t = y;
-        const left = s.counted ?? s.expected;
-        const off = s.counted !== undefined ? round(s.counted - s.expected) : 0;
-        const n = (v: number) => round(v).toLocaleString("en", { maximumFractionDigits: 3 });
-        const chip =
-          s.counted === undefined ? "" : off === 0 ? "✓ matches" : off < 0 ? `${n(-off)} missing` : `${n(off)} extra`;
-        const tone = off === 0 ? green : off < 0 ? red : amber;
-        ops.push((ctx) => {
-          ctx.textBaseline = "top";
-          ctx.font = font(15, 600);
-          ctx.fillStyle = ink;
-          ctx.fillText(fit(s.name, font(15, 600), R - L - 170), L, t);
-          const right = `${n(left)} of ${unitText(s.start, s.unit)} left`;
-          ctx.font = font(13, 600);
-          ctx.fillStyle = ink2;
-          ctx.textAlign = "right";
-          ctx.fillText(right, R, t + 2);
-          ctx.textAlign = "left";
-          // Track = what we opened with; colored part = what's left.
-          const bw = R - L;
-          ctx.fillStyle = "#f1f1f1";
-          rr(ctx, L, t + 26, bw, 10, 5);
-          ctx.fill();
-          const frac = s.start ? Math.max(0, Math.min(1, left / s.start)) : 0;
-          ctx.fillStyle = frac < 0.2 ? red : brand;
-          if (frac > 0) {
-            rr(ctx, L, t + 26, Math.max(10, bw * frac), 10, 5);
-            ctx.fill();
-          }
-          ctx.font = font(12, 500);
-          ctx.fillStyle = ink3;
-          ctx.fillText(`${n(s.used)} used`, L, t + 44);
-          if (chip) {
-            ctx.font = font(12, 700);
-            ctx.fillStyle = tone;
-            ctx.textAlign = "right";
-            ctx.fillText(chip, R, t + 44);
-            ctx.textAlign = "left";
-          }
-        });
-        y = t + 70;
-      }
-      y -= 8;
-    });
-  }
-
-  /* cash drawer */
-  card("Cash drawer", () => {
-    const steps: [string, string, string?][] = [
-      ["Float", fmt(r.cash.float)],
-      ["Cash sales", "+ " + fmt(r.cash.sales), green],
-    ];
-    if (r.cash.expenses) steps.push(["Paid from the till", "− " + fmt(r.cash.expenses), red]);
-    for (const [label, value, color] of steps) {
-      const t = y;
-      ops.push((ctx) => {
-        ctx.font = font(15, 500);
-        ctx.fillStyle = ink2;
-        ctx.fillText(label, L, t);
-        ctx.font = font(15, 600);
-        ctx.fillStyle = color ?? ink;
-        ctx.textAlign = "right";
-        ctx.fillText(value, R, t);
-        ctx.textAlign = "left";
-      });
-      y += 30;
-    }
-    {
-      const t = y + 4;
-      ops.push((ctx) => {
-        ctx.fillStyle = line;
-        ctx.fillRect(L, t - 6, R - L, 1);
-        ctx.font = font(16, 700);
-        ctx.fillStyle = ink;
-        ctx.fillText("Expected", L, t + 4);
-        ctx.textAlign = "right";
-        ctx.fillText(fmt(r.cash.expected), R, t + 4);
-        ctx.textAlign = "left";
-      });
-      y = t + 34;
-    }
-    if (r.cash.counted !== undefined) {
-      const t = y;
-      const diff = r.cash.difference ?? 0;
-      const tone = diff === 0 ? green : diff < 0 ? red : amber;
-      const toneBg = diff === 0 ? "#e8f7ee" : diff < 0 ? "#fdecec" : "#fff3e0";
-      const status = diff === 0 ? "Drawer matches" : differenceText(diff, fmt);
-      ops.push((ctx) => {
-        ctx.fillStyle = toneBg;
-        rr(ctx, L - 6, t, R - L + 12, 58, 16);
-        ctx.fill();
-        ctx.font = font(12, 700);
-        ctx.fillStyle = tone;
-        ctx.fillText(status.toUpperCase(), L + 8, t + 11);
-        ctx.font = font(16, 700);
-        ctx.fillStyle = ink;
-        ctx.fillText("Cash on hand", L + 8, t + 30);
-        ctx.font = font(22, 700);
-        ctx.textAlign = "right";
-        ctx.fillText(fmt(r.cash.counted!), R - 8, t + 18);
-        ctx.textAlign = "left";
-      });
-      y = t + 70;
-      const coins = countRows(r.cash.count);
-      if (coins.length) {
-        let x = L;
-        let cy = y;
-        const chips: { x: number; y: number; text: string; w: number }[] = [];
-        for (const c of coins) {
-          const text = `${fmt(c.value)} × ${c.qty}`;
-          const w = width(text, font(12.5, 600)) + 20;
-          if (x + w > R) {
-            x = L;
-            cy += 34;
-          }
-          chips.push({ x, y: cy, text, w });
-          x += w + 6;
-        }
-        ops.push((ctx) => {
-          for (const c of chips) {
-            ctx.fillStyle = "#f4f4f2";
-            rr(ctx, c.x, c.y, c.w, 28, 14);
-            ctx.fill();
-            ctx.font = font(12.5, 600);
-            ctx.fillStyle = ink2;
-            ctx.fillText(c.text, c.x + 10, c.y + 7);
-          }
-        });
-        y = cy + 30;
-      }
-    }
-  });
-
-  /* expenses */
-  if (r.expenses.length)
-    card("Expenses", () => {
-      for (const e of r.expenses) {
-        const t = y;
-        const tag = e.source === "till" ? "From till" : `Paid by ${(e.by || "staff").split(" ")[0]}`;
-        ops.push((ctx) => {
-          ctx.fillStyle = e.source === "till" ? soft : "#fff3e0";
-          ctx.beginPath();
-          ctx.arc(L + 16, t + 16, 16, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.font = font(14, 700);
-          ctx.fillStyle = e.source === "till" ? brand : amber;
-          ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(e.label.slice(0, 1).toUpperCase(), L + 16, t + 17);
-          ctx.textAlign = "left";
+          text(ctx, initials(s.name), L + size / 2, ty + size / 2, font(16, 500), ink3, "center");
           ctx.textBaseline = "top";
-          ctx.font = font(15, 600);
-          ctx.fillStyle = ink;
-          ctx.fillText(fit(e.label, font(15, 600), R - L - 160), L + 44, t);
-          ctx.font = font(12.5, 500);
-          ctx.fillStyle = ink3;
-          ctx.fillText(tag, L + 44, t + 19);
-          ctx.font = font(15, 700);
-          ctx.fillStyle = ink;
-          ctx.textAlign = "right";
-          ctx.fillText(fmt(e.amount), R, t + 8);
-          ctx.textAlign = "left";
-        });
-        y += 46;
-      }
-      y -= 6;
-    }, fmt(r.tillExpenses + r.pocketExpenses));
+        }
+        const money = fmt(s.revenue);
+        const mw = width(money, font(15, 500));
+        text(ctx, fit(s.name, font(15, 500), R - L - size - 30 - mw), L + size + 14, ty + 10, font(15, 500), ink);
+        text(ctx, `${round(s.quantity)} sold`, L + size + 14, ty + 32, font(13.5), ink2);
+        text(ctx, money, R, ty + 10, font(15, 500), ink, "right");
+      });
+      if (more) text(ctx, `and ${more} more`, L, top + sold.length * row - 4, font(13.5), ink2);
+    }, "What sold", `${r.sold.reduce((n, s) => n + s.quantity, 0)} items`);
+  }
 
-  /* pay back */
-  r.payBack.forEach((p, i) => {
-    const t = y;
-    ops.push((ctx) => {
-      ctx.fillStyle = "#fff3e0";
-      rr(ctx, PAD, t, INNER, 68, 22);
-      ctx.fill();
-      avatar(ctx, p.name, payFaces[i], L, t + 34, 36, "#ffffff", amber, "#fff");
-      ctx.textBaseline = "top";
-      ctx.font = font(12, 700);
-      ctx.fillStyle = amber;
-      ctx.fillText("PAY BACK", L + 50, t + 16);
-      ctx.font = font(16, 700);
-      ctx.fillStyle = "#5c3200";
-      ctx.fillText(fit(p.name, font(16, 700), R - L - 160), L + 50, t + 34);
-      ctx.font = font(22, 700);
-      ctx.textAlign = "right";
-      ctx.fillText(fmt(p.amount), R, t + 22);
-      ctx.textAlign = "left";
+  /* ---------- how they paid ---------- */
+  // One way of paying needs no card: the sentence already has the total.
+  if (r.methods.length > 1) {
+    const row = 54;
+    const total = r.methods.reduce((n, x) => n + x.amount, 0) || 1;
+    card(r.methods.length * row - 10, (ctx, top) => {
+      r.methods.forEach((x, i) => {
+        const ty = top + i * row;
+        text(ctx, x.name, L, ty, font(15, 500), ink);
+        const amount = fmt(x.amount);
+        text(ctx, amount, R, ty, font(15, 500), ink, "right");
+        const cw = width(amount, font(15, 500));
+        text(ctx, `${x.count} ${x.count === 1 ? "sale" : "sales"}`, R - cw - 10, ty + 1, font(14), ink3, "right");
+        bar(ctx, L, ty + 28, R - L, x.amount / total);
+      });
+    }, "How they paid");
+  }
+
+  /* ---------- stock ---------- */
+  if (r.stock.length) {
+    const rows = r.stock.map((s) => {
+      const left = s.counted ?? s.expected;
+      const off = s.counted !== undefined ? round(s.counted - s.expected) : 0;
+      return { s, left, off };
     });
-    y = t + 68 + 12;
-  });
+    const heights = rows.map((x) => (x.off ? 70 : 52));
+    card(heights.reduce((a, b) => a + b, 0) - 10, (ctx, top) => {
+      let ty = top;
+      rows.forEach(({ s, left, off }, i) => {
+        text(ctx, fit(s.name, font(15, 500), 240), L, ty, font(15, 500), ink);
+        text(ctx, `${unitText(left, s.unit)} left`, R, ty + 1, font(14), ink2, "right");
+        bar(ctx, L, ty + 28, R - L, s.start ? left / s.start : 0);
+        if (off) {
+          dot(ctx, L, ty + 48, dangerDot);
+          text(
+            ctx,
+            off < 0 ? `${unitText(-off, s.unit)} missing` : `${unitText(off, s.unit)} more than expected`,
+            L + 16,
+            ty + 41,
+            font(13.5),
+            off < 0 ? danger : ink2,
+          );
+        }
+        ty += heights[i];
+      });
+    }, "Stock", "left of what you opened with");
+  }
 
-  /* footer */
+  /* ---------- the drawer, step by step ---------- */
   {
-    const t = y + 2;
-    ops.push((ctx) => {
-      ctx.font = font(12, 500);
-      ctx.fillStyle = ink3;
-      ctx.textAlign = "center";
-      ctx.fillText(r.closed ? `${r.business.name} · ${r.date} · ${r.hours}` : "Shift still open · numbers so far", W / 2, t);
-      ctx.textAlign = "left";
-    });
-    y = t + 18 + PAD;
+    const steps: { label: string; value: string; strong?: boolean }[] = [
+      { label: "Float", value: fmt(r.cash.float) },
+      { label: "Cash sales", value: "+ " + fmt(r.cash.sales) },
+      ...(r.cash.expenses ? [{ label: "Paid from the till", value: "− " + fmt(r.cash.expenses) }] : []),
+      { label: "Expected", value: fmt(r.cash.expected), strong: true },
+      ...(r.cash.counted !== undefined ? [{ label: "Counted", value: fmt(r.cash.counted), strong: true }] : []),
+    ];
+    const coins = countRows(r.cash.count).map((c) => `${fmt(c.value)} × ${c.qty}`).join("   ");
+    const coinLines = coins ? wrap([{ text: coins, color: ink2 }], font(13.5), R - L) : [];
+    const row = 38;
+    card(steps.length * row - 12 + (coinLines.length ? 18 + coinLines.length * 20 : 0), (ctx, top) => {
+      steps.forEach((s, i) => {
+        const ty = top + i * row;
+        if (s.label === "Expected") divider(ctx, ty - 11);
+        const f = font(15, s.strong ? 500 : 400);
+        text(ctx, s.label, L, ty, f, s.strong ? ink : ink2);
+        text(ctx, s.value, R, ty, f, ink, "right");
+      });
+      const ct = top + steps.length * row + 6;
+      ctx.font = font(13.5);
+      coinLines.forEach((ln, i) =>
+        ln.forEach((w) => {
+          ctx.fillStyle = ink2;
+          ctx.fillText(w.w, L + w.x, ct + i * 20);
+        }),
+      );
+    }, "Cash drawer");
+  }
+
+  /* ---------- expenses ---------- */
+  if (r.expenses.length) {
+    const row = 58;
+    card(r.expenses.length * row - 14, (ctx, top) => {
+      r.expenses.forEach((e, i) => {
+        const ty = top + i * row;
+        if (i) divider(ctx, ty - 14);
+        const amount = fmt(e.amount);
+        text(ctx, fit(e.label, font(15, 500), R - L - width(amount, font(15, 500)) - 16), L, ty, font(15, 500), ink);
+        text(ctx, e.source === "till" ? "From the till" : `Paid by ${e.by || "staff"}`, L, ty + 22, font(13.5), ink2);
+        text(ctx, amount, R, ty, font(15, 500), ink, "right");
+      });
+    }, "Expenses");
+  }
+
+  /* ---------- pay back ---------- */
+  if (r.payBack.length) {
+    const row = 52;
+    card(r.payBack.length * row - 8, (ctx, top) => {
+      r.payBack.forEach((p, i) => {
+        const ty = top + i * row;
+        if (i) divider(ctx, ty - 8);
+        avatar(ctx, p.name, payFaces[i], L, ty, 36);
+        text(ctx, p.name, L + 50, ty + 9, font(15, 500), ink);
+        text(ctx, fmt(p.amount), R, ty + 9, font(15, 500), ink, "right");
+      });
+    }, "Pay back", "paid from their pocket");
+  }
+
+  /* ---------- footer ---------- */
+  {
+    const t = y + 6;
+    ops.push((ctx) => text(ctx, fit(`${r.business.name} · Shift ${r.number} · ${r.date}`, font(12.5), CARD), W / 2, t, font(12.5), ink3, "center"));
+    y = t + 34;
   }
 
   const scale = 2;
-  const canvas = document.createElement("canvas");
-  canvas.width = W * scale;
-  canvas.height = Math.ceil(y * scale);
-  const ctx = canvas.getContext("2d")!;
+  const c = document.createElement("canvas");
+  c.width = W * scale;
+  c.height = Math.ceil(y) * scale;
+  const ctx = c.getContext("2d")!;
   ctx.scale(scale, scale);
-  ctx.fillStyle = bg;
+  ctx.fillStyle = canvasBg;
   ctx.fillRect(0, 0, W, y);
   ctx.textBaseline = "top";
-  for (const op of ops) {
-    ctx.save();
-    op(ctx);
-    ctx.restore();
-  }
-  return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(Error("Couldn't make the image."))), "image/png"),
-  );
+  for (const op of ops) op(ctx);
+  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(Error("Couldn't draw the report."))), "image/png"));
 }

@@ -28,6 +28,10 @@ export function ReportSheet({
     () => shiftReport(shift, state.sales, state.expenses ?? [], business, booking, {
         menu: state.menu,
         faces: facesOf(state).byId,
+        names: Object.fromEntries([
+          ...(state.team ?? []).map((m) => [m.id, m.name]),
+          ...(state.me ? [[state.me.memberId, state.me.name]] : []),
+        ]),
       }),
     [shift, state, business, booking],
   );

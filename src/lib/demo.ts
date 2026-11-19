@@ -61,7 +61,7 @@ export function demoBootstrap(deviceId: string): Bootstrap {
     }),
     stock: { croissant: 18, roll: 12, cookie: 24, milk: 6, ice: 5 },
     openingCount: { "2000": 20, "1000": 30, "500": 40, "100": 100, "5000": 10, "10000": 10 },
-    openedBy: "You",
+    openedBy: "Ana Cruz",
     bookingId: today?.id,
     checklist: business.settings.checklist.map((c) => c.text),
   };
@@ -98,7 +98,7 @@ export interface Closing {
 export type OwnerAction =
   | ({ action: "open" } & Opening)
   | { action: "link"; newShift: WalkIn }
-  | { action: "profile"; memberId?: string; photo: string | null; pin?: string }
+  | { action: "profile"; memberId?: string; name?: string; photo?: string | null; pin?: string }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
@@ -156,14 +156,18 @@ export function demoAction(
       const me = state.me!;
       const id = input.memberId ?? me.memberId;
       const faces = { ...(state.faces ?? {}) };
-      if (input.photo) faces[id] = input.photo;
-      else delete faces[id];
-      const photo = input.photo ?? undefined;
+      const change: { photo?: string; name?: string } = {};
+      if (input.photo !== undefined) {
+        if (input.photo) faces[id] = input.photo;
+        else delete faces[id];
+        change.photo = input.photo ?? undefined;
+      }
+      if (input.name) change.name = input.name;
       return {
         ...state,
         faces,
-        me: id === me.memberId ? { ...me, photo } : me,
-        team: state.team?.map((m) => (m.id === id ? { ...m, photo } : m)),
+        me: id === me.memberId ? { ...me, ...change } : me,
+        team: state.team?.map((m) => (m.id === id ? { ...m, ...change } : m)),
       };
     }
     case "link": {

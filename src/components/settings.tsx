@@ -1401,7 +1401,22 @@ function MenuPage(props: SettingsProps) {
 function ProfileCard(props: SettingsProps) {
   const me = props.state.me;
   const [error, setError] = useState("");
+  const [name, setName] = useState(me?.name ?? "");
+  const [saving, setSaving] = useState(false);
   if (!me) return null;
+  const changed = name.trim() && name.trim() !== me.name;
+  async function saveName() {
+    setError("");
+    setSaving(true);
+    try {
+      await props.onAction({ action: "profile", name: name.trim() });
+      props.onSaved("Name saved");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="card card-pad stack gap-8">
       <div className="row gap-14 profile-row">
@@ -1423,11 +1438,26 @@ function ProfileCard(props: SettingsProps) {
           }}
         />
         <span className="grow stack" style={{ minWidth: 0 }}>
-          <span className="strong ellipsis">{me.name}</span>
+          <input
+            className="inline-input strong"
+            aria-label="Your name"
+            maxLength={80}
+            value={name}
+            disabled={!props.online && !props.demo}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && changed && !saving) void saveName();
+            }}
+          />
           <span className="label">
-            {me.photo ? "Your photo shows on shifts and reports." : "Add a photo so the team knows who's on shift."}
+            {me.photo ? "Your name and photo show on shifts and reports." : "Add a photo so the team knows who's on shift."}
           </span>
         </span>
+        {changed && (
+          <button type="button" className="btn small" disabled={saving} onClick={() => void saveName()}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        )}
       </div>
       {error && (
         <p className="alert" role="alert">
