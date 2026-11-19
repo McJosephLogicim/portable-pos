@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Package, Trash2 } from "lucide-react";
+import { Package, Plus, Trash2 } from "lucide-react";
+import { SuggestInput } from "./combobox";
 import { stockModel, units } from "@/lib/stock";
 import type { Product, StockItem, StockUse } from "@/lib/types";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
@@ -9,15 +10,28 @@ import { buzz } from "./ui";
 import { namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordRow, RecordSheet, useRecordSave } from "./records";
 
 /** A stock item's details: its name and the unit it's counted in. */
+/** Units already used, then the usual ones, so a unit is picked once and reused. */
+export function unitSuggestions(stockItems: StockItem[] = []) {
+  const used = stockItems.map((s) => s.unit);
+  return [...new Set([...used, ...units])].map((u) => ({
+    key: u,
+    name: u,
+    detail: used.includes(u) ? "Used by " + namesText(stockItems.filter((s) => s.unit === u).map((s) => s.name), 2) : undefined,
+  }));
+}
+
 export function StockSheet({
   item,
   menu,
+  stockItems,
   onSave,
   onRemove,
   onClose,
 }: {
   item?: StockItem;
   menu: Product[];
+  /** Every stock item, whose units are offered. */
+  stockItems?: StockItem[];
   onSave: (item: StockItem) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
@@ -26,15 +40,14 @@ export function StockSheet({
   const [unit, setUnit] = useState(item?.unit ?? "pack");
   const { busy, error, run } = useRecordSave(onClose);
   const users = item ? usedBy(menu, item.id) : [];
-  const list = units.includes(unit) ? units : [unit, ...units];
   return (
     <RecordSheet
       noun="stock item"
       editing={Boolean(item)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim())}
-      onSave={() => void run(() => onSave({ id: item?.id ?? crypto.randomUUID(), name: name.trim(), unit }))}
+      canSave={Boolean(name.trim() && unit.trim())}
+      onSave={() => void run(() => onSave({ id: item?.id ?? crypto.randomUUID(), name: name.trim(), unit: unit.trim() }))}
       onRemove={onRemove && (() => void run(onRemove))}
       onClose={onClose}
     >
@@ -52,21 +65,15 @@ export function StockSheet({
         </label>
         <div className="field">
           <span>Counted in</span>
-          <div className="chips wrap" role="group" aria-label="Unit">
-            {list.map((u) => (
-              <button
-                key={u}
-                type="button"
-                aria-pressed={unit === u}
-                onClick={() => {
-                  buzz.tap();
-                  setUnit(u);
-                }}
-              >
-                {u}
-              </button>
-            ))}
-          </div>
+          <SuggestInput
+            label="Counted in"
+            maxLength={16}
+            placeholder="e.g. pack, kg, bottle"
+            value={unit}
+            newText="New unit"
+            suggestions={unitSuggestions(stockItems)}
+            onChange={setUnit}
+          />
         </div>
       </div>
       <p className="label">
@@ -166,6 +173,7 @@ export function StockPage(props: SettingsProps) {
       </p>
       {editing && (
         <StockSheet
+          stockItems={list}
           item={editing === "new" ? undefined : editing}
           menu={menu}
           onClose={() => setEditing(null)}
@@ -208,78 +216,121 @@ export function StockPage(props: SettingsProps) {
   );
 }
 
-/** Pick the stock items a menu item uses up with each sale, and how much of each. */
+export type UseDraft = { key: string; name: string; amount: string; unit: string };
+
+const sameName = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+
+export function useDrafts(uses: StockUse[] | undefined, stockItems: StockItem[]): UseDraft[] {
+  return (uses ?? []).flatMap((u) => {
+    const item = stockItems.find((s) => s.id === u.stockId);
+    return item ? [{ key: u.stockId, name: item.name, amount: String(u.amount), unit: item.unit }] : [];
+  });
+}
+
+/**
+ * What a menu item uses with each sale. Each line is a stock item's name, typed or picked
+ * from the list, and how much. A name that isn't a stock item yet becomes one on save.
+ */
 export function UsesEditor({
   stockItems,
   uses,
   onChange,
 }: {
   stockItems: StockItem[];
-  uses: { stockId: string; amount: string }[];
-  onChange: (uses: { stockId: string; amount: string }[]) => void;
+  uses: UseDraft[];
+  onChange: (uses: UseDraft[]) => void;
 }) {
-  const free = stockItems.filter((s) => !uses.some((u) => u.stockId === s.id));
+  const set = (key: string, patch: Partial<UseDraft>) =>
+    onChange(uses.map((u) => (u.key === key ? { ...u, ...patch } : u)));
   return (
-    <div className="stack gap-10">
-      {uses.map((u) => {
-        const item = stockItems.find((s) => s.id === u.stockId);
-        if (!item) return null;
+    <div className="stack gap-8">
+      {uses.map((u, i) => {
+        const known = stockItems.find((s) => sameName(s.name, u.name));
         return (
-          <div className="use-row" key={u.stockId}>
-            <span className="grow ellipsis">{item.name}</span>
-            <input
-              className="input count"
-              inputMode="decimal"
-              aria-label={`${item.unit} of ${item.name} per sale`}
-              value={u.amount}
-              onChange={(e) =>
-                onChange(
-                  uses.map((x) =>
-                    x.stockId === u.stockId
-                      ? { ...x, amount: e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8) }
-                      : x,
-                  ),
-                )
-              }
-            />
-            <span className="label use-unit">{item.unit}</span>
-            <button
-              type="button"
-              className="round flat"
-              aria-label={"Stop using " + item.name}
-              onClick={() => onChange(uses.filter((x) => x.stockId !== u.stockId))}
-            >
-              <Trash2 size={16} />
-            </button>
+          <div className="use-row" key={u.key}>
+            <div className="row gap-8">
+              <SuggestInput
+                className="grow"
+                label={`Stock item ${i + 1}`}
+                placeholder="e.g. Strawberry pack"
+                value={u.name}
+                newText="New stock item"
+                suggestions={stockItems
+                  .filter((s) => !uses.some((x) => x.key !== u.key && sameName(x.name, s.name)))
+                  .map((s) => ({ key: s.id, name: s.name, detail: "Counted in " + s.unit }))}
+                onChange={(name) => set(u.key, { name })}
+                onPick={(pick) => {
+                  buzz.tap();
+                  set(u.key, { name: pick.name });
+                }}
+              />
+              <button
+                type="button"
+                className="round flat"
+                aria-label={"Remove stock item " + (i + 1)}
+                onClick={() => onChange(uses.filter((x) => x.key !== u.key))}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <div className="use-amount">
+              <span className="label grow nowrap">Each sale uses</span>
+              <input
+                className="input count"
+                inputMode="decimal"
+                aria-label={`How much of stock item ${i + 1} one sale uses`}
+                value={u.amount}
+                onChange={(e) =>
+                  set(u.key, { amount: e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 8) })
+                }
+              />
+              {known || !u.name.trim() ? (
+                <span className="label use-unit">{known?.unit ?? ""}</span>
+              ) : (
+                <SuggestInput
+                  className="use-unit-input"
+                  label={"Unit for " + u.name}
+                  maxLength={16}
+                  placeholder="unit"
+                  value={u.unit}
+                  newText="New unit"
+                  suggestions={unitSuggestions(stockItems)}
+                  onChange={(unit) => set(u.key, { unit })}
+                />
+              )}
+            </div>
           </div>
         );
       })}
-      {free.length > 0 && (
-        <div className="chips wrap" role="group" aria-label="Stock items to use">
-          {free.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => {
-                buzz.tap();
-                onChange([...uses, { stockId: s.id, amount: "1" }]);
-              }}
-            >
-              + {s.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <button
+        type="button"
+        className="btn secondary compact"
+        onClick={() => onChange([...uses, { key: crypto.randomUUID(), name: "", amount: "1", unit: "pack" }])}
+      >
+        <Plus size={16} /> Stock item
+      </button>
     </div>
   );
 }
 
-export function usesFrom(drafts: { stockId: string; amount: string }[]): StockUse[] {
-  return drafts.map((d) => {
+/** Matches typed names to stock items, and makes the ones that don't exist yet. */
+export function resolveUses(drafts: UseDraft[], stockItems: StockItem[]) {
+  const created: StockItem[] = [];
+  const uses: StockUse[] = [];
+  for (const d of drafts) {
+    const name = d.name.trim().slice(0, 60);
+    if (!name) continue;
     const amount = Number(d.amount);
-    if (!(amount > 0) || amount > 100000) throw Error("Enter how much stock one sale uses, more than 0.");
-    return { stockId: d.stockId, amount: Math.round(amount * 1000) / 1000 };
-  });
+    if (!(amount > 0) || amount > 100000) throw Error("Enter how much " + name + " one sale uses, more than 0.");
+    let item = [...stockItems, ...created].find((s) => sameName(s.name, name));
+    if (!item) {
+      item = { id: crypto.randomUUID(), name, unit: d.unit.trim().slice(0, 16) || "piece" };
+      created.push(item);
+    }
+    if (uses.some((u) => u.stockId === item!.id)) throw Error(name + " is listed twice.");
+    uses.push({ stockId: item.id, amount: Math.round(amount * 1000) / 1000 });
+  }
+  return { uses, created };
 }
 
 export function usesText(p: Product, stockItems: StockItem[] | undefined) {

@@ -5,7 +5,7 @@ import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 
 import type { OptionGroup, Product, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
-import { StockSheet, UsesEditor, usesFrom, usesText } from "./stock-settings";
+import { resolveUses, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, formatMoney, Money, MoneyField, PhotoPicker } from "./ui";
 import {
@@ -159,7 +159,7 @@ export function ItemSheet({
   menu,
   liveShift = false,
   stockItems = [],
-  onAddStock,
+  canCreateStock = false,
   onSave,
   onRemove,
   onClose,
@@ -167,26 +167,25 @@ export function ItemSheet({
   product?: Product;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
-  /** Saves a new stock item made from inside this sheet. Without it, stock items are only picked. */
-  onAddStock?: (item: StockItem) => Promise<boolean>;
+  /** New stock item names typed here can be added to Settings when the item saves. */
+  canCreateStock?: boolean;
   currency: string;
   /** The rest of the menu, whose categories, choices and options can be reused. */
   menu: Product[];
   /** A new item goes on sale on the shift open on this phone, so ask how many there are. */
   liveShift?: boolean;
-  onSave: (p: Product, count?: number) => Promise<boolean>;
+  /** created: stock items typed here that don't exist yet. */
+  onSave: (p: Product, count?: number, created?: StockItem[]) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [itemId] = useState(() => product?.id ?? crypto.randomUUID());
   const [name, setName] = useState(product?.name ?? "");
   const [mode, setMode] = useState<StockMode>(product?.uses?.length ? "uses" : product?.stock ? "count" : "off");
-  const [uses, setUses] = useState(() =>
-    (product?.uses ?? []).map((u) => ({ stockId: u.stockId, amount: String(u.amount) })),
-  );
-  const [made, setMade] = useState<StockItem[]>([]);
-  const [makingStock, setMakingStock] = useState(false);
-  const allStock = [...stockItems, ...made.filter((m) => !stockItems.some((s) => s.id === m.id))];
+  const [uses, setUses] = useState(() => {
+    const drafts = useDrafts(product?.uses, stockItems);
+    return drafts.length ? drafts : [{ key: crypto.randomUUID(), name: "", amount: "1", unit: "pack" }];
+  });
   const [count, setCount] = useState("");
   const askCount = mode === "count" && liveShift && !product;
   const [price, setPrice] = useState(product ? priceText(product.price, currency) : "");
@@ -202,7 +201,9 @@ export function ItemSheet({
   const { busy, error, run } = useRecordSave(onClose);
   const setGroup = (id: string, fn: (g: GroupDraft) => GroupDraft) =>
     setGroups((all) => all.map((g) => (g.id === id ? fn(g) : g)));
-  const usesChanged = JSON.stringify(product?.uses ?? []) !== JSON.stringify(mode === "uses" ? uses.map((u) => ({ stockId: u.stockId, amount: Number(u.amount) })) : []);
+  const usesChanged =
+    JSON.stringify(useDrafts(product?.uses, stockItems).map((u) => [u.name, u.amount])) !==
+    JSON.stringify(mode === "uses" ? uses.filter((u) => u.name.trim()).map((u) => [u.name.trim(), u.amount]) : []);
 
   function save() {
     void run(async () => {
@@ -210,8 +211,10 @@ export function ItemSheet({
         if (!g.name.trim()) throw Error("Name each choice, like Size or Extras.");
         return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
       });
-      const picked = mode === "uses" ? usesFrom(uses.filter((u) => allStock.some((s) => s.id === u.stockId))) : [];
-      if (mode === "uses" && !picked.length) throw Error("Pick the stock items it uses, or set Stock to Not counted.");
+      const { uses: picked, created } = mode === "uses" ? resolveUses(uses, stockItems) : { uses: [], created: [] };
+      if (mode === "uses" && !picked.length) throw Error("Type the stock items it uses, or set Stock to Not counted.");
+      if (created.length && !canCreateStock)
+        throw Error("Add " + created.map((c) => c.name).join(", ") + " in Settings › Stock items first, or pick one from the list.");
       const { stock: _, image: _image, uses: _uses, ...rest } = product ?? ({} as Partial<Product>);
       return onSave(
         {
@@ -225,6 +228,7 @@ export function ItemSheet({
           ...(picked.length ? { uses: picked } : mode === "count" ? { stock: true } : {}),
         },
         askCount ? Number(count) : undefined,
+        created,
       );
     });
   }
@@ -259,30 +263,18 @@ export function ItemSheet({
         <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
         <div className="field">
           <span>Category</span>
-          {reuse.categories.length > 0 && (
-            <div className="chips wrap" role="group" aria-label="Categories used before">
-              {reuse.categories.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-pressed={category.trim() === c}
-                  onClick={() => {
-                    buzz.tap();
-                    setCategory(category.trim() === c ? "" : c);
-                  }}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
-          <input
-            className="input"
-            aria-label="Category"
+          <SuggestInput
+            label="Category"
             maxLength={60}
-            placeholder={reuse.categories.length ? "Or type a new one" : "e.g. Drinks"}
+            placeholder="e.g. Drinks"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            newText="New category"
+            suggestions={reuse.categories.map((c) => ({
+              key: c,
+              name: c,
+              detail: plural(menu.filter((m) => m.category.trim() === c && m.id !== product?.id).length, "item"),
+            }))}
+            onChange={setCategory}
           />
         </div>
       </div>
@@ -319,14 +311,7 @@ export function ItemSheet({
         </p>
         {mode === "uses" && (
           <>
-            <UsesEditor stockItems={allStock} uses={uses} onChange={setUses} />
-            {onAddStock ? (
-              <button type="button" className="btn secondary compact" onClick={() => setMakingStock(true)}>
-                <Plus size={16} /> New stock item
-              </button>
-            ) : (
-              !allStock.length && <p className="label">Add stock items in Settings first.</p>
-            )}
+            <UsesEditor stockItems={stockItems} uses={uses} onChange={setUses} />
           </>
         )}
         {askCount && (
@@ -400,20 +385,6 @@ export function ItemSheet({
           </button>
         ))}
       </div>
-      {makingStock && onAddStock && (
-        <StockSheet
-          menu={menu}
-          onClose={() => setMakingStock(false)}
-          onSave={async (item) => {
-            const done = await onAddStock(item);
-            if (done) {
-              setMade((m) => [...m, item]);
-              setUses((u) => [...u, { stockId: item.id, amount: "1" }]);
-            }
-            return done;
-          }}
-        />
-      )}
     </RecordSheet>
   );
 }
@@ -484,19 +455,18 @@ export function MenuPage(props: SettingsProps) {
           menu={menu}
           liveShift={live}
           stockItems={business.settings.stockItems}
-          onAddStock={(item) =>
-            commit.settings(
-              { stockItems: [...(business.settings.stockItems ?? []), item] },
-              "Added " + item.name,
-            )
-          }
+          canCreateStock
           onClose={() => setEditing(null)}
-          onSave={(item, count) =>
-            commit.menu(
-              saveMenuItem(menu, item),
-              editing === "new" ? "Added " + item.name : "Saved " + item.name,
-              count !== undefined ? { [item.id]: count } : undefined,
-            )
+          onSave={(item, count, created = []) =>
+            commit.run(async (pin) => {
+              // Stock items typed for the first time are added before the item that uses them.
+              if (created.length)
+                await props.onSave(
+                  commit.input({ stockItems: [...(business.settings.stockItems ?? []), ...created] }),
+                  pin,
+                );
+              await props.onMenu(saveMenuItem(menu, item), pin, count !== undefined ? { [item.id]: count } : undefined);
+            }, editing === "new" ? "Added " + item.name : "Saved " + item.name)
           }
           onRemove={
             editing === "new" ? undefined : () => commit.menu(menu.filter((p) => p.id !== editing.id), "Removed " + editing.name)
