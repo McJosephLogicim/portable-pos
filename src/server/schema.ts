@@ -32,6 +32,8 @@ const money = (name: string) => bigint(name, { mode: "number" });
 const date = (name: string) =>
   timestamp(name, { withTimezone: true, mode: "string" });
 
+type MenuRevision = { id: string; appliedAt: string; previousMenu: Product[] };
+
 export const businesses = register
   .table("businesses", {
     id: uuid().primaryKey().defaultRandom(),
@@ -67,6 +69,7 @@ export const shifts = register
       countedCash: money("counted_cash"),
       difference: money("difference"),
       menu: jsonb().$type<Product[]>().notNull(),
+      menuHistory: jsonb("menu_history").$type<MenuRevision[]>().default([]).notNull(),
       soldOut: jsonb("sold_out").$type<string[]>().default([]).notNull(),
       // Null for shifts opened before settings existed (cash, QR and card).
       settings: jsonb().$type<ShiftSettings>(),

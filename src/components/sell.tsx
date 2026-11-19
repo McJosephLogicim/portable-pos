@@ -811,10 +811,15 @@ export function SellScreen({
     [menu],
   );
   const busy = working || pending;
-  const lines: ReceiptLine[] = state.cart.length
-    ? priceLines(menu, state.cart)
-    : [];
-  const total = totalLines(lines);
+  let lines: ReceiptLine[] = [];
+  let total = 0;
+  let cartMenuError = false;
+  try {
+    lines = priceLines(menu, state.cart);
+    total = totalLines(lines);
+  } catch {
+    cartMenuError = true;
+  }
   const count = state.cart.reduce((s, l) => s + l.quantity, 0);
   const inCart = (id: string) =>
     state.cart
@@ -903,7 +908,9 @@ export function SellScreen({
         )}
       </div>
       <div className="order-scroll">
-        {lines.length ? (
+        {cartMenuError ? (
+          <p className="notice" role="alert">The menu changed. Clear the order and add its items again.</p>
+        ) : lines.length ? (
           <OrderLines
             lines={lines}
             currency={currency}
@@ -918,10 +925,10 @@ export function SellScreen({
       </div>
       <button
         className="btn block"
-        disabled={!count || busy || blocked}
+        disabled={!count || busy || blocked || cartMenuError}
         onClick={() => setCharging(true)}
       >
-        Charge {count > 0 && <Money value={total} currency={currency} />}
+        Charge {count > 0 && !cartMenuError && <Money value={total} currency={currency} />}
       </button>
     </>
   );
@@ -1153,8 +1160,9 @@ export function SellScreen({
             onClose={() => setPicked(null)}
           />
         ))}
-      {charging && (
+      {charging && !cartMenuError && count > 0 && (
         <Checkout
+          key={shift.menuVersion ?? "opening"}
           state={state}
           lines={lines}
           busy={busy}

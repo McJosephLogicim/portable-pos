@@ -1,16 +1,19 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
-import { checkClosing, checkOpening, withNewItems } from "../lib/domain";
+import { checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
-import { ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
+import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, members, sales, shifts } from "./schema";
 import { presentShift, snapshot as baseSnapshot } from "./snapshot";
@@ -42,7 +45,10 @@ async function addWalkIn(
   return b.id;
 }
 
-export async function runCommand(who: string | Actor, input: unknown) {
+export async function runCommand(
+  who: string | Actor,
+  input: unknown,
+): Promise<RegisterResponse & { nextSales?: string }> {
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
   const cmd = parseCommand(input);
   const selfAction = cmd.action === "leave" || cmd.action === "role" || cmd.action === "profile";
@@ -59,7 +65,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
     }
   }
 
-  return getDb().transaction(async (tx) => {
+  const data = await getDb().transaction(async (tx) => {
     const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => ({
       ...(await baseSnapshot(tx, access)),
       businesses: await listBusinesses(tx, actor),
@@ -113,17 +119,26 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .update(businesses)
         .set({ menu: cmd.menu })
         .where(eq(businesses.id, business.id));
-      // New items reach the open till straight away, on every phone selling on it.
       const [open] = await tx
         .select()
         .from(shifts)
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
       if (open) {
-        const next = withNewItems(presentShift(open, business.currency), cmd.menu, cmd.stock);
-        await tx
-          .update(shifts)
-          .set({ menu: next.menu, stock: next.stock ?? null })
-          .where(eq(shifts.id, open.id));
+        const next = updateShiftMenu(presentShift(open, business.currency), cmd.menu, cmd.stock);
+        if (!isDeepStrictEqual(next.menu, open.menu)) {
+          await tx
+            .update(shifts)
+            .set({
+              menu: next.menu,
+              stock: next.stock ?? null,
+              menuHistory: [...open.menuHistory, {
+                id: crypto.randomUUID(),
+                appliedAt: new Date().toISOString(),
+                previousMenu: open.menu,
+              }],
+            })
+            .where(eq(shifts.id, open.id));
+        }
       }
     } else if (cmd.action === "settings") {
       const [open] = await tx
@@ -285,4 +300,9 @@ export async function runCommand(who: string | Actor, input: unknown) {
     }
     return snapshot(access);
   });
+  if (cmd.action === "invite" && data.business) {
+    const email = normalEmail(cmd.email);
+    return { ...data, inviteDelivery: await sendInvitationEmail(data.business, email) };
+  }
+  return data;
 }

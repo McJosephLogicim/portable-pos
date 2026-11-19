@@ -1,6 +1,6 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
-import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "./domain";
+import { checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu } from "./domain";
 import { round } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
@@ -185,7 +185,7 @@ export function demoAction(
       };
     }
     case "menu": {
-      const shift = state.shift && withNewItems(state.shift, input.menu, input.stock);
+      const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock);
       return {
         ...state,
         menu: input.menu,

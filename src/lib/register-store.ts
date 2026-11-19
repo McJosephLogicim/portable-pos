@@ -387,11 +387,15 @@ export async function checkout(
   expectedCart?: CartLine[],
   discountId?: string,
   proofs?: string[],
+  expectedMenuVersion?: string,
 ) {
   let sale!: Sale;
   const state = await updateRegister(key, (current) => {
     const shift = writableShift(current);
     checkCart(current, expectedCart);
+    const menuVersion = shift.menuVersion ?? "opening";
+    if (expectedMenuVersion && menuVersion !== expectedMenuVersion)
+      throw new Error("The menu changed. Review the order before charging.");
     const sequence =
       current.sales.reduce(
         (max, previous) =>
@@ -419,7 +423,7 @@ export async function checkout(
       sales: [sale, ...current.sales],
       pending: [
         ...current.pending,
-        { id: sale.id, shiftId: shift.id, type: "sale", sale },
+        { id: sale.id, shiftId: shift.id, type: "sale", sale, menuVersion },
       ],
     };
   });

@@ -146,11 +146,9 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "invite": {
       const email = normalEmail(cmd.email);
       check(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Enter their email address.");
-      check(
-        !members.some((m) => normalEmail(m.email) === email),
-        "Someone on the team already uses that email.",
-        409,
-      );
+      const existing = members.find((m) => normalEmail(m.email) === email);
+      check(!existing?.joined, "Someone on the team already uses that email.", 409);
+      if (existing) return plan;
       check(members.length < 100, "A team can have up to 100 people.");
       return {
         ...plan,

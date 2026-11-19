@@ -127,21 +127,33 @@ export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
 }
 
 /**
- * Items added to the menu during a shift go on sale at once. Edits to items already
- * on the till wait for the next shift so receipts keep their prices.
+ * Apply menu edits on the open till. Keep the opening stock rules and any removed
+ * items until closing so stock used by earlier sales can still be reconciled.
  */
-export function withNewItems(
+export function updateShiftMenu(
   shift: Shift,
   menu: Product[],
   counts: Record<string, number> = {},
 ): Shift {
-  const fresh = menu.filter((p) => !shift.menu.some((m) => m.id === p.id));
-  if (!fresh.length) return shift;
+  const byId = new Map(menu.map((item) => [item.id, item]));
+  const current = shift.menu.map((item) => {
+    const updated = byId.get(item.id);
+    byId.delete(item.id);
+    if (!updated) return item;
+    const { stock, uses, ...details } = updated;
+    return {
+      ...details,
+      ...(item.stock !== undefined ? { stock: item.stock } : {}),
+      ...(item.uses !== undefined ? { uses: item.uses } : {}),
+    };
+  });
+  const fresh = [...byId.values()];
+  if (!fresh.length) return { ...shift, menu: current };
   const stock = { ...(shift.stock ?? {}) };
   // A new item counted on its own needs a count now. One that uses stock items the
   // till already counts just draws on them.
   for (const p of fresh) if (p.stock && !p.uses?.length && !(p.id in stock)) stock[p.id] = counts[p.id] ?? 0;
-  return { ...shift, menu: [...shift.menu, ...fresh], stock };
+  return { ...shift, menu: [...current, ...fresh], stock };
 }
 
 function validCount(n: unknown): n is number {

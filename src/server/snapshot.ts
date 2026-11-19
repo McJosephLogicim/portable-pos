@@ -26,6 +26,7 @@ export function presentShift(
     closedAt: row.closedAt && new Date(row.closedAt).toISOString(),
     openingCash: row.openingCash,
     menu: row.menu,
+    menuVersion: row.menuHistory.at(-1)?.id,
     settings: row.settings ?? legacyShiftSettings(currency),
     countedCash: row.countedCash ?? undefined,
     difference: row.difference ?? undefined,

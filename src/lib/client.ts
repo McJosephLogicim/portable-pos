@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Bootstrap, Sale } from "./types";
+import type { RegisterResponse, Sale } from "./types";
 
 export class RequestFailure extends Error {
   constructor(
@@ -90,7 +90,7 @@ async function sessionFor(key: string, what: string) {
 export async function api(
   key: string,
   body: Record<string, unknown>,
-): Promise<Bootstrap> {
+): Promise<RegisterResponse> {
   const { headers: auth } = await sessionFor(key, "sync this register");
   async function send<T>(command: Record<string, unknown>): Promise<T> {
     const { response, data } = await post(
@@ -112,7 +112,7 @@ export async function api(
       );
     return data;
   }
-  const data = await send<Bootstrap & { nextSales?: string }>(body);
+  const data = await send<RegisterResponse & { nextSales?: string }>(body);
   let cursor = data.nextSales;
   while (cursor) {
     const page = await send<{ sales: Sale[]; nextSales?: string }>({

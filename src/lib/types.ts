@@ -113,6 +113,8 @@ export interface Shift {
   closedAt: string | null;
   openingCash: number;
   menu: Product[];
+  /** Absent on shifts and device snapshots from before the first menu edit. */
+  menuVersion?: string;
   settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
@@ -162,7 +164,7 @@ export interface Sale {
   proofs?: string[];
 }
 export type RegisterEvent =
-  | { id: string; shiftId: string; type: "sale"; sale: Sale }
+  | { id: string; shiftId: string; type: "sale"; sale: Sale; menuVersion?: string }
   | { id: string; shiftId: string; type: "expense"; expense: Expense }
   | { id: string; shiftId: string; type: "unexpense"; targetId: string }
   | {
@@ -262,6 +264,10 @@ export interface Bootstrap {
   /** Profile photos of everyone on the team, by member id. */
   faces?: Record<string, string>;
 }
+export type RegisterResponse = Bootstrap & {
+  inviteDelivery?: "sent" | "failed" | "unavailable";
+};
+
 export interface RegisterState extends Bootstrap {
   closingShiftId?: string;
   cart: CartLine[];

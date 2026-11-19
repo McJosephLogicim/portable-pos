@@ -43,13 +43,15 @@ const line = z.object({
 });
 
 // Only accept a cart and tender as sale inputs. Descriptive fields and prices are
-// always taken from the immutable shift snapshot, including after an offline sync.
+// always taken from the shift's menu, including during offline sync.
 const sale = z.object({
   id: z.uuid(),
   shiftId: z.uuid(),
   sequence: z.number().int().positive().max(2147483647),
   createdAt: z.iso.datetime({ offset: true }),
   lines: z.array(line).min(1).max(500),
+  // A hint for pre-versioned clients to find an existing menu revision.
+  subtotal: amount.optional(),
   tender: key,
   // Only the discount's id is trusted. Its amount is recomputed from the shift.
   discount: z.object({ id: key }).optional(),
@@ -67,7 +69,7 @@ const expense = z.object({
   by: z.string().trim().max(80).optional(),
 });
 const event = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale }),
+  z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale, menuVersion: z.union([z.literal("opening"), z.uuid()]).optional() }),
   z.object({ type: z.literal("expense"), id: z.uuid(), shiftId: z.uuid(), expense }),
   z.object({ type: z.literal("unexpense"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid() }),
   z.object({

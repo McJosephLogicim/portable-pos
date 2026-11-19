@@ -85,14 +85,18 @@ export function RolePicker({
 
 function MemberSheet({
   member,
+  businessId,
   currency,
   onSave,
+  onResend,
   onRemove,
   onClose,
 }: {
   member?: Member;
+  businessId: string;
   currency: string;
   onSave: (input: { name: string; email: string; rate: number; photo?: string | null }) => Promise<boolean>;
+  onResend?: () => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
@@ -138,6 +142,11 @@ function MemberSheet({
           >
             {busy ? "Saving…" : member ? "Save" : "Send invite"}
           </button>
+          {onResend && (
+            <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
+              Resend invitation email
+            </button>
+          )}
           {onRemove && (
             <button className="btn ghost danger compact block" disabled={busy} onClick={() => void run(onRemove)}>
               <Trash2 size={16} /> Remove from team
@@ -184,13 +193,18 @@ function MemberSheet({
         Their salary when they join a shift. You can change it per shift. They pick cashier or server on each shift.
       </p>
       {!member && (
+        <p className="label">They can use their existing Portable POS account and keep any businesses they already own.</p>
+      )}
+      {onResend && (
         <div className="notice">
-          <span className="grow">They join by signing in with this email. Send them the app link.</span>
+          <span className="grow">They join by signing in with the invited email.</span>
           <button
             type="button"
             className="btn small secondary"
             onClick={async () => {
-              const url = location.origin;
+              const link = new URL("/", location.origin);
+              link.searchParams.set("shifts", businessId);
+              const url = link.href;
               try {
                 if (navigator.share) await navigator.share({ title: "Portable POS", url });
                 else {
@@ -217,14 +231,14 @@ function MemberSheet({
 
 export function TeamPage(props: SettingsProps) {
   const team = props.state.team ?? [];
-  const currency = props.state.business!.currency;
+  const business = props.state.business!;
   const [editing, setEditing] = useState<Member | "new" | null>(null);
   const withPin = usePin();
   const sorted = [...team].sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name));
   const waiting = team.filter((m) => !m.joined).length;
-  async function act(input: Parameters<SettingsProps["onAction"]>[0], label: string) {
+  async function act(input: Parameters<SettingsProps["onAction"]>[0], label?: string) {
     const done = await withPin((pin) => props.onAction({ ...input, pin } as typeof input));
-    if (done) props.onSaved(label);
+    if (done && label) props.onSaved(label);
     return done;
   }
   return (
@@ -250,10 +264,10 @@ export function TeamPage(props: SettingsProps) {
                 {m.name}
               </span>
               <span className="label ellipsis">
-                {m.joined ? (m.owner ? "Owner" : m.email) : "Invite sent to " + m.email}
+                {m.joined ? (m.owner ? "Owner" : m.email) : "Invite pending for " + m.email}
               </span>
             </span>
-            {m.rate > 0 && <span className="label end">{formatMoney(m.rate, currency)}</span>}
+            {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
             <ChevronRight size={18} className="chev" />
           </button>
         ))}
@@ -264,11 +278,12 @@ export function TeamPage(props: SettingsProps) {
       {editing && (
         <MemberSheet
           member={editing === "new" ? undefined : editing}
-          currency={currency}
+          businessId={business.id}
+          currency={business.currency}
           onClose={() => setEditing(null)}
           onSave={(input) =>
             editing === "new"
-              ? act({ action: "invite", ...input }, "Invited " + input.name)
+              ? act({ action: "invite", ...input })
               : act(
                   { action: "member", memberId: editing.id, name: input.name, rate: input.rate },
                   "Saved " + input.name,
@@ -278,6 +293,11 @@ export function TeamPage(props: SettingsProps) {
                     (input.photo === undefined ||
                       (await act({ action: "profile", memberId: editing.id, photo: input.photo }, "Saved " + input.name))),
                 )
+          }
+          onResend={
+            editing === "new" || editing.joined || props.demo
+              ? undefined
+              : () => act({ action: "invite", name: editing.name, email: editing.email, rate: editing.rate })
           }
           onRemove={
             editing === "new" || editing.owner

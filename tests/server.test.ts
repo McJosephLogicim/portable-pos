@@ -53,7 +53,6 @@ test(
     assert.equal(retry.shift!.id, shift.id);
     // Another phone joins the open shift instead of opening a second one.
     assert.equal((await cmd({ ...open, deviceId: randomUUID() })).shift!.id, shift.id);
-    await cmd({ action: "menu", menu: [{ ...menuItem, price: 1000 }], pin });
     function receipt(sequence: number, tender: Tender, received: number) {
       return makeSale({
         id: randomUUID(),
@@ -63,7 +62,7 @@ test(
         cart: [{ productId: "tea", quantity: 1, optionIds: [] }],
         tender,
         received,
-        createdAt: new Date().toISOString(),
+        createdAt: shift.openedAt,
       });
     }
     const cash = receipt(1, "cash", 500);
@@ -74,7 +73,13 @@ test(
       shiftId: shift.id,
       type: "sale" as const,
       sale,
+      ...(sale === qr ? {} : { menuVersion: "opening" }),
     }));
+    const edited = await cmd({ action: "menu", menu: [{ ...menuItem, price: 1000 }], pin });
+    assert.equal(edited.shift?.menu[0].price, 1000);
+    assert.ok(edited.shift?.menuVersion);
+    // An older offline client still uses its cached price after another phone edits it.
+    qr.createdAt = new Date(Date.now() + 1000).toISOString();
     // A local client can't choose its own prices or the description on the server receipt.
     cash.lines[0].unitPrice = 1;
     cash.lines[0].name = "changed";
@@ -109,6 +114,7 @@ test(
       shiftId: shift.id,
       id: next.id,
       sale: next,
+      menuVersion: "opening",
     };
     // A phone that was offline already took the money, so a sold-out mark from another
     // phone doesn't turn the sale away.

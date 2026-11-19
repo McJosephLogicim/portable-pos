@@ -443,7 +443,7 @@ export function MenuPage(props: SettingsProps) {
         {props.online
           ? props.state.shift
             ? live
-              ? "New items go on sale right away. Edits to existing items apply from the next shift. To pause an item now, mark it sold out on Sell."
+              ? "New items and edits to names, prices and options go live on Sell. Removals and stock use changes take effect next shift. To pause an item now, mark it sold out on Sell."
               : "Changes reach the register when the next shift opens."
             : "Changes reach the register when you open the next shift."
           : "Connect to edit the menu."}
@@ -593,7 +593,7 @@ export function CategoriesPage(props: SettingsProps) {
       )}
       <p className="label">
         {loose ? plural(loose, "item") + " with no category show last. " : ""}
-        {props.online ? "Changes reach the register when the next shift opens." : "Connect to edit categories."}
+        {props.online ? "Category changes go live on Sell." : "Connect to edit categories."}
       </p>
       {editing && (
         <CategorySheet
@@ -811,7 +811,7 @@ export function ChoicesPage(props: SettingsProps) {
         />
       )}
       <p className="label">
-        {props.online ? "Changes reach the register when the next shift opens." : "Connect to edit choices."}
+        {props.online ? "Choice changes go live on Sell." : "Connect to edit choices."}
       </p>
       {editing && (
         <ChoiceSheet

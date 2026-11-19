@@ -1,0 +1,1 @@
+ALTER TABLE "portable_pos"."shifts" ADD COLUMN "menu_history" jsonb DEFAULT '[]'::jsonb NOT NULL;

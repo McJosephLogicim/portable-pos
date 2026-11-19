@@ -12,6 +12,7 @@ import { BusinessSwitcher } from "./businesses";
 import { buzz, CelebrateProvider, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
+import { priceLines, updateShiftMenu } from "@/lib/domain";
 import {
   beginClose,
   cancelClose,
@@ -30,7 +31,7 @@ import { applyTheme } from "@/lib/theme";
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
-import type { CartLine, RegisterState, Tender } from "@/lib/types";
+import type { CartLine, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
@@ -116,7 +117,9 @@ export function Workspace() {
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
   const active = useRef<string | null>(null),
-    syncBusy = useRef(false);
+    syncBusy = useRef(false),
+    joinTarget = useRef<string | null>(null),
+    joinAsked = useRef(false);
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
   }, []);
@@ -138,7 +141,8 @@ export function Workspace() {
               ? current
               : mergeServer(id, demoBootstrap(current.deviceId));
           });
-        if (local.business) show(id, local);
+        // An invitation may have arrived after this device last cached the team list.
+        if (local.business && !joinTarget.current) show(id, local);
         if (id !== DEMO && navigator.onLine) {
           try {
             local = await syncRegister(id, true);
@@ -160,6 +164,7 @@ export function Workspace() {
   useEffect(() => {
     let alive = true;
     async function start() {
+      joinTarget.current = new URLSearchParams(location.search).get("shifts");
       let id = localStorage.getItem(ACTIVE) || DEMO;
       // Supabase processes the confirmation callback on the application origin.
       if (
@@ -278,11 +283,25 @@ export function Workspace() {
       await syncRegister(key);
       await locked("sync-" + key, async () => {
         const s = await loadRegister(key);
+        if (input.action === "menu" && s.shift && s.cart.length) {
+          const nextMenu = updateShiftMenu(s.shift, input.menu, input.stock).menu;
+          const cartError = "Finish or clear the current order before changing its prices or options.";
+          let current: ReturnType<typeof priceLines>;
+          let next: ReturnType<typeof priceLines>;
+          try {
+            current = priceLines(s.shift.menu, s.cart);
+            next = priceLines(nextMenu, s.cart);
+          } catch {
+            throw Error(cartError);
+          }
+          if (next.some((line, index) => line.unitPrice !== current[index].unitPrice))
+            throw Error(cartError);
+        }
         const closingId = input.action === "close" ? s.shift?.id : undefined;
         if (closingId) closingHere.current = true;
         if (closingId) show(key, await beginClose(key, closingId));
         try {
-          const data =
+          const data: RegisterResponse =
             key === DEMO
               ? demoAction(s, input)
               : await api(key, {
@@ -290,8 +309,21 @@ export function Workspace() {
                   deviceId: s.deviceId,
                   ...(closingId ? { shiftId: closingId } : {}),
                 });
-          show(key, await mergeServer(key, data));
+          const { inviteDelivery, ...snapshot } = data;
+          show(key, await mergeServer(key, snapshot));
           setSyncErr("");
+          if (input.action === "invite") {
+            if (key === DEMO) setToast("Invitation saved in demo");
+            else if (inviteDelivery === "sent") {
+              setNotice("");
+              setToast("Invitation email sent");
+            }
+            else setNotice(
+              inviteDelivery === "unavailable"
+                ? "Invitation saved. Email sending is unavailable. Open the pending invite to share its link."
+                : "Invitation saved. Email delivery could not be confirmed. Open the pending invite to retry or share its link.",
+            );
+          }
         } catch (error) {
           closingHere.current = false;
           // A timeout can follow a successful commit. Keep the till locked until a retry confirms the close.
@@ -326,7 +358,7 @@ export function Workspace() {
     setPending(true);
     try {
       const result = await locked("write-" + key, () =>
-        checkout(key, tender, received, state.cart, discountId, proofs),
+        checkout(key, tender, received, state.cart, discountId, proofs, state.shift?.menuVersion ?? "opening"),
       );
       show(key, result.state);
       void flush();
@@ -399,14 +431,7 @@ export function Workspace() {
     return uploadImage(key, photo, false, face);
   }
   /** Open another business on this phone. Each keeps its own till and sync queue. */
-  // A shared link like /?shifts=<business> opens that team's open seats.
-  const joinTarget = useRef<string | null>(null),
-    joinAsked = useRef(false);
-  useEffect(() => {
-    try {
-      joinTarget.current = new URLSearchParams(location.search).get("shifts");
-    } catch {}
-  }, []);
+  // An invitation or shared shift link opens the team's open seats.
   useEffect(() => {
     const target = joinTarget.current;
     if (!target || !state || !key) return;
@@ -425,7 +450,9 @@ export function Workspace() {
       return;
     }
     if (state.business?.id !== target) {
-      if (state.businesses?.some((b) => b.id === target)) void switchBusiness(target);
+      if (!online || syncErr) return;
+      if (state.businesses?.some((b) => b.id === target))
+        void switchBusiness(target).catch((e) => setNotice(message(e)));
       else {
         done();
         setNotice("You're not on that team yet. Ask the owner to invite your email.");
@@ -438,7 +465,7 @@ export function Workspace() {
     } catch {}
     setTab("schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.business?.id, state?.businesses, key]);
+  }, [state?.business?.id, state?.businesses, key, online, syncErr]);
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;
     const { userId } = parseKey(key);

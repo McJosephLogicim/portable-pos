@@ -11,6 +11,7 @@ Use Node 22.12 or later and install packages with `npm ci`. Run `npm run dev` fo
 1. Create a Supabase project. Enable email/password sign-in, set the Auth Site URL and allowed redirect URLs to the app origin, and configure confirmation email delivery for public signups.
 2. Set the variables in `.env.example` in the shell or deployment environment. Use a server-only `DATABASE_URL` for the register API and a separate, server-only `DATABASE_MIGRATION_URL` for schema changes. The migration role needs ownership of the application's schema objects and the Drizzle migration journal. Keep the `portable_pos` schema outside the Supabase Data API.
 3. For a local database, run `npm run db:migrate`. For live registers, set the migration URL in the Vercel production environment. Vercel builds the app, applies pending Drizzle migrations, and releases the deployment only if both succeed. Git pushes to `main` trigger production deployments. Preview deployments without a database use the demo. If you configure live data in Preview, give it its own database and migration URL.
+4. For team invitation emails, set the server-only `RESEND_API_KEY`, `POS_INVITE_FROM` to an address on a verified [Resend sending domain](https://resend.com/docs/dashboard/domains/introduction), and `POS_APP_URL` to the public HTTPS app origin. Owners can share a pending invitation link in Settings › Team if email delivery is unavailable.
 
 The migration command checks the existing journal against the checkout and runs pending SQL in one transaction. Use additive migrations that let the previous release continue serving traffic until Vercel switches over.
 
@@ -18,7 +19,7 @@ The migration command checks the existing journal against the checkout and runs 
 
 Open the shift while connected and use the same device throughout. Once the register shows **Offline register · Ready** in workspace details, the installed app can reopen offline. Checkout saves the receipt and pending record together. Reconnecting submits sales in sequence. Clearing browser storage or uninstalling before sync can erase pending receipts.
 
-One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Settings saved on the till's own phone apply to the open shift at once; menu edits apply from the next shift. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
+One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Checkout settings saved on the till's own phone apply to the open shift at once. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
 
 ## Opening, running and closing a shift
 
@@ -32,7 +33,7 @@ The Shifts page's share button copies the schedule grouped by place, one line pe
 
 ## Menu and stock
 
-The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. A new item goes on sale on the till open on that phone right away. Edits to items already on the till apply from the next shift.
+The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. New items and edits to names, prices and options appear on the open till and on other phones when they sync. Finish or clear a current order before changing its prices or selections on the same phone. Receipts made before the update sync with the menu version they used. Item removals and stock use changes take effect from the next shift.
 
 Settings › Stock items lists what is counted at opening and closing, like a strawberry pack, a kilo of ice or a litre of milk, each with a unit (piece, pack, box, bottle, cup, tray, kg, g, L or mL). A menu item's **Uses stock** section picks the stock items one sale uses and how much, like 1 pack and 0.2 kg. Each sale takes that off what is left, a reversal puts it back, the Sell tile shows how many more can be made, and an item sells out when any stock it uses runs out, offline too. Menu items set up before stock items existed with **Count this item itself** still work as a stock item of their own.
 
@@ -54,7 +55,7 @@ Checkout can ask for a photo before a sale completes. For a discount, switch on 
 
 ## Team and schedule
 
-Only the owner invites people (Settings › Team). An invite is a name, an email and their usual pay. The person joins the first time they sign in with that address, once Supabase has confirmed it. Roles belong to each shift: a person joins a seat as cashier or server and can switch on that shift until it ends. The owner can change anyone's role. Anyone on the team can run the till.
+Only the owner invites people (Settings › Team). Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. Roles belong to each shift. A person joins a seat as cashier or server and can switch on that shift until it ends. The owner can change anyone's role. Anyone on the team can run the till.
 
 The Shifts tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
 
