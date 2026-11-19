@@ -230,10 +230,11 @@ export async function runCommand(who: string | Actor, input: unknown) {
       }
     } else if (cmd.action === "profile") {
       const target = cmd.memberId ?? member.id;
-      ensure(target === member.id || me.owner, "Only the owner can change someone else's photo.", 403);
+      ensure(target === member.id || me.owner, "Only the owner can change someone else's profile.", 403);
+      ensure(cmd.photo !== undefined || cmd.name, "Nothing to change.");
       await tx
         .update(members)
-        .set({ photo: cmd.photo, ...(cmd.name ? { name: cmd.name } : {}) })
+        .set({ ...(cmd.photo !== undefined ? { photo: cmd.photo } : {}), ...(cmd.name ? { name: cmd.name } : {}) })
         .where(and(eq(members.id, target), eq(members.businessId, business.id)));
     } else if (cmd.action === "link") {
       const [open] = await tx

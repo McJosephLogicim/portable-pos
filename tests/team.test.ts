@@ -213,6 +213,9 @@ test(
     assert.match(face, /^\/api\/images\//);
     snap = await bea({ action: "profile", photo: face });
     assert.equal(snap.me!.photo, face);
+    snap = await bea({ action: "profile", name: "Bea Santos" });
+    assert.equal(snap.me!.name, "Bea Santos");
+    assert.equal(snap.me!.photo, face);
     await assert.rejects(bea({ action: "profile", memberId: ownerMe.memberId, photo: face }), { status: 403 });
     snap = await o({ action: "profile", memberId: asBea.me!.memberId, photo: null, pin });
     assert.equal(snap.team!.find((m) => m.id === asBea.me!.memberId)!.photo, undefined);

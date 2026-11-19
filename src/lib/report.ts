@@ -58,8 +58,8 @@ export function shiftReport(
   allExpenses: Expense[],
   business: Business,
   booking?: Booking,
-  /** The menu to find item photos in, and who has a profile photo. */
-  extra: { menu?: Product[]; faces?: Record<string, string> } = {},
+  /** The menu to find item photos in, and each team member's current name and photo, by member id. */
+  extra: { menu?: Product[]; faces?: Record<string, string>; names?: Record<string, string> } = {},
 ): ShiftReport {
   const currency = shift.settings?.currency ?? business.currency;
   const sales = allSales.filter((s) => s.shiftId === shift.id);
@@ -123,7 +123,8 @@ export function shiftReport(
   for (const e of expenses)
     if (e.source === "pocket") owed.set(e.by || "Staff", (owed.get(e.by || "Staff") ?? 0) + e.amount);
 
-  const staff = booking?.staff.map((s) => s.name).filter(Boolean) ?? [];
+  const nameOf = (s: { memberId: string; name: string }) => extra.names?.[s.memberId] || s.name;
+  const staff = booking?.staff.map(nameOf).filter(Boolean) ?? [];
   const people = staff.length ? staff : shift.openedBy ? [shift.openedBy] : [];
   const place = booking
     ? [booking.place?.name, booking.event?.name].filter(Boolean).join(" · ") || undefined
@@ -141,9 +142,10 @@ export function shiftReport(
     place,
     people,
     faces: Object.fromEntries(
-      (booking?.staff ?? [])
-        .map((s) => [s.name, extra.faces?.[s.memberId]] as const)
-        .filter((x): x is readonly [string, string] => Boolean(x[1])),
+      [
+        ...Object.entries(extra.names ?? {}).map(([id, name]) => [name, extra.faces?.[id]] as const),
+        ...(booking?.staff ?? []).map((s) => [nameOf(s), extra.faces?.[s.memberId]] as const),
+      ].filter((x): x is readonly [string, string] => Boolean(x[1]) && people.includes(x[0])),
     ),
     hourly: hours,
     ...(top ? { peak: { hour: top.label, total: top.total } } : {}),

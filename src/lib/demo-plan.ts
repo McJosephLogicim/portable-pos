@@ -8,7 +8,7 @@ export function demoPlan(state: Pick<Bootstrap, "business">): Required<
   const zone = state.business?.timeZone ?? "Asia/Manila";
   const peso = 100;
   const team: Member[] = [
-    { id: "demo-you", name: "You", email: "owner@example.com", roles: ["cashier", "server"], rate: 0, owner: true, joined: true },
+    { id: "demo-you", name: "Ana Cruz", email: "owner@example.com", roles: ["cashier", "server"], rate: 0, owner: true, joined: true },
     { id: "demo-bea", name: "Bea Santos", email: "bea@example.com", roles: ["cashier"], rate: 700 * peso, owner: false, joined: true },
     { id: "demo-paolo", name: "Paolo Reyes", email: "paolo@example.com", roles: ["server"], rate: 600 * peso, owner: false, joined: true },
     { id: "demo-kim", name: "Kim Dela Cruz", email: "kim@example.com", roles: ["cashier", "server"], rate: 650 * peso, owner: false, joined: false },
