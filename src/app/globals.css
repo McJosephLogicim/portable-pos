@@ -2551,15 +2551,26 @@ html {
 }
 .use-row {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.use-amount {
+  display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
+}
+.use-amount .nowrap {
+  white-space: nowrap;
 }
 .use-row .input.count {
   width: 72px;
 }
 .use-unit {
-  min-width: 34px;
+  width: 96px;
+  flex: none;
+  padding-left: 16px;
 }
 @media (max-width: 360px) {
   .stock-row .well {
@@ -2761,4 +2772,8 @@ html {
 }
 .list-row:disabled {
   opacity: 0.5;
+}
+.use-unit-input {
+  width: 96px;
+  flex: none;
 }

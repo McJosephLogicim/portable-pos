@@ -39,7 +39,7 @@ import type {
   StaffSlot,
   Tag,
 } from "@/lib/types";
-import { Combobox } from "./combobox";
+import { SuggestInput } from "./combobox";
 import { Leaderboards, ShiftSales } from "./insights";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
@@ -705,8 +705,9 @@ interface Draft {
   start: string;
   end: string;
   place: Place | null;
-  organizer: Tag | null;
-  event: Tag | null;
+  /** Typed or picked. A name that isn't on the list yet is added when the shift saves. */
+  organizer: string;
+  event: string;
   seats: number;
   staff: { memberId: string; name: string; role: Role; salary: string }[];
   rent: string;
@@ -714,10 +715,40 @@ interface Draft {
   incentive: string;
 }
 
-function useOrganizers(state: RegisterState) {
-  const [organizers, setOrganizers] = useState<Organizer[]>(state.organizers ?? []);
-  const changed = JSON.stringify(organizers) !== JSON.stringify(state.organizers ?? []);
-  return { organizers, setOrganizers, changed };
+const same = (a: string, b: string) => a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+
+/**
+ * Turns the typed organizer and event into tags. Names already on the list are reused;
+ * new ones are added to it.
+ */
+function resolveOrganizer(list: Organizer[], d: Pick<Draft, "organizer" | "event">, booking?: Booking) {
+  let organizers = list;
+  const ids = () => organizers.flatMap((o) => [o.id, ...o.events.map((e) => e.id)]);
+  const name = d.organizer.trim().slice(0, 80);
+  const eventName = d.event.trim().slice(0, 80);
+  if (!name) {
+    if (eventName) throw Error("Type the organizer of " + eventName + " too.");
+    return { organizers, organizer: null, event: null };
+  }
+  let found = organizers.find((o) => same(o.name, name));
+  // A shift keeps an organizer that was since removed from the list, unless it's retyped.
+  if (!found && booking?.organizer && same(booking.organizer.name, name)) {
+    const keepEvent = booking.event && same(booking.event.name, eventName) ? booking.event : null;
+    if (keepEvent || !eventName) return { organizers, organizer: booking.organizer, event: keepEvent };
+  }
+  if (!found) {
+    found = { id: slugId(name, ids()), name, events: [] };
+    organizers = [...organizers, found];
+  }
+  const organizer: Tag = { id: found.id, name: found.name };
+  if (!eventName) return { organizers, organizer, event: null };
+  let event = found.events.find((e) => same(e.name, eventName));
+  if (!event) {
+    event = { id: slugId(eventName, ids()), name: eventName };
+    const added = { ...found, events: [...found.events, event] };
+    organizers = organizers.map((o) => (o.id === found!.id ? added : o));
+  }
+  return { organizers, organizer, event: { id: event.id, name: event.name } };
 }
 
 function BookingEditor({
@@ -739,7 +770,7 @@ function BookingEditor({
   const currency = business.currency;
   const team = state.team ?? [];
   const withPin = usePin();
-  const { organizers, setOrganizers, changed } = useOrganizers(state);
+  const organizers = state.organizers ?? [];
   const money = (v?: number) => (v ? amountText(v, currency).replace(/\.0+$/, "") : "");
   const [d, setD] = useState<Draft>(() => {
     const last = [...(state.bookings ?? [])].sort((a, b) => b.startsAt.localeCompare(a.startsAt))[0];
@@ -751,8 +782,8 @@ function BookingEditor({
       start: base ? timeOf(base.startsAt, zone) : "10:00",
       end: base ? timeOf(base.endsAt, zone) : "20:00",
       place: booking ? booking.place : null,
-      organizer: booking ? booking.organizer : null,
-      event: booking ? booking.event : null,
+      organizer: booking?.organizer?.name ?? "",
+      event: booking?.event?.name ?? "",
       seats: booking?.seats ?? base?.seats ?? 2,
       staff: (booking?.staff ?? []).map((s) => ({ ...s, salary: money(s.salary) })),
       rent: money(booking?.rent),
@@ -770,7 +801,7 @@ function BookingEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
-  const organizer = organizers.find((o) => o.id === d.organizer?.id);
+  const organizer = organizers.find((o) => same(o.name, d.organizer));
   const days = bulk ? daysBetween(d.day, d.until, d.weekdays) : [d.day];
   const recent = useMemo(() => {
     const seen = new Map<string, Place>();
@@ -793,12 +824,13 @@ function BookingEditor({
       const incentive = parse(d.incentive);
       if (bulk && !days.length) throw Error("No days match. Check the dates and weekdays.");
       if (bulk && days.length > 120) throw Error("Add up to 120 shifts at a time.");
+      const tags = resolveOrganizer(organizers, d, booking);
       const make = (day: string, id: string): BookingInput => ({
         id,
         ...shiftTimes(day, d.start, d.end, zone),
         place: d.place,
-        organizer: d.organizer,
-        event: d.event,
+        organizer: tags.organizer,
+        event: tags.event,
         seats: d.seats,
         staff,
         rent,
@@ -806,7 +838,7 @@ function BookingEditor({
         incentive,
       });
       const done = await withPin(async (pin) => {
-        if (changed) await props.onAction({ action: "organizers", organizers, pin });
+        if (tags.organizers !== organizers) await props.onAction({ action: "organizers", organizers: tags.organizers, pin });
         if (bulk)
           await props.onAction({
             action: "bulkBookings",
@@ -829,8 +861,6 @@ function BookingEditor({
     }
   }
 
-  const tag = (name: string, taken: string[]): Tag => ({ id: slugId(name, taken), name });
-
   return (
     <>
       <Sheet
@@ -852,35 +882,35 @@ function BookingEditor({
         }
       >
         <div className="card card-pad stack gap-14">
-          <Combobox
-            label="Organizer"
-            placeholder="Who runs the market"
-            options={organizers}
-            value={d.organizer}
-            onChange={(o) => set({ organizer: o, event: o?.id === d.organizer?.id ? d.event : null })}
-            onCreate={(name) => {
-              const o = { ...tag(name, organizers.map((x) => x.id)), events: [] };
-              setOrganizers([...organizers, o]);
-              return o;
-            }}
-            hint={organizers.length ? "Rename or remove organizers in Settings." : undefined}
-          />
-          <Combobox
-            label="Event"
-            placeholder={d.organizer ? "e.g. Christmas Bazaar" : "Pick the organizer first"}
-            disabled={!d.organizer}
-            options={organizer?.events ?? []}
-            value={d.event}
-            onChange={(e) => set({ event: e })}
-            onCreate={(name) => {
-              const all = organizers.flatMap((o) => o.events.map((e) => e.id));
-              const e = tag(name, all);
-              setOrganizers(
-                organizers.map((o) => (o.id === d.organizer!.id ? { ...o, events: [...o.events, e] } : o)),
-              );
-              return e;
-            }}
-          />
+          <div className="field">
+            <span>Organizer</span>
+            <SuggestInput
+              label="Organizer"
+              placeholder="Who runs the market"
+              maxLength={80}
+              value={d.organizer}
+              newText="New organizer"
+              suggestions={organizers.map((o) => ({
+                key: o.id,
+                name: o.name,
+                detail: o.events.length ? o.events.map((e) => e.name).join(", ") : undefined,
+              }))}
+              onChange={(organizer) => set({ organizer })}
+            />
+          </div>
+          <div className="field">
+            <span>Event</span>
+            <SuggestInput
+              label="Event"
+              placeholder="e.g. Christmas Bazaar"
+              maxLength={80}
+              value={d.event}
+              newText="New event"
+              suggestions={(organizer?.events ?? []).map((e) => ({ key: e.id, name: e.name }))}
+              onChange={(event) => set({ event })}
+            />
+            <p className="label">New names are added to your list when you save. Rename or remove them in Settings.</p>
+          </div>
           <div className="field">
             <span>Location</span>
             <button type="button" className="input place-button" onClick={() => setLocating(true)}>
