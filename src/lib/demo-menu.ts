@@ -5,7 +5,7 @@ export const demoMenu: Product[] = [
     id: "cd3dc117-a1c3-536b-be26-009d8d804f88",
     name: "Caffè Latte",
     category: "Coffee",
-    price: 450,
+    price: 16000,
     image: "/menu/caffe-latte.webp",
     groups: [
       {
@@ -21,7 +21,7 @@ export const demoMenu: Product[] = [
           {
             id: "c4bf9adb-21d6-5c6b-90d5-b98e5ca22011",
             name: "Oat milk",
-            price: 75,
+            price: 3000,
           },
         ],
       },
@@ -31,7 +31,7 @@ export const demoMenu: Product[] = [
     id: "3931b833-6c55-5a5a-a1c1-12acc384865c",
     name: "Butter Croissant",
     category: "Bakery",
-    price: 375,
+    price: 12000,
     image: "/menu/butter-croissant.webp",
     groups: [],
   },
@@ -39,7 +39,7 @@ export const demoMenu: Product[] = [
     id: "60e817b8-6fc4-5c17-931e-76285d156e47",
     name: "Iced Latte",
     category: "Cold drinks",
-    price: 475,
+    price: 17000,
     image: "/menu/iced-latte.webp",
     groups: [
       {
@@ -55,7 +55,7 @@ export const demoMenu: Product[] = [
           {
             id: "25227c3c-68ad-5965-9973-16ce9c10d3e3",
             name: "Oat milk",
-            price: 75,
+            price: 3000,
           },
         ],
       },
@@ -65,7 +65,7 @@ export const demoMenu: Product[] = [
     id: "b36083df-9bc5-5fc5-aa06-4e3682f15856",
     name: "Cappuccino",
     category: "Coffee",
-    price: 400,
+    price: 15000,
     image: "/menu/cappuccino.webp",
     groups: [
       {
@@ -81,7 +81,7 @@ export const demoMenu: Product[] = [
           {
             id: "ea2e95c8-5823-5fe1-8722-0c904c579351",
             name: "Oat milk",
-            price: 75,
+            price: 3000,
           },
         ],
       },
@@ -91,7 +91,7 @@ export const demoMenu: Product[] = [
     id: "53435ac0-aae0-5f64-b506-42f177bad2a5",
     name: "Cinnamon Roll",
     category: "Bakery",
-    price: 425,
+    price: 12500,
     image: "/menu/cinnamon-roll.webp",
     groups: [],
   },
@@ -99,7 +99,7 @@ export const demoMenu: Product[] = [
     id: "91d842b3-f2fb-5bb6-bb7a-613ff9152fab",
     name: "Cold Brew",
     category: "Cold drinks",
-    price: 425,
+    price: 16000,
     image: "/menu/cold-brew.webp",
     groups: [],
   },
@@ -107,7 +107,7 @@ export const demoMenu: Product[] = [
     id: "976ec768-d79b-573a-946a-c05173194b30",
     name: "Espresso",
     category: "Coffee",
-    price: 300,
+    price: 11000,
     image: "/menu/espresso.webp",
     groups: [],
   },
@@ -115,7 +115,7 @@ export const demoMenu: Product[] = [
     id: "35e31b1d-2d82-57ec-9955-121c787789c9",
     name: "Chocolate Chunk Cookie",
     category: "Bakery",
-    price: 325,
+    price: 9500,
     image: "/menu/chocolate-chunk-cookie.webp",
     groups: [],
   },
@@ -123,7 +123,7 @@ export const demoMenu: Product[] = [
     id: "50bdf8f1-b035-5ae0-9744-62bca9cd7778",
     name: "Mint Lemonade",
     category: "Cold drinks",
-    price: 375,
+    price: 13000,
     image: "/menu/mint-lemonade.webp",
     groups: [],
   },

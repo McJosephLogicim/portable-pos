@@ -11,6 +11,7 @@ import {
   saveCart,
   setAvailability,
 } from "../src/lib/register-store";
+import { defaultSettings } from "../src/lib/settings";
 import type { Bootstrap, CartLine } from "../src/lib/types";
 
 const itemId = crypto.randomUUID();
@@ -24,6 +25,7 @@ async function start() {
     name: "Counter",
     timeZone: "UTC",
     currency: "USD",
+    settings: defaultSettings("USD"),
   };
   const menu = [
     { id: itemId, name: "Coffee", category: "Drinks", groups: [], price: 325 },
@@ -37,6 +39,7 @@ async function start() {
     closedAt: null,
     openingCash: 1000,
     menu,
+    settings: { ...defaultSettings("USD"), currency: "USD" },
   };
   const data: Bootstrap = {
     business,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkSettings } from "../lib/settings";
 import { ensure } from "./errors";
 
 const key = z.string().trim().min(1).max(128);
@@ -43,7 +44,9 @@ const sale = z.object({
   sequence: z.number().int().positive().max(2147483647),
   createdAt: z.iso.datetime({ offset: true }),
   lines: z.array(line).min(1).max(500),
-  tender: z.enum(["cash", "qr", "card"]),
+  tender: key,
+  // Only the discount's id is trusted. Its amount is recomputed from the shift.
+  discount: z.object({ id: key }).optional(),
   received: amount,
 });
 const event = z.discriminatedUnion("type", [
@@ -58,6 +61,32 @@ const event = z.discriminatedUnion("type", [
 ]);
 export type InputEvent = z.infer<typeof event>;
 
+const settings = z.object({
+  receiptNote: z.string().trim().max(200),
+  payments: z
+    .array(
+      z.object({
+        id: key,
+        name: z.string().trim().min(1).max(40),
+        kind: z.enum(["cash", "wallet", "card", "bank", "other"]),
+        on: z.boolean(),
+      }),
+    )
+    .min(1)
+    .max(24),
+  discounts: z
+    .array(
+      z.object({
+        id: key,
+        name: z.string().trim().min(1).max(40),
+        type: z.enum(["percent", "fixed"]),
+        value: z.number().int().min(1).max(2147483647),
+        on: z.boolean(),
+      }),
+    )
+    .max(24),
+});
+
 const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
   z.object({
@@ -70,6 +99,15 @@ const command = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("menu"),
     menu: z.array(product).max(1000),
+    pin,
+  }),
+  z.object({
+    action: z.literal("settings"),
+    deviceId: key,
+    name,
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    timeZone: z.string().min(1).max(100),
+    settings,
     pin,
   }),
   z.object({ action: z.literal("open"), deviceId: key, openingCash: amount }),
@@ -104,7 +142,14 @@ export function parseCommand(input: unknown) {
     );
   }
   const value = parsed.data;
-  if (value.action === "setup") {
+  if (value.action === "settings") {
+    try {
+      checkSettings(value.settings);
+    } catch (error) {
+      ensure(false, (error as Error).message);
+    }
+  }
+  if (value.action === "setup" || value.action === "settings") {
     ensure(
       Intl.supportedValuesOf("currency").includes(value.currency),
       "Choose a valid currency.",
