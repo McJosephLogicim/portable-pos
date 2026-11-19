@@ -11,7 +11,7 @@ export async function authenticatedOwner(request: Request) {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key)
-    throw new RegisterError(503, "The account service is unavailable.");
+    throw new RegisterError(503, "Accounts are down for a moment. Try again soon.");
   const auth = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

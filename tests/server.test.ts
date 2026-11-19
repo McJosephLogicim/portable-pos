@@ -50,9 +50,8 @@ test(
     const [one, retry] = await Promise.all([cmd(open), cmd(open)]);
     const shift = one.shift!;
     assert.equal(retry.shift!.id, shift.id);
-    await assert.rejects(cmd({ ...open, deviceId: randomUUID() }), {
-      status: 409,
-    });
+    // Another phone joins the open shift instead of opening a second one.
+    assert.equal((await cmd({ ...open, deviceId: randomUUID() })).shift!.id, shift.id);
     await cmd({ action: "menu", menu: [{ ...menuItem, price: 1000 }], pin });
     function receipt(sequence: number, tender: Tender, received: number) {
       return makeSale({
@@ -103,17 +102,18 @@ test(
       targetId: "tea",
       soldOut: true,
     };
-    const next = receipt(4, "cash", 250);
+    const next = receipt(4, "card", 250);
     const blocked = {
       type: "sale" as const,
       shiftId: shift.id,
       id: next.id,
       sale: next,
     };
-    await assert.rejects(cmd(sync([stop, blocked])), { status: 422 });
-    assert.deepEqual((await cmd({ action: "bootstrap" })).soldOut, []);
-    await cmd(sync([stop]));
-    await assert.rejects(cmd(sync([blocked])), { status: 422 });
+    // A phone that was offline already took the money, so a sold-out mark from another
+    // phone doesn't turn the sale away.
+    const late = await cmd(sync([stop, blocked]));
+    assert.deepEqual(late.soldOut, ["tea"]);
+    assert.equal(late.sales.find((s) => s.id === next.id)?.sequence, 4);
     assert.deepEqual(
       (await runCommand(other, { action: "bootstrap" })).sales,
       [],
@@ -150,7 +150,7 @@ test(
       closed.sales.find((s) => s.id === cash.id)?.reason,
       "Entered twice",
     );
-    assert.equal((await cmd(sync(events))).sales.length, 3);
+    assert.equal((await cmd(sync(events))).sales.length, 4);
     await assert.rejects(cmd(reverse), { status: 409 });
     const reopened = await cmd(open);
     assert.equal(reopened.shift!.number, 2);
@@ -181,11 +181,11 @@ test(
     const tail = await getDb().transaction((tx) =>
       historyPage(tx, page.business!.id, page.nextSales),
     );
-    assert.equal(tail.sales.length, 4);
+    assert.equal(tail.sales.length, 5);
     assert.equal(tail.nextSales, undefined);
     assert.equal(
       new Set([...page.sales, ...tail.sales].map((sale) => sale.id)).size,
-      104,
+      105,
     );
     assert.deepEqual(
       (

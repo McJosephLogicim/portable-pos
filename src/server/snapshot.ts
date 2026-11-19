@@ -93,7 +93,7 @@ export async function historyPage(
 ): Promise<Page> {
   ensure(
     typeof cursor === "string" && cursor.length <= 512,
-    "Invalid sales history cursor.",
+    "Couldn't load older sales. Try again.",
   );
   let values;
   try {
@@ -101,11 +101,11 @@ export async function historyPage(
       JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
     );
   } catch {
-    ensure(false, "Invalid sales history cursor.");
+    ensure(false, "Couldn't load older sales. Try again.");
   }
-  ensure(values.success, "Invalid sales history cursor.");
+  ensure(values.success, "Couldn't load older sales. Try again.");
   const { newestShift, oldestShift } = values.data;
-  ensure(oldestShift <= newestShift, "Invalid sales history cursor.");
+  ensure(oldestShift <= newestShift, "Couldn't load older sales. Try again.");
   if (!businessId) return { sales: [] };
   return receiptsPage(tx, businessId, oldestShift, newestShift, values.data);
 }

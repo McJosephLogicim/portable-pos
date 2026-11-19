@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
-import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "../lib/domain";
+import { checkClosing, checkOpening, withNewItems } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
@@ -12,9 +12,9 @@ import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
 import { hashPin, verifyPin } from "./pin";
-import { bookings, businesses, expenses, members, sales, shifts } from "./schema";
-import { presentExpense, presentSale, presentShift, snapshot as baseSnapshot } from "./snapshot";
-import { applyEvents } from "./sync";
+import { bookings, businesses, members, sales, shifts } from "./schema";
+import { presentShift, snapshot as baseSnapshot } from "./snapshot";
+import { applyEvents, closingFigures } from "./sync";
 import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
@@ -113,12 +113,12 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .update(businesses)
         .set({ menu: cmd.menu })
         .where(eq(businesses.id, business.id));
-      // New items reach the till that is open on this phone straight away.
+      // New items reach the open till straight away, on every phone selling on it.
       const [open] = await tx
         .select()
         .from(shifts)
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
-      if (open && cmd.deviceId && open.deviceId === cmd.deviceId) {
+      if (open) {
         const next = withNewItems(presentShift(open, business.currency), cmd.menu, cmd.stock);
         await tx
           .update(shifts)
@@ -153,7 +153,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
       // The till applies new checkout settings right away. The client syncs every pending
       // receipt before this command, and anything removed stays in the snapshot switched
       // off, so receipts already priced on another path still validate.
-      if (open && open.deviceId === cmd.deviceId) {
+      if (open) {
         await tx
           .update(shifts)
           .set({
@@ -165,13 +165,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
           .where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "sync") {
-      await applyEvents(
-        tx,
-        business.id,
-        business.currency,
-        cmd.deviceId,
-        cmd.events,
-      );
+      await applyEvents(tx, business.id, business.currency, cmd.events);
     } else if (cmd.action === "open") {
       const [last] = await tx
         .select()
@@ -179,13 +173,8 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .where(eq(shifts.businessId, business.id))
         .orderBy(desc(shifts.number))
         .limit(1);
-      if (last && !last.closedAt) {
-        ensure(
-          last.deviceId === cmd.deviceId,
-          "A shift is already open on another device.",
-          409,
-        );
-      } else {
+      // A shift already open on another phone is joined, not opened twice.
+      if (!last || last.closedAt) {
         ensure(
           business.menu.length,
           "Add a menu item before opening the till.",
@@ -241,7 +230,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .select()
         .from(shifts)
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
-      ensure(open?.deviceId === cmd.deviceId, "Open the till on this phone first.", 409);
+      ensure(open, "Open the till first.", 409);
       if (!open.bookingId) {
         const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt));
         await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
@@ -253,11 +242,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .where(
           and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)),
         );
-      ensure(
-        open?.deviceId === cmd.deviceId,
-        "Reverse sales on the device with the open shift.",
-        409,
-      );
+      ensure(open, "Only sales on the open shift can be reversed.", 409);
       const [sale] = await tx
         .select()
         .from(sales)
@@ -276,20 +261,10 @@ export async function runCommand(who: string | Actor, input: unknown) {
         .where(
           and(eq(shifts.id, cmd.shiftId), eq(shifts.businessId, business.id)),
         );
-      ensure(
-        shift?.deviceId === cmd.deviceId,
-        "Close this shift on the device where it was opened.",
-        409,
-      );
+      ensure(shift, "That shift isn't on this account anymore.", 404);
+      // Any phone can close. Sales still on other phones are added when they sync.
       if (!shift.closedAt) {
-        const receipts = await tx
-          .select()
-          .from(sales)
-          .where(eq(sales.shiftId, shift.id));
-        const spent = await tx.select().from(expenses).where(eq(expenses.shiftId, shift.id));
         const present = presentShift(shift, business.currency);
-        const sold = receipts.map(presentSale);
-        const { expectedCash } = shiftTotals(present, sold, spent.map(presentExpense));
         let closingStock, closingCount;
         try {
           closingStock = checkClosing(present, cmd.closingStock);
@@ -297,19 +272,14 @@ export async function runCommand(who: string | Actor, input: unknown) {
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        const left = stockLeft(present, sold);
-        const usedStock = present.stock
-          ? Object.fromEntries(Object.entries(present.stock).map(([id, n]) => [id, Math.round((n - left[id]) * 1000) / 1000]))
-          : null;
         await tx
           .update(shifts)
           .set({
             closedAt: new Date().toISOString(),
             countedCash: cmd.countedCash,
-            difference: cmd.countedCash - expectedCash,
             closingStock: closingStock ?? null,
             closingCount: closingCount ?? null,
-            usedStock,
+            ...(await closingFigures(tx, present, cmd.countedCash)),
           })
           .where(eq(shifts.id, shift.id));
       }
