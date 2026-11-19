@@ -1,7 +1,7 @@
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { round, stockModel, unitText } from "./stock";
-import type { Booking, Business, Expense, Sale, Shift } from "./types";
+import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
   id: string;
@@ -24,10 +24,16 @@ export interface ShiftReport {
   hours: string;
   place?: string;
   people: string[];
+  /** Profile photos, by person's name. */
+  faces: Record<string, string>;
+  /** Biggest hour of sales, like "3 PM". */
+  peak?: { hour: string; total: number };
+  /** Sales total per hour of the shift, oldest first. */
+  hourly: { label: string; total: number }[];
   closed: boolean;
   sales: { total: number; count: number; reversed: number; discounts: number };
   methods: { name: string; kind: string; amount: number; count: number }[];
-  sold: { name: string; quantity: number }[];
+  sold: { productId: string; name: string; quantity: number; revenue: number; image?: string }[];
   stock: StockRow[];
   expenses: Expense[];
   tillExpenses: number;
@@ -52,6 +58,8 @@ export function shiftReport(
   allExpenses: Expense[],
   business: Business,
   booking?: Booking,
+  /** The menu to find item photos in, and who has a profile photo. */
+  extra: { menu?: Product[]; faces?: Record<string, string> } = {},
 ): ShiftReport {
   const currency = shift.settings?.currency ?? business.currency;
   const sales = allSales.filter((s) => s.shiftId === shift.id);
@@ -63,11 +71,37 @@ export function shiftReport(
   const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
 
-  const sold = new Map<string, number>();
+  const sold = new Map<string, ShiftReport["sold"][number]>();
+  const photos = new Map<string, string>();
+  for (const p of [...(extra.menu ?? []), ...shift.menu]) if (p.image) photos.set(p.id, p.image);
+  const hourly = new Map<number, number>();
+  const hourOf = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", hourCycle: "h23" });
   for (const sale of sales) {
     if (sale.reversedAt) continue;
-    for (const line of sale.lines) sold.set(line.name, (sold.get(line.name) ?? 0) + line.quantity);
+    const h = Number(hourOf.format(new Date(sale.createdAt)));
+    hourly.set(h, (hourly.get(h) ?? 0) + sale.total);
+    for (const line of sale.lines) {
+      const row = sold.get(line.productId) ?? {
+        productId: line.productId,
+        name: line.name,
+        quantity: 0,
+        revenue: 0,
+        ...(photos.get(line.productId) ? { image: photos.get(line.productId) } : {}),
+      };
+      row.quantity += line.quantity;
+      row.revenue += line.quantity * line.unitPrice;
+      sold.set(line.productId, row);
+    }
   }
+  const label = (h: number) => (h % 12 || 12) + (h < 12 ? " AM" : " PM");
+  const hourKeys = [...hourly.keys()].sort((a, b) => a - b);
+  const hours = hourKeys.length
+    ? Array.from({ length: hourKeys[hourKeys.length - 1] - hourKeys[0] + 1 }, (_, i) => {
+        const h = hourKeys[0] + i;
+        return { label: label(h), total: hourly.get(h) ?? 0 };
+      })
+    : [];
+  const top = hours.reduce<{ label: string; total: number } | undefined>((a, b) => (!a || b.total > a.total ? b : a), undefined);
 
   const { items } = stockModel(shift.settings.stockItems, shift.menu);
   const left = shift.menu.length ? stockLeft(shift, sales) : {};
@@ -106,6 +140,13 @@ export function shiftReport(
       (shift.closedAt ? time.format(new Date(shift.closedAt)) : "now"),
     place,
     people,
+    faces: Object.fromEntries(
+      (booking?.staff ?? [])
+        .map((s) => [s.name, extra.faces?.[s.memberId]] as const)
+        .filter((x): x is readonly [string, string] => Boolean(x[1])),
+    ),
+    hourly: hours,
+    ...(top ? { peak: { hour: top.label, total: top.total } } : {}),
     closed: Boolean(shift.closedAt),
     sales: {
       total: totals.total,
@@ -114,7 +155,7 @@ export function shiftReport(
       discounts: totals.discounts,
     },
     methods: totals.methods.filter((m) => m.count).map(({ name, kind, amount, count }) => ({ name, kind, amount, count })),
-    sold: [...sold].map(([name, quantity]) => ({ name, quantity })).sort((a, b) => b.quantity - a.quantity),
+    sold: [...sold.values()].sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue),
     stock,
     expenses,
     tillExpenses: totals.tillExpenses,

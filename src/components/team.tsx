@@ -7,7 +7,7 @@ import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
-import { errorText, formatMoney, MoneyField, PhotoPicker, Sheet, usePin } from "./ui";
+import { errorText, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
 export function initials(name: string) {
   return (
@@ -21,10 +21,28 @@ export function initials(name: string) {
   );
 }
 
-export function Avatar({ name, small = false, dim = false }: { name: string; small?: boolean; dim?: boolean }) {
+export function Avatar({
+  name,
+  id,
+  small = false,
+  dim = false,
+  large = false,
+}: {
+  name: string;
+  /** The member id, to find their profile photo. */
+  id?: string;
+  small?: boolean;
+  dim?: boolean;
+  large?: boolean;
+}) {
+  const faces = useFaces();
+  const photo = (id && faces.byId[id]) || faces.byName[name];
   return (
-    <span className={"avatar" + (small ? " small" : "") + (dim ? " dim" : "")} aria-hidden="true">
-      {initials(name)}
+    <span
+      className={"avatar" + (small ? " small" : "") + (large ? " large" : "") + (dim ? " dim" : "") + (photo ? " has-photo" : "")}
+      aria-hidden="true"
+    >
+      {photo ? <img src={photo} alt="" /> : initials(name)}
     </span>
   );
 }
@@ -76,11 +94,12 @@ function MemberSheet({
 }: {
   member?: Member;
   currency: string;
-  onSave: (input: { name: string; email: string; rate: number }) => Promise<boolean>;
+  onSave: (input: { name: string; email: string; rate: number; photo?: string | null }) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member?.name ?? "");
+  const [photo, setPhoto] = useState(member?.photo);
   const [email, setEmail] = useState(member?.email ?? "");
   const [rate, setRate] = useState(member && member.rate ? amountText(member.rate, currency) : "");
   const [busy, setBusy] = useState(false);
@@ -114,6 +133,7 @@ function MemberSheet({
                   name: name.trim(),
                   email: email.trim(),
                   rate: rate.trim() ? parseMoney(rate, currency) : 0,
+                  ...(member && photo !== member.photo ? { photo: photo ?? null } : {}),
                 }),
               )
             }
@@ -128,6 +148,11 @@ function MemberSheet({
         </>
       }
     >
+      {member && (
+        <div className="card card-pad">
+          <PhotoPicker face value={photo} onChange={setPhoto} label="profile photo" />
+        </div>
+      )}
       <div className="card card-pad stack gap-14">
         <label className="field">
           <span>Name</span>
@@ -221,7 +246,7 @@ export function TeamPage(props: SettingsProps) {
       <div className="card card-list">
         {sorted.map((m) => (
           <button key={m.id} className="list-row" disabled={!props.online} onClick={() => setEditing(m)}>
-            <Avatar name={m.name} dim={!m.joined} />
+            <Avatar id={m.id} name={m.name} dim={!m.joined} />
             <span className="grow stack">
               <span className="ellipsis">
                 {m.name}
@@ -249,6 +274,11 @@ export function TeamPage(props: SettingsProps) {
               : act(
                   { action: "member", memberId: editing.id, name: input.name, rate: input.rate },
                   "Saved " + input.name,
+                ).then(
+                  async (done) =>
+                    done &&
+                    (input.photo === undefined ||
+                      (await act({ action: "profile", memberId: editing.id, photo: input.photo }, "Saved " + input.name))),
                 )
           }
           onRemove={

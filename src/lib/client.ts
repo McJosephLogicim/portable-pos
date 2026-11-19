@@ -126,10 +126,10 @@ export async function api(
 }
 
 /** Upload a photo and return the address it is served from. Proofs stay private. */
-export async function uploadImage(key: string, photo: Blob, proof = false): Promise<string> {
+export async function uploadImage(key: string, photo: Blob, proof = false, face = false): Promise<string> {
   const { headers } = await sessionFor(key, "add photos");
   const { response, data } = await post(
-    "/api/images" + (proof ? "?proof=1" : ""),
+    "/api/images" + (proof ? "?proof=1" : face ? "?face=1" : ""),
     { headers: { "Content-Type": photo.type, ...headers }, body: photo },
     30_000,
     "Couldn't upload the photo. Check your connection and try again.",

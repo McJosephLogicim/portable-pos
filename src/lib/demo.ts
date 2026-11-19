@@ -98,6 +98,7 @@ export interface Closing {
 export type OwnerAction =
   | ({ action: "open" } & Opening)
   | { action: "link"; newShift: WalkIn }
+  | { action: "profile"; memberId?: string; photo: string | null; pin?: string }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
@@ -150,6 +151,20 @@ export function demoAction(
         checklist: checklist.map((c) => c.text),
       };
       return { ...state, bookings, shift, shifts: [shift, ...state.shifts], soldOut: [] };
+    }
+    case "profile": {
+      const me = state.me!;
+      const id = input.memberId ?? me.memberId;
+      const faces = { ...(state.faces ?? {}) };
+      if (input.photo) faces[id] = input.photo;
+      else delete faces[id];
+      const photo = input.photo ?? undefined;
+      return {
+        ...state,
+        faces,
+        me: id === me.memberId ? { ...me, photo } : me,
+        team: state.team?.map((m) => (m.id === id ? { ...m, photo } : m)),
+      };
     }
     case "link": {
       const open = state.shift;

@@ -163,6 +163,8 @@ export const members = register
       roles: jsonb().$type<Role[]>().notNull(),
       rate: money("rate").default(0).notNull(),
       owner: boolean().default(false).notNull(),
+      // A profile photo, shown on shifts, leaderboards and shift reports.
+      photo: text(),
       createdAt: date("created_at").defaultNow().notNull(),
     },
     (t) => [

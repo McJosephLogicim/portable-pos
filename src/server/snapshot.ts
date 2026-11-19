@@ -1,4 +1,4 @@
-import { and, between, desc, eq, gte, inArray, isNull, lt, or, sum } from "drizzle-orm";
+import { and, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
 import { stockModel } from "../lib/stock";
 import type { Transaction } from "./db";
@@ -221,8 +221,17 @@ export async function snapshot(
       .groupBy(shifts.bookingId);
     for (const row of rows) if (row.bookingId) takings.set(row.bookingId, row.total ?? 0);
   }
+  const faces = Object.fromEntries(
+    (
+      await tx
+        .select({ id: members.id, photo: members.photo })
+        .from(members)
+        .where(and(eq(members.businessId, business.id), isNotNull(members.photo)))
+    ).map((r) => [r.id, r.photo!]),
+  );
   const plan = {
     me,
+    faces,
     team: me.owner
       ? (await tx.select().from(members).where(eq(members.businessId, business.id))).map(presentMember)
       : [],

@@ -12,13 +12,14 @@ export const maxImageBytes = 400_000;
  * address. Proof photos taken at checkout can come from anyone on the team, and are
  * served only to people on the business.
  */
-export async function saveImage(actor: Actor, type: string, data: Buffer, proof = false) {
+export async function saveImage(actor: Actor, type: string, data: Buffer, proof = false, face = false) {
   ensure(types.includes(type), "Use a JPEG, PNG or WebP photo.", 415);
   ensure(data.byteLength > 0 && data.byteLength <= maxImageBytes, "That photo is too large. Try again.", 413);
   return getDb().transaction(async (tx) => {
     const access = await resolveAccess(tx, actor);
     ensure(access, "Create your business first.", 404);
-    ensure(proof || access.member.owner, "Only the owner can add photos.", 400);
+    // Anyone on the team can add their own profile photo.
+    ensure(proof || face || access.member.owner, "Only the owner can add photos.", 400);
     const id = crypto.randomUUID();
     await tx.insert(images).values({
       id,

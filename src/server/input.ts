@@ -266,6 +266,14 @@ const command = z.discriminatedUnion("action", [
     newShift: walkIn.optional(),
   }),
   z.object({
+    action: z.literal("profile"),
+    // Left out: your own profile. Someone else's needs the owner and the PIN.
+    memberId: z.uuid().optional(),
+    name: name.optional(),
+    photo: z.string().max(512).regex(/^\/api\/images\/[0-9a-f-]{36}$/).nullable(),
+    pin: pin.optional(),
+  }),
+  z.object({
     action: z.literal("link"),
     deviceId: key,
     newShift: walkIn,

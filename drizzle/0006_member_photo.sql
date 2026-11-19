@@ -1,0 +1,1 @@
+ALTER TABLE "portable_pos"."members" ADD COLUMN "photo" text;

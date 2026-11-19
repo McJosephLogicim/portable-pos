@@ -45,13 +45,14 @@ async function addWalkIn(
 export async function runCommand(who: string | Actor, input: unknown) {
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
   const cmd = parseCommand(input);
-  const selfAction = cmd.action === "leave" || cmd.action === "role";
+  const selfAction = cmd.action === "leave" || cmd.action === "role" || cmd.action === "profile";
   if (pinActions.includes(cmd.action) || selfAction) {
     // Joining by invite happens here too, so the PIN is checked against the right business.
     const access = await getDb().transaction((tx) => resolveAccess(tx, actor));
     ensure(access, "Create your business first.", 404);
     // Taking yourself off a shift needs no PIN. Taking someone else off does.
-    if (!selfAction || cmd.memberId !== access.member.id) {
+    const others = cmd.action === "profile" ? cmd.memberId && cmd.memberId !== access.member.id : true;
+    if (!selfAction || (cmd.action === "profile" ? others : cmd.memberId !== access.member.id)) {
       const pin = "pin" in cmd ? cmd.pin : undefined;
       ensure(pin, "Enter the owner PIN.", 403);
       await verifyPin(access.business.id, pin);
@@ -227,6 +228,13 @@ export async function runCommand(who: string | Actor, input: unknown) {
           },
         });
       }
+    } else if (cmd.action === "profile") {
+      const target = cmd.memberId ?? member.id;
+      ensure(target === member.id || me.owner, "Only the owner can change someone else's photo.", 403);
+      await tx
+        .update(members)
+        .set({ photo: cmd.photo, ...(cmd.name ? { name: cmd.name } : {}) })
+        .where(and(eq(members.id, target), eq(members.businessId, business.id)));
     } else if (cmd.action === "link") {
       const [open] = await tx
         .select()

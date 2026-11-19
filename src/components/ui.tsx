@@ -189,11 +189,37 @@ export function useCountUp(value: number, ms = 600) {
 
 /* ---------- photos ---------- */
 
-type Upload = (file: File) => Promise<string>;
+type Upload = (file: File, face?: boolean) => Promise<string>;
 const PhotoContext = createContext<Upload>(async () => {
   throw Error("Photos are unavailable.");
 });
 export const PhotoProvider = PhotoContext.Provider;
+
+/** Profile photos of the team, by member id and by name. */
+export interface Faces {
+  byId: Record<string, string>;
+  byName: Record<string, string>;
+}
+const FacesContext = createContext<Faces>({ byId: {}, byName: {} });
+export const FacesProvider = FacesContext.Provider;
+export function useFaces() {
+  return useContext(FacesContext);
+}
+export function facesOf(state: {
+  faces?: Record<string, string>;
+  me?: { memberId: string; name: string; photo?: string } | null;
+  team?: { id: string; name: string; photo?: string }[];
+  bookings?: { staff: { memberId: string; name: string }[] }[];
+}): Faces {
+  const byId: Record<string, string> = { ...(state.faces ?? {}) };
+  for (const m of state.team ?? []) if (m.photo) byId[m.id] = m.photo;
+  if (state.me?.photo) byId[state.me.memberId] = state.me.photo;
+  const byName: Record<string, string> = {};
+  for (const m of state.team ?? []) if (byId[m.id]) byName[m.name] = byId[m.id];
+  for (const b of state.bookings ?? []) for (const s of b.staff) if (byId[s.memberId]) byName[s.name] = byId[s.memberId];
+  if (state.me && byId[state.me.memberId]) byName[state.me.name] = byId[state.me.memberId];
+  return { byId, byName };
+}
 
 /** Turns a stored proof photo address into something an img can show. */
 const ProofContext = createContext<(url: string) => Promise<string>>(async (url) => url);
@@ -210,7 +236,10 @@ export function PhotoPicker({
   size = "large",
   disabled,
   onError,
+  face,
 }: {
+  /** A profile photo, which anyone on the team can add for themselves. */
+  face?: boolean;
   value?: string;
   onChange: (url: string | undefined) => void;
   onError?: (message: string) => void;
@@ -272,7 +301,7 @@ export function PhotoPicker({
           setError("");
           onError?.("");
           try {
-            onChange(await upload(file));
+            onChange(await upload(file, face));
             buzz.success();
           } catch (err) {
             const message = errorText(err);

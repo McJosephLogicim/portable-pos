@@ -183,6 +183,7 @@ export interface Member {
   owner: boolean;
   /** True once they signed in with the invited email. */
   joined: boolean;
+  photo?: string;
 }
 /** Who is using this register. */
 export interface Me {
@@ -190,6 +191,7 @@ export interface Me {
   name: string;
   roles: Role[];
   owner: boolean;
+  photo?: string;
 }
 export interface Place {
   name: string;
@@ -255,6 +257,8 @@ export interface Bootstrap {
   shifts: Shift[];
   /** Expenses logged on the shifts above. */
   expenses?: Expense[];
+  /** Profile photos of everyone on the team, by member id. */
+  faces?: Record<string, string>;
 }
 export interface RegisterState extends Bootstrap {
   closingShiftId?: string;
