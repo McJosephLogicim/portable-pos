@@ -639,6 +639,7 @@ button.list-row:active {
 }
 .sheet-body {
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 12px var(--gutter) 20px;
   display: flex;
@@ -2776,4 +2777,38 @@ html {
 .use-unit-input {
   width: 96px;
   flex: none;
+}
+
+/* ---------- fit any phone, any brand font ---------- */
+.segmented > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.use-row > .row {
+  gap: 10px;
+}
+.use-amount .nowrap {
+  white-space: normal;
+  line-height: 1.3;
+}
+.input[type="time"],
+.input[type="date"] {
+  min-width: 0;
+  width: 100%;
+  padding-left: 12px;
+  padding-right: 10px;
+}
+@media (max-width: 360px) {
+  .segmented > button {
+    padding: 0 6px;
+    font-size: 13.5px;
+  }
+}
+@media (max-width: 360px) {
+  .time-pair {
+    grid-template-columns: 1fr;
+  }
 }

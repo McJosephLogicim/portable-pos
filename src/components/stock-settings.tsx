@@ -252,7 +252,7 @@ export function UsesEditor({
               <SuggestInput
                 className="grow"
                 label={`Stock item ${i + 1}`}
-                placeholder="e.g. Strawberry pack"
+                placeholder="e.g. Milk"
                 value={u.name}
                 newText="New stock item"
                 suggestions={stockItems
@@ -274,7 +274,7 @@ export function UsesEditor({
               </button>
             </div>
             <div className="use-amount">
-              <span className="label grow nowrap">Each sale uses</span>
+              <span className="label grow nowrap">Per sale</span>
               <input
                 className="input count"
                 inputMode="decimal"

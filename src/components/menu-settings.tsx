@@ -212,7 +212,7 @@ export function ItemSheet({
         return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
       });
       const { uses: picked, created } = mode === "uses" ? resolveUses(uses, stockItems) : { uses: [], created: [] };
-      if (mode === "uses" && !picked.length) throw Error("Type the stock items it uses, or set Stock to Not counted.");
+      if (mode === "uses" && !picked.length) throw Error("Type the stock items it uses, or set Stock to Off.");
       if (created.length && !canCreateStock)
         throw Error("Add " + created.map((c) => c.name).join(", ") + " in Settings › Stock items first, or pick one from the list.");
       const { stock: _, image: _image, uses: _uses, ...rest } = product ?? ({} as Partial<Product>);
@@ -284,7 +284,7 @@ export function ItemSheet({
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
             [
-              ["off", "Not counted"],
+              ["off", "Off"],
               ["count", "Count it"],
               ["uses", "Uses stock"],
             ] as const
@@ -304,7 +304,7 @@ export function ItemSheet({
         </div>
         <p className="label">
           {mode === "off"
-            ? "Sells without limit. Good for drinks made to order."
+            ? "Not counted. It sells without limit, like drinks made to order."
             : mode === "count"
               ? "For a set supply, like bread or pastries. You count it when the shift opens, and it sells out at zero."
               : "Each sale takes this much off a stock item, like 1 strawberry pack or 0.2 kg of ice."}
