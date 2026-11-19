@@ -31,10 +31,18 @@ export interface Settings {
   discounts: Discount[];
   /** Ticked off before a shift opens. Missing on registers saved before checklists existed. */
   checklist?: ChecklistItem[];
+  /** Things counted at opening and closing. */
+  stockItems?: StockItem[];
   /** The business logo, an image address. */
   logo?: string;
-  /** Brand color as #rrggbb. */
+  /** Brand color as #rrggbb. Buttons, highlights and dark cards take it. */
   brand?: string;
+  /** The app's font, by id from the theme list. */
+  font?: string;
+  /** How round cards and buttons are. */
+  radius?: "square" | "soft" | "round";
+  /** Text color as #rrggbb. */
+  ink?: string;
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
 export interface ShiftSettings extends Settings {
@@ -58,8 +66,36 @@ export interface Product {
   price: number;
   groups: OptionGroup[];
   image?: string;
-  /** Counted when a shift opens and sold down to zero, like bread or pastries. */
+  /**
+   * Older registers: the item itself is counted. Read as a stock item with the
+   * item's id and name, used once per sale.
+   */
   stock?: boolean;
+  /** Stock items one of this uses up, like 1 pack of strawberries or 0.2 kg. */
+  uses?: StockUse[];
+}
+/** Something counted at opening and closing, like a strawberry pack or a kilo of ice. */
+export interface StockItem {
+  id: string;
+  name: string;
+  /** piece, pack, kg… */
+  unit: string;
+}
+export interface StockUse {
+  stockId: string;
+  amount: number;
+}
+export interface Expense {
+  id: string;
+  shiftId: string;
+  createdAt: string;
+  label: string;
+  amount: number;
+  /** Paid with cash from the till, or by the person out of their own pocket. */
+  source: "till" | "pocket";
+  /** Who logged it. */
+  by?: string;
+  voidedAt?: string;
 }
 export interface Business {
   id: string;
@@ -80,8 +116,18 @@ export interface Shift {
   settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
-  /** Opening count of each stock-tracked item, by product id. */
+  /** Opening count of each stock item, by stock item id. */
   stock?: Record<string, number>;
+  /** What was counted at closing, by stock item id. */
+  closingStock?: Record<string, number>;
+  /** Coins and bills in the float, by denomination in minor units, like { "500": 15 }. */
+  openingCount?: Record<string, number>;
+  /** Coins and bills counted at closing, the same way. */
+  closingCount?: Record<string, number>;
+  /** How much of each stock item the shift's sales used, saved at closing. */
+  usedStock?: Record<string, number>;
+  /** Who opened the till. */
+  openedBy?: string;
   /** The scheduled shift this till ran for. */
   bookingId?: string;
   /** Checklist lines ticked when the shift opened. */
@@ -117,6 +163,8 @@ export interface Sale {
 }
 export type RegisterEvent =
   | { id: string; shiftId: string; type: "sale"; sale: Sale }
+  | { id: string; shiftId: string; type: "expense"; expense: Expense }
+  | { id: string; shiftId: string; type: "unexpense"; targetId: string }
   | {
       id: string;
       shiftId: string;
@@ -205,6 +253,8 @@ export interface Bootstrap {
   soldOut: string[];
   sales: Sale[];
   shifts: Shift[];
+  /** Expenses logged on the shifts above. */
+  expenses?: Expense[];
 }
 export interface RegisterState extends Bootstrap {
   closingShiftId?: string;

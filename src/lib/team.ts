@@ -399,3 +399,26 @@ export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lo
     Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(h));
 }
+
+/** A shift made on the spot for a till that opens without one scheduled: now, for a few hours, with whoever opened it. */
+export function walkInBooking(
+  input: { place?: string; hours: number },
+  me: { memberId: string; name: string; roles: Role[] },
+  now = Date.now(),
+): Booking {
+  const start = new Date(now);
+  start.setSeconds(0, 0);
+  return {
+    id: crypto.randomUUID(),
+    startsAt: start.toISOString(),
+    endsAt: new Date(start.getTime() + input.hours * 3600000).toISOString(),
+    place: input.place?.trim() ? { name: input.place.trim() } : null,
+    organizer: null,
+    event: null,
+    seats: 1,
+    staff: [{ memberId: me.memberId, name: me.name, role: me.roles.includes("cashier") || !me.roles.length ? "cashier" : me.roles[0] }],
+    quota: 0,
+    incentive: 0,
+    rent: 0,
+  };
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   LayoutGrid,
   Percent,
+  Package,
   Plus,
   Store,
   Trash2,
@@ -24,12 +25,15 @@ import type {
   Product,
   RegisterState,
   Settings,
+  StockItem,
 } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
+import { StockPage, UsesEditor, usesFrom, usesText } from "./stock-settings";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
 import { SuggestInput } from "./combobox";
+import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import {
   buzz,
@@ -58,6 +62,7 @@ export type SettingsPage =
   | "currency"
   | "menu"
   | "checklist"
+  | "stock"
   | "team";
 type Page = SettingsPage;
 
@@ -192,9 +197,32 @@ function BusinessPage(props: SettingsProps) {
     const settings = { ...draft.settings, ...patch };
     if (!settings.logo) delete settings.logo;
     if (!settings.brand) delete settings.brand;
+    if (!settings.font || settings.font === "geist") delete settings.font;
+    if (!settings.radius || settings.radius === "round") delete settings.radius;
+    if (!settings.ink || settings.ink === inks[0]) delete settings.ink;
     setDraft({ ...draft, settings });
   };
   const brand = draft.settings.brand ?? brands[0];
+  const saved = props.state.business!.settings;
+  // Preview the theme on the whole app while editing; go back to the saved one on leaving.
+  const look = JSON.stringify([draft.settings.brand, draft.settings.font, draft.settings.radius, draft.settings.ink]);
+  useEffect(() => {
+    applyTheme(draft.settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [look]);
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  useEffect(() => () => applyTheme(savedRef.current), []);
+  useEffect(() => {
+    // Load every font once so the picker shows each in its own face.
+    const id = "brand-font-all";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?" + fonts.filter((f) => f.google).map((f) => "family=" + f.google).join("&") + "&display=swap";
+    document.head.appendChild(link);
+  }, []);
   return (
     <SubPage
       title="Business"
@@ -208,8 +236,8 @@ function BusinessPage(props: SettingsProps) {
       <div className="brand-preview" style={{ background: brand }}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
-          <span className="strong ellipsis" style={{ color: "#fff" }}>{draft.name || "Your stall"}</span>
-          <span className="label" style={{ color: "rgb(255 255 255 / 0.72)" }}>How your brand shows up</span>
+          <span className="strong ellipsis" style={{ color: onColor(brand) }}>{draft.name || "Your stall"}</span>
+          <span className="label" style={{ color: onColor(brand), opacity: 0.72 }}>Buttons, highlights and cards take this look</span>
         </span>
       </div>
       <div className="stack gap-10">
@@ -241,7 +269,81 @@ function BusinessPage(props: SettingsProps) {
               ))}
             </div>
           </div>
-          <p className="label">The logo and color show on receipts, the business switcher and the top of the till.</p>
+          <label className="row gap-10 custom-color">
+            <input
+              type="color"
+              value={brand}
+              aria-label="Pick any brand color"
+              onChange={(e) => setBrand({ brand: e.target.value })}
+            />
+            <span className="label">Or pick any color</span>
+          </label>
+          <div className="field">
+            <span>Font</span>
+            <div className="font-grid" role="group" aria-label="Font">
+              {fonts.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  aria-pressed={(draft.settings.font ?? "geist") === f.id}
+                  style={{ fontFamily: `${f.family}, system-ui, sans-serif` }}
+                  onClick={() => {
+                    buzz.tap();
+                    setBrand({ font: f.id });
+                  }}
+                >
+                  <span className="font-sample">Aa</span>
+                  <span className="font-name">{f.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <span>Corners</span>
+            <div className="segmented" role="group" aria-label="Corners">
+              {radii.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  aria-pressed={(draft.settings.radius ?? "round") === r.id}
+                  onClick={() => {
+                    buzz.tap();
+                    setBrand({ radius: r.id });
+                  }}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="field">
+            <span>Text color</span>
+            <div className="swatches" role="group" aria-label="Text color">
+              {inks.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={"Text color " + c}
+                  aria-pressed={(draft.settings.ink ?? inks[0]) === c}
+                  style={{ background: c }}
+                  onClick={() => {
+                    buzz.tap();
+                    setBrand({ ink: c });
+                  }}
+                >
+                  {(draft.settings.ink ?? inks[0]) === c && <Check size={16} strokeWidth={2.6} />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="row gap-8 brand-sample">
+            <button type="button" className="btn grow">Charge ₱170</button>
+            <button type="button" className="btn secondary grow">Cancel</button>
+          </div>
+          <p className="label">
+            Your color, font and corners show across the app, on receipts and on shift reports. Changes preview here
+            before you save.
+          </p>
         </div>
       </div>
       <div className="card card-pad stack gap-14">
@@ -856,11 +958,14 @@ export function ItemSheet({
   currency,
   menu,
   liveShift = false,
+  stockItems = [],
   onSave,
   onRemove,
   onClose,
 }: {
   product?: Product;
+  /** What the item can use up with each sale. */
+  stockItems?: StockItem[];
   currency: string;
   /** The rest of the menu, whose categories, choices and options can be reused. */
   menu: Product[];
@@ -872,7 +977,10 @@ export function ItemSheet({
 }) {
   const [itemId] = useState(() => product?.id ?? crypto.randomUUID());
   const [name, setName] = useState(product?.name ?? "");
-  const [tracked, setTracked] = useState(Boolean(product?.stock));
+  const [tracked, setTracked] = useState(Boolean(product?.stock && !product.uses?.length));
+  const [uses, setUses] = useState(() =>
+    (product?.uses ?? []).map((u) => ({ stockId: u.stockId, amount: String(u.amount) })),
+  );
   const [count, setCount] = useState("");
   const askCount = tracked && liveShift && !product;
   const [price, setPrice] = useState(product ? amountText(product.price, currency) : "");
@@ -931,7 +1039,8 @@ export function ItemSheet({
                     })),
                   };
                 });
-                const { stock: _, image: _image, ...rest } = product ?? ({} as Partial<Product>);
+                const { stock: _, image: _image, uses: _uses, ...rest } = product ?? ({} as Partial<Product>);
+                const picked = usesFrom(uses.filter((u) => stockItems.some((s) => s.id === u.stockId)));
                 return onSave(
                   {
                     ...rest,
@@ -941,7 +1050,7 @@ export function ItemSheet({
                     price: parseMoney(price, currency),
                     groups: saved,
                     ...(image ? { image } : {}),
-                    ...(tracked ? { stock: true } : {}),
+                    ...(picked.length ? { uses: picked } : tracked ? { stock: true } : {}),
                   },
                   askCount ? Number(count) : undefined,
                 );
@@ -1008,15 +1117,30 @@ export function ItemSheet({
         </div>
       </div>
       <div className="card card-pad stack gap-12">
+        <span className="grow stack">
+          <span className="strong">Uses stock</span>
+          <span className="label">
+            {stockItems.length
+              ? "Each sale takes this much off what's left in the shift."
+              : "Add stock items in Settings first, like a strawberry pack or ice. Then pick them here."}
+          </span>
+        </span>
+        {stockItems.length > 0 && <UsesEditor stockItems={stockItems} uses={uses} onChange={setUses} />}
+        {product && liveShift && (product.uses?.length ?? 0) !== uses.length && (
+          <p className="label">Stock use changes apply from the next shift.</p>
+        )}
+      </div>
+      {(product?.stock || !stockItems.length) && !uses.length && (
+      <div className="card card-pad stack gap-12">
         <div className="row gap-12">
           <span className="grow stack">
-            <span className="strong">Track stock</span>
+            <span className="strong">Count this item itself</span>
             <span className="label">
               For a set supply, like bread or pastries. You count it when the shift opens and it
               sells out at zero.
             </span>
           </span>
-          <Switch checked={tracked} label="Track stock" onChange={setTracked} />
+          <Switch checked={tracked} label="Count this item itself" onChange={setTracked} />
         </div>
         {askCount && (
           <label className="field">
@@ -1034,6 +1158,7 @@ export function ItemSheet({
           <p className="label">Counting starts when the next shift opens.</p>
         )}
       </div>
+      )}
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
           <div className="between">
@@ -1218,9 +1343,12 @@ function MenuPage(props: SettingsProps) {
                   )}
                   <span className="grow stack">
                     <span className="ellipsis">{p.name}</span>
-                    {(p.groups.length > 0 || p.stock) && (
+                    {(p.groups.length > 0 || p.stock || p.uses?.length) && (
                       <span className="label ellipsis">
-                        {[p.stock ? "Counted each shift" : "", ...p.groups.map((x) => x.name)]
+                        {[
+                          p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
+                          ...p.groups.map((x) => x.name),
+                        ]
                           .filter(Boolean)
                           .join(", ")}
                       </span>
@@ -1248,6 +1376,7 @@ function MenuPage(props: SettingsProps) {
           currency={business.currency}
           menu={menu}
           liveShift={live}
+          stockItems={business.settings.stockItems}
           onClose={() => setEditing(null)}
           onSave={(item, count) =>
             save(
@@ -1282,6 +1411,7 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "currency") return <CurrencyPage {...props} />;
   if (page === "menu") return <MenuPage {...props} />;
   if (page === "checklist") return <ChecklistPage {...props} />;
+  if (page === "stock") return <StockPage {...props} />;
   if (page === "team") return <TeamPage {...props} />;
   const me = state.me;
   if (me && !me.owner)
@@ -1376,6 +1506,12 @@ export function SettingsScreen(props: SettingsProps) {
           title="Opening checklist"
           detail={(s.checklist?.length ?? 0) ? s.checklist!.length + " steps" : "Off"}
           onClick={() => onPage("checklist")}
+        />
+        <Row
+          icon={<Package size={18} strokeWidth={1.8} />}
+          title="Stock items"
+          detail={(s.stockItems?.length ?? 0) ? s.stockItems!.length + " counted" : "Off"}
+          onClick={() => onPage("stock")}
         />
       </div>
       <p className="group-title">Register</p>

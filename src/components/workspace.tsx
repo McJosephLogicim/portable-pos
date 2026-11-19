@@ -18,12 +18,15 @@ import {
   checkout,
   clearRegister,
   loadRegister,
+  logExpense,
   mergeServer,
+  removeExpense,
   saveCart,
   setAvailability,
   subscribeRegister,
   uploadProofs,
 } from "@/lib/register-store";
+import { applyTheme } from "@/lib/theme";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import type { CartLine, RegisterState, Tender } from "@/lib/types";
@@ -235,18 +238,13 @@ export function Workspace() {
     };
   }, [state?.business?.id, state?.shift?.id, online]);
 
-  // The business's brand color tints the dark cards and the active tab.
-  const brandColor = state?.business?.settings.brand;
+  // The business's branding themes the whole app: buttons, text, font and corners.
+  const brandSettings = state?.business?.settings;
+  const theme = JSON.stringify([brandSettings?.brand, brandSettings?.font, brandSettings?.radius, brandSettings?.ink]);
   useEffect(() => {
-    const root = document.documentElement;
-    if (brandColor) {
-      root.style.setProperty("--brand", brandColor);
-      root.classList.add("branded");
-    } else {
-      root.style.removeProperty("--brand");
-      root.classList.remove("branded");
-    }
-  }, [brandColor]);
+    applyTheme(brandSettings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme]);
 
   async function owner(input: OwnerAction) {
     if (!key) throw Error("Register unavailable.");
@@ -315,6 +313,18 @@ export function Workspace() {
       setPending(false);
     }
   }
+  async function expense(input: { label: string; amount: number; source: "till" | "pocket" }) {
+    if (!key) throw Error("Register unavailable.");
+    await locked("write-" + key, async () =>
+      show(key, await logExpense(key, { ...input, by: state?.me?.name || undefined })),
+    );
+    void flush();
+  }
+  async function unexpense(id: string) {
+    if (!key) throw Error("Register unavailable.");
+    await locked("write-" + key, async () => show(key, await removeExpense(key, id)));
+    void flush();
+  }
   async function available(id: string, out: boolean) {
     if (!key) throw Error("Register unavailable.");
     await locked("write-" + key, async () =>
@@ -373,6 +383,46 @@ export function Workspace() {
     return uploadImage(key, photo);
   }
   /** Open another business on this phone. Each keeps its own till and sync queue. */
+  // A shared link like /?shifts=<business> opens that team's open seats.
+  const joinTarget = useRef<string | null>(null),
+    joinAsked = useRef(false);
+  useEffect(() => {
+    try {
+      joinTarget.current = new URLSearchParams(location.search).get("shifts");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    const target = joinTarget.current;
+    if (!target || !state || !key) return;
+    const done = () => {
+      joinTarget.current = null;
+      const url = new URL(location.href);
+      url.searchParams.delete("shifts");
+      history.replaceState(null, "", url);
+    };
+    if (key === DEMO) {
+      if (!joinAsked.current) {
+        joinAsked.current = true;
+        setNotice("Sign in to see the open shifts.");
+        setAccount(true);
+      }
+      return;
+    }
+    if (state.business?.id !== target) {
+      if (state.businesses?.some((b) => b.id === target)) void switchBusiness(target);
+      else {
+        done();
+        setNotice("You're not on that team yet. Ask the owner to invite your email.");
+      }
+      return;
+    }
+    done();
+    try {
+      sessionStorage.setItem("shifts-filter", "open");
+    } catch {}
+    setTab("schedule");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.business?.id, state?.businesses, key]);
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;
     const { userId } = parseKey(key);
@@ -489,7 +539,10 @@ export function Workspace() {
             setSalesFocus(focus);
             go("sales");
           }}
-          onClose={(countedCash, pin) => owner({ action: "close", countedCash, pin })}
+          onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
+          onExpense={expense}
+          onUnexpense={unexpense}
+          onLink={(newShift) => owner({ action: "link", newShift })}
           onSell={() => go("sell")}
           onGoMenu={() => {
             setTab("settings");
@@ -512,6 +565,7 @@ export function Workspace() {
           onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
           onSaved={setToast}
           onBusinesses={() => setSwitching(true)}
+          onTill={() => go("shift")}
         />
       </div>
     );

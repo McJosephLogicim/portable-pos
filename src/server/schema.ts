@@ -73,6 +73,11 @@ export const shifts = register
       stock: jsonb().$type<Record<string, number>>(),
       bookingId: uuid("booking_id"),
       checklist: jsonb().$type<string[]>(),
+      closingStock: jsonb("closing_stock").$type<Record<string, number>>(),
+      openedBy: text("opened_by"),
+      openingCount: jsonb("opening_count").$type<Record<string, number>>(),
+      closingCount: jsonb("closing_count").$type<Record<string, number>>(),
+      usedStock: jsonb("used_stock").$type<Record<string, number>>(),
     },
     (t) => [
       unique().on(t.businessId, t.number),
@@ -117,6 +122,26 @@ export const syncedEvents = register
         .references(() => shifts.id)
         .notNull(),
       fingerprint: text().notNull(),
+    },
+    (t) => [index().on(t.shiftId)],
+  )
+  .enableRLS();
+
+/** Money spent during a shift, from the till or out of someone's pocket. */
+export const expenses = register
+  .table(
+    "expenses",
+    {
+      id: uuid().primaryKey(),
+      shiftId: uuid("shift_id")
+        .references(() => shifts.id)
+        .notNull(),
+      createdAt: date("created_at").notNull(),
+      label: text().notNull(),
+      amount: money("amount").notNull(),
+      source: text().$type<"till" | "pocket">().notNull(),
+      by: text(),
+      voidedAt: date("voided_at"),
     },
     (t) => [index().on(t.shiftId)],
   )

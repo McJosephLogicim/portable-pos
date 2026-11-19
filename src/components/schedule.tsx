@@ -10,6 +10,8 @@ import {
   Plus,
   Trash2,
   Trophy,
+  Share2,
+  Copy,
   X,
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
@@ -42,6 +44,7 @@ import { Leaderboards, ShiftSales } from "./insights";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
+import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
 import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, Sheet, useCelebrate, usePin } from "./ui";
 
@@ -1108,6 +1111,96 @@ function BookingEditor({
   );
 }
 
+/* ---------- share ---------- */
+
+function ShareSchedule({
+  bookings,
+  businessId,
+  businessName,
+  zone,
+  month,
+  owner,
+  onClose,
+}: {
+  bookings: Booking[];
+  businessId: string;
+  businessName: string;
+  zone: string;
+  month: string;
+  owner: boolean;
+  onClose: () => void;
+}) {
+  const [range, setRange] = useState<"upcoming" | "month">("upcoming");
+  const [copied, setCopied] = useState("");
+  const [error, setError] = useState("");
+  const shown =
+    range === "upcoming"
+      ? bookings.filter((b) => Date.parse(b.endsAt) > Date.now())
+      : bookings.filter((b) => dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7));
+  const text = scheduleText(shown, zone);
+  const link = typeof location === "undefined" ? "" : `${location.origin}/?shifts=${businessId}`;
+  const open = shown.filter((b) => seatsOpen(b) > 0).length;
+  async function copy(value: string, what: string) {
+    setError("");
+    try {
+      await navigator.clipboard.writeText(value);
+      buzz.success();
+      setCopied(what);
+      setTimeout(() => setCopied(""), 2000);
+    } catch {
+      setError("Couldn't copy here. Press and hold the text to copy it.");
+    }
+  }
+  return (
+    <Sheet title="Share the schedule" onClose={onClose}>
+      <div className="segmented" role="group" aria-label="Which shifts">
+        <button aria-pressed={range === "upcoming"} onClick={() => setRange("upcoming")}>
+          Upcoming
+        </button>
+        <button aria-pressed={range === "month"} onClick={() => setRange("month")}>
+          {plainDay(month, { month: "long" })}
+        </button>
+      </div>
+      {shown.length ? (
+        <pre className="schedule-text">{text}</pre>
+      ) : (
+        <div className="empty card">
+          <p className="strong">No shifts to share</p>
+          <p className="label">Add shifts first, or pick the other range.</p>
+        </div>
+      )}
+      <button className="btn" disabled={!shown.length} onClick={() => void copy(text, "schedule")}>
+        <Copy size={17} /> {copied === "schedule" ? "Copied" : "Copy schedule"}
+      </button>
+      <div className="card card-pad stack gap-10">
+        <span className="strong">Link to join shifts</span>
+        <span className="label">
+          Opens the open seats{open ? ` (${open} now)` : ""} at {businessName}.{" "}
+          {owner ? "Teammates need an invite from Settings › Team first." : "You need to be on the team to join."}
+        </span>
+        <code className="share-link">{link}</code>
+        <div className="grid-2">
+          <button className="btn secondary" onClick={() => void copy(link, "link")}>
+            <Copy size={17} /> {copied === "link" ? "Copied" : "Copy link"}
+          </button>
+          <button
+            className="btn secondary"
+            disabled={!shown.length}
+            onClick={() => void copy(`${text}\n\nJoin a shift: ${link}`, "both")}
+          >
+            {copied === "both" ? "Copied" : "Copy both"}
+          </button>
+        </div>
+      </div>
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+    </Sheet>
+  );
+}
+
 /* ---------- screen ---------- */
 
 type Filter = "day" | "open" | "mine";
@@ -1121,7 +1214,17 @@ export function ScheduleScreen(props: ScheduleProps) {
   const today = dayOf(Date.now(), zone);
   const [selected, setSelected] = useState(today);
   const [month, setMonth] = useState(today.slice(0, 8) + "01");
-  const [filter, setFilter] = useState<Filter>("day");
+  const [filter, setFilter] = useState<Filter>(() => {
+    // A join link opens on the open seats.
+    try {
+      if (sessionStorage.getItem("shifts-filter") === "open") {
+        sessionStorage.removeItem("shifts-filter");
+        return "open";
+      }
+    } catch {}
+    return "day";
+  });
+  const [sharing, setSharing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Booking | "new" | "bulk" | null>(null);
   const bookings = useMemo(
@@ -1164,8 +1267,18 @@ export function ScheduleScreen(props: ScheduleProps) {
 
   return (
     <div className="page narrow">
-      <div className="page-top">
+      <div className="page-top tight">
         <h1 className="headline grow">Shifts</h1>
+        <button
+          className="round"
+          aria-label="Share the schedule"
+          onClick={() => {
+            buzz.tap();
+            setSharing(true);
+          }}
+        >
+          <Share2 size={19} />
+        </button>
         <button
           className="round"
           aria-label="Leaderboard"
@@ -1186,8 +1299,8 @@ export function ScheduleScreen(props: ScheduleProps) {
             >
               <CalendarRange size={19} />
             </button>
-            <button className="btn small" disabled={!props.online} onClick={() => setEditing("new")}>
-              <Plus size={16} /> Shift
+            <button className="btn small add-shift" aria-label="Add a shift" disabled={!props.online} onClick={() => setEditing("new")}>
+              <Plus size={16} /> <span className="wide-only">Shift</span>
             </button>
           </>
         )}
@@ -1268,6 +1381,17 @@ export function ScheduleScreen(props: ScheduleProps) {
         )}
       </div>
 
+      {sharing && (
+        <ShareSchedule
+          bookings={bookings}
+          businessId={business.id}
+          businessName={business.name}
+          zone={zone}
+          month={month}
+          owner={Boolean(me?.owner)}
+          onClose={() => setSharing(false)}
+        />
+      )}
       {board && (
         <Sheet title="Leaderboard" onClose={() => setBoard(false)}>
           <Leaderboards state={state} demo={props.demo} empty />

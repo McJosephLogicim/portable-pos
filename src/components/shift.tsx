@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, Check, ChevronRight, Wallet } from "lucide-react";
-import type { Booking, Business, RegisterState, Shift } from "@/lib/types";
+import { CalendarDays, Check, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
+import type { Booking, Business, Expense, RegisterState, Shift, StockItem } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
-import type { Opening } from "@/lib/demo";
+import type { Closing, Opening, WalkIn } from "@/lib/demo";
 import type { SalesFocus } from "./sales";
-import { currencyDigits } from "@/lib/settings";
+import { round, shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
+import { CashCounter, type CashValue } from "./cash-count";
+import { ReportSheet } from "./report";
+import { SuggestInput } from "./combobox";
 import {
   errorText,
   formatMoney,
@@ -22,7 +25,145 @@ import {
   usePin,
 } from "./ui";
 
-const floats: Record<string, number> = { PHP: 1000, USD: 100, JPY: 10000, IDR: 500000, VND: 1000000 };
+export type CloseInput = Omit<Closing, "action" | "pin">;
+export type ExpenseInput = { label: string; amount: number; source: Expense["source"] };
+
+/** Where and how long a shift started on the spot runs. */
+function WalkInFields({
+  state,
+  value,
+  onChange,
+}: {
+  state: RegisterState;
+  value: WalkIn;
+  onChange: (value: WalkIn) => void;
+}) {
+  const places = [...new Set((state.bookings ?? []).map((b) => b.place?.name).filter(Boolean) as string[])];
+  return (
+    <div className="card card-pad stack gap-12">
+      <div className="field">
+        <span>Where</span>
+        <SuggestInput
+          label="Where"
+          value={value.place ?? ""}
+          onChange={(place) => onChange({ ...value, place })}
+          suggestions={places.map((p) => ({ key: p, name: p }))}
+          placeholder="e.g. SM Fairview - Atrium"
+          maxLength={120}
+        />
+      </div>
+      <div className="stack gap-8">
+        <span className="label">How long</span>
+        <div className="quick hours" role="group" aria-label="How long">
+          {[4, 6, 8, 10, 12].map((h) => (
+            <button key={h} type="button" aria-pressed={value.hours === h} onClick={() => onChange({ ...value, hours: h })}>
+              {h}h
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="label">It goes on the Shifts page with you on it, so sales and pay add up.</p>
+    </div>
+  );
+}
+
+/** Put a till that opened without a shift onto the Shifts page. */
+function LinkSheet({
+  state,
+  onLink,
+  onDismiss,
+}: {
+  state: RegisterState;
+  onLink: (walkIn: WalkIn) => Promise<void>;
+  onDismiss: () => void;
+}) {
+  const [walkIn, setWalkIn] = useState<WalkIn>({ hours: 8 });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <Sheet
+      title="Add this till to Shifts"
+      onClose={onDismiss}
+      busy={busy}
+      footer={
+        <button
+          className="btn block"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await onLink(walkIn);
+              buzz.success();
+              onDismiss();
+            } catch (e) {
+              setError(errorText(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Adding…" : "Add shift"}
+        </button>
+      }
+    >
+      <p className="muted">It starts when the till opened.</p>
+      <WalkInFields state={state} value={walkIn} onChange={setWalkIn} />
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+    </Sheet>
+  );
+}
+
+const fractional = (unit: string) => ["kg", "g", "L", "mL"].includes(unit);
+
+/** A count field for a stock item: whole numbers for pieces and packs, decimals for weights. */
+function StockCount({
+  item,
+  value,
+  onChange,
+  placeholder = "0",
+}: {
+  item: StockItem;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const decimal = fractional(item.unit);
+  return (
+    <label className="list-row">
+      <span className="well">{item.name.slice(0, 1).toUpperCase()}</span>
+      <span className="grow stack">
+        <span className="ellipsis">{item.name}</span>
+        <span className="label">{item.unit}</span>
+      </span>
+      <input
+        className="input count"
+        inputMode={decimal ? "decimal" : "numeric"}
+        enterKeyHint="next"
+        placeholder={placeholder}
+        aria-label={`How many ${item.unit} of ${item.name}`}
+        value={value}
+        onChange={(e) =>
+          onChange(
+            decimal
+              ? e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 9)
+              : e.target.value.replace(/\D/g, "").slice(0, 6),
+          )
+        }
+      />
+    </label>
+  );
+}
+const countOf = (text: string | undefined) => {
+  const t = (text ?? "").trim();
+  if (!t || t === ".") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? round(n) : undefined;
+};
 
 function Difference({ value, currency }: { value: number; currency: string }) {
   if (value === 0)
@@ -64,24 +205,19 @@ function OpenShift({
 }) {
   const business = state.business!;
   const currency = business.currency;
-  const unit = 10 ** currencyDigits(currency);
-  const base = (floats[currency] ?? 100) * unit;
-  const presets = [0, base / 2, base, base * 2];
-  const [amount, setAmount] = useState("");
+  const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const tracked = state.menu.filter((p) => p.stock);
+  const tracked = stockModel(business.settings.stockItems, state.menu).items;
   const checklist = business.settings.checklist ?? [];
   const near = nearBookings(state);
   const mine = near.find((b) => b.staff.some((s) => s.memberId === state.me?.memberId));
   const [bookingId, setBookingId] = useState<string | null>((mine ?? near[0])?.id ?? null);
+  const [walkIn, setWalkIn] = useState<WalkIn>({ hours: 8 });
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<string[]>([]);
-  let value: number | undefined;
-  try {
-    value = amount.trim() ? parseMoney(amount, currency) : undefined;
-  } catch {}
-  const uncounted = tracked.filter((p) => !(counts[p.id] ?? "").trim()).length;
+  const value = cash.amount;
+  const uncounted = tracked.filter((p) => countOf(counts[p.id]) === undefined).length;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const ready = value !== undefined && !uncounted && !unticked;
   const celebrate = useCelebrate();
@@ -108,9 +244,9 @@ function OpenShift({
       <h1 className="headline">
         Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span>
       </h1>
-      {near.length > 0 && (
-        <div className="stack gap-10">
-          <p className="group-title">This till is for</p>
+      <div className="stack gap-10">
+        <p className="group-title">{near.length ? "This till is for" : "Today's shift"}</p>
+        {near.length > 0 && (
           <div className="card card-list">
             {[...near, null].map((b) => (
               <button
@@ -121,10 +257,10 @@ function OpenShift({
                 onClick={() => setBookingId(b?.id ?? null)}
               >
                 <span className="well">
-                  <CalendarDays size={18} strokeWidth={1.8} />
+                  {b ? <CalendarDays size={18} strokeWidth={1.8} /> : <Plus size={18} strokeWidth={1.8} />}
                 </span>
                 <span className="grow stack">
-                  <span className="ellipsis">{b ? bookingTitle(b) : "Not a scheduled shift"}</span>
+                  <span className="ellipsis">{b ? bookingTitle(b) : "Start a new shift now"}</span>
                   {b && (
                     <span className="label ellipsis">
                       {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
@@ -138,52 +274,29 @@ function OpenShift({
               </button>
             ))}
           </div>
-        </div>
-      )}
-      <div className="card card-pad stack gap-14">
-        <p className="label">Cash in the drawer right now</p>
-        <div className="quick">
-          {presets.map((p) => (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={value === p}
-              onClick={() => setAmount(String(p / unit))}
-            >
-              {p ? formatMoney(p, currency) : "None"}
-            </button>
-          ))}
-        </div>
-        <MoneyField
-          label="Or count it"
-          value={amount}
-          onChange={setAmount}
-          currency={currency}
-        />
+        )}
+        {(!near.length || bookingId === null) && <WalkInFields state={state} value={walkIn} onChange={setWalkIn} />}
+      </div>
+      <div className="stack gap-10">
+        <p className="group-title">Cash float</p>
+        <CashCounter currency={currency} label="Float" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
         <div className="stack gap-10">
-          <p className="group-title">Stock on hand</p>
+          <div className="between section-head">
+            <p className="group-title">Opening stock</p>
+            <span className="label">
+              {tracked.length - uncounted} of {tracked.length}
+            </span>
+          </div>
           <div className="card card-list">
-            {tracked.map((p) => (
-              <label className="list-row" key={p.id}>
-                {p.image ? (
-                  <img src={p.image} alt="" width={40} height={40} className="thumb" />
-                ) : (
-                  <span className="well">{p.name.slice(0, 1)}</span>
-                )}
-                <span className="grow ellipsis">{p.name}</span>
-                <input
-                  className="input count"
-                  inputMode="numeric"
-                  placeholder="0"
-                  aria-label={"How many " + p.name}
-                  value={counts[p.id] ?? ""}
-                  onChange={(e) =>
-                    setCounts({ ...counts, [p.id]: e.target.value.replace(/\D/g, "").slice(0, 5) })
-                  }
-                />
-              </label>
+            {tracked.map((item) => (
+              <StockCount
+                key={item.id}
+                item={item}
+                value={counts[item.id] ?? ""}
+                onChange={(v) => setCounts({ ...counts, [item.id]: v })}
+              />
             ))}
           </div>
         </div>
@@ -263,9 +376,10 @@ function OpenShift({
               const button = document.activeElement;
               await onOpen({
                 openingCash: value!,
-                stock: Object.fromEntries(tracked.map((p) => [p.id, Number(counts[p.id])])),
+                ...(cash.count ? { openingCount: cash.count } : {}),
+                stock: Object.fromEntries(tracked.map((p) => [p.id, countOf(counts[p.id])!])),
                 checked,
-                ...(bookingId ? { bookingId } : {}),
+                ...(bookingId ? { bookingId } : { newShift: walkIn }),
               });
               celebrate(centerOf(button));
             } catch (e) {
@@ -280,7 +394,7 @@ function OpenShift({
             : value === undefined
               ? "Open shift"
               : uncounted
-                ? `Count ${uncounted} more ${uncounted === 1 ? "item" : "items"}`
+                ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
                 : unticked
                   ? `Tick ${unticked} more ${unticked === 1 ? "step" : "steps"}`
                   : `Open with ${formatMoney(value, currency)}`}
@@ -297,66 +411,98 @@ function OpenShift({
 
 function CloseSheet({
   shift,
+  state,
   expected,
   currency,
   onClose,
   onDismiss,
 }: {
   shift: Shift;
+  state: RegisterState;
   expected: number;
   currency: string;
-  onClose: (counted: number, pin: string) => Promise<void>;
+  onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onDismiss: () => void;
 }) {
-  const [count, setCount] = useState("");
+  const [cash, setCash] = useState<CashValue>({});
+  const [counts, setCounts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const withPin = usePin();
-  let counted: number | undefined;
-  try {
-    counted = count.trim() ? parseMoney(count, currency) : undefined;
-  } catch {}
+  const { items } = shiftStock(shift);
+  const opened = Object.keys(shift.stock ?? {});
+  const tracked = items.filter((i) => opened.includes(i.id));
+  const left = stockLeft(shift, state.sales);
+  const counted = cash.amount;
+  const uncounted = tracked.filter((i) => countOf(counts[i.id]) === undefined).length;
   return (
     <Sheet
       title={`Close shift ${shift.number}`}
       onClose={onDismiss}
       busy={busy}
       footer={
-        <button
-          className="btn block"
-          disabled={counted === undefined || busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              if (await withPin((pin) => onClose(counted!, pin))) onDismiss();
-            } catch (e) {
-              setError(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Closing…" : "Close shift"}
-        </button>
+        <div className="stack gap-8">
+          {counted !== undefined && (
+            <p className="between strong">
+              <span className="label">Expected {formatMoney(expected, currency)}</span>
+              <Difference value={counted - expected} currency={currency} />
+            </p>
+          )}
+          <button
+            className="btn block"
+            disabled={counted === undefined || uncounted > 0 || busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const closing: CloseInput = {
+                  countedCash: counted!,
+                  ...(cash.count ? { closingCount: cash.count } : {}),
+                  ...(tracked.length
+                    ? { closingStock: Object.fromEntries(tracked.map((i) => [i.id, countOf(counts[i.id])!])) }
+                    : {}),
+                };
+                if (await withPin((pin) => onClose(closing, pin))) onDismiss();
+              } catch (e) {
+                setError(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy
+              ? "Closing…"
+              : uncounted
+                ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
+                : "Close shift and see report"}
+          </button>
+        </div>
       }
     >
       <div className="tile">
         <span className="label">Expected in the drawer</span>
         <Money value={expected} currency={currency} className="big-num" />
       </div>
-      <MoneyField
-        label="Cash you counted"
-        value={count}
-        onChange={setCount}
-        currency={currency}
-        big
-        autoFocus
-      />
-      {counted !== undefined && (
-        <p className="strong">
-          <Difference value={counted - expected} currency={currency} />
-        </p>
+      <div className="stack gap-10">
+        <p className="group-title">Cash on hand</p>
+        <CashCounter currency={currency} label="Cash on hand" onChange={setCash} />
+      </div>
+      {tracked.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Stock left</p>
+          <p className="label">The grey number is what should be left after today's sales.</p>
+          <div className="card card-list">
+            {tracked.map((item) => (
+              <StockCount
+                key={item.id}
+                item={item}
+                value={counts[item.id] ?? ""}
+                placeholder={String(round(Math.max(0, left[item.id] ?? 0)))}
+                onChange={(v) => setCounts({ ...counts, [item.id]: v })}
+              />
+            ))}
+          </div>
+        </div>
       )}
       {error && (
         <p className="alert" role="alert">
@@ -367,87 +513,116 @@ function CloseSheet({
   );
 }
 
-function ShiftDetails({
-  shift,
-  state,
-  business,
+function ExpenseSheet({
+  currency,
+  suggestions,
+  name,
+  onSave,
   onDismiss,
-  onSales,
 }: {
-  shift: Shift;
-  state: RegisterState;
-  business: Business;
+  currency: string;
+  suggestions: string[];
+  name: string;
+  onSave: (input: ExpenseInput) => Promise<void>;
   onDismiss: () => void;
-  onSales: (focus: SalesFocus) => void;
 }) {
-  const totals = shiftTotals(shift, state.sales);
-  const currency = shiftCurrency(shift, business);
-  const when = new Intl.DateTimeFormat("en", {
-    timeZone: business.timeZone,
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const [label, setLabel] = useState("");
+  const [amount, setAmount] = useState("");
+  const [source, setSource] = useState<Expense["source"]>("till");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  let value: number | undefined;
+  try {
+    value = amount.trim() ? parseMoney(amount, currency) : undefined;
+  } catch {}
+  const ready = label.trim() && value;
   return (
-    <Sheet title={`Shift ${shift.number}`} onClose={onDismiss}>
-      <p className="label">
-        {when.format(new Date(shift.openedAt))} to{" "}
-        {shift.closedAt && when.format(new Date(shift.closedAt))}
-      </p>
-      <div className="card card-list">
-        {totals.methods
-          .filter((m) => m.count)
-          .map((m) => (
-            <div className="list-row" key={m.id}>
-              <span className="grow">{m.name}</span>
-              <Money value={m.amount} currency={currency} />
-            </div>
-          ))}
-        <div className="list-row">
-          <span className="grow strong">Net sales</span>
-          <Money value={totals.total} currency={currency} />
-        </div>
+    <Sheet
+      title="Log an expense"
+      onClose={onDismiss}
+      busy={busy}
+      footer={
+        <button
+          className="btn block"
+          disabled={!ready || busy}
+          onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              await onSave({ label: label.trim(), amount: value!, source });
+              buzz.success();
+              onDismiss();
+            } catch (e) {
+              setError(errorText(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
+        </button>
+      }
+    >
+      <div className="field">
+        <span>What for</span>
+        <SuggestInput
+          label="What for"
+          value={label}
+          onChange={setLabel}
+          suggestions={suggestions.map((s) => ({ key: s, name: s }))}
+          placeholder="Rent, Lalamove, ice…"
+          maxLength={80}
+          autoFocus
+        />
       </div>
-      <div className="card card-list">
-        <div className="list-row">
-          <span className="grow">Opening cash</span>
-          <Money value={shift.openingCash} currency={currency} />
+      <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
+      <div className="stack gap-8">
+        <span className="label">Paid with</span>
+        <div className="segmented" role="group" aria-label="Paid with">
+          <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
+            Cash from the till
+          </button>
+          <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
+            Own pocket
+          </button>
         </div>
-        <div className="list-row">
-          <span className="grow">Expected cash</span>
-          <Money value={totals.expectedCash} currency={currency} />
-        </div>
-        {shift.countedCash !== undefined && (
-          <div className="list-row">
-            <span className="grow">Counted</span>
-            <Money value={shift.countedCash} currency={currency} />
-          </div>
-        )}
-        {shift.difference !== undefined && (
-          <div className="list-row">
-            <span className="grow">Difference</span>
-            <Difference value={shift.difference} currency={currency} />
-          </div>
-        )}
+        <p className="label">
+          {source === "till"
+            ? "Takes it out of the cash expected in the drawer."
+            : `Leaves the drawer alone. The report says to pay back ${name && name !== "You" ? name.split(" ")[0] : "you"}.`}
+        </p>
       </div>
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
     </Sheet>
   );
 }
+
+const expenseIdeas = ["Rent", "Lalamove", "Grab", "Ice", "Supplies", "Parking", "Food", "Gas"];
 
 export function ShiftScreen({
   state,
   online,
   onOpen,
   onClose,
+  onExpense,
+  onUnexpense,
+  onLink,
   onSell,
   onGoMenu,
   onSchedule,
-  onSales,
   demo,
 }: {
   state: RegisterState;
   online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
-  onClose: (countedCash: number, pin: string) => Promise<void>;
+  onClose: (closing: CloseInput, pin: string) => Promise<void>;
+  onExpense: (input: ExpenseInput) => Promise<void>;
+  onUnexpense: (id: string) => Promise<void>;
+  onLink: (walkIn: WalkIn) => Promise<void>;
   onSell: () => void;
   onGoMenu: () => void;
   onSchedule: () => void;
@@ -455,10 +630,17 @@ export function ShiftScreen({
   demo: boolean;
 }) {
   const [closing, setClosing] = useState(false);
-  const [detail, setDetail] = useState<Shift | null>(null);
+  const [addingExpense, setAddingExpense] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
+  const [report, setReport] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
-  const totals = shift ? shiftTotals(shift, state.sales) : null;
+  const expenses = state.expenses ?? [];
+  const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
+  const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
+  const pastLabels = [...new Set([...expenses.map((e) => e.label), ...expenseIdeas])];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
   const external = Boolean(shift && shift.deviceId !== state.deviceId);
@@ -470,6 +652,7 @@ export function ShiftScreen({
   ]
     .filter((s) => s.closedAt)
     .sort((a, b) => b.number - a.number);
+  const detailShift = detail ? history.find((s) => s.id === detail) : undefined;
   const time = new Intl.DateTimeFormat("en", {
     timeZone: business.timeZone,
     hour: "numeric",
@@ -501,8 +684,8 @@ export function ShiftScreen({
             <span className="hero-label">Expected in the drawer</span>
             <Money value={totals.expectedCash} currency={currency} className="big-num" />
             <span className="hero-label">
-              {formatMoney(shift.openingCash, currency)} opening +{" "}
-              {formatMoney(totals.cash, currency)} cash sales
+              {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
+              {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
             </span>
           </div>
           <div className="grid-2">
@@ -525,29 +708,102 @@ export function ShiftScreen({
               </span>
             </div>
           </div>
+          <div className="stack gap-10">
+            <div className="between section-head">
+              <p className="group-title">Expenses</p>
+              {shiftExpenses.length > 0 && (
+                <span className="label">{formatMoney(totals.tillExpenses + totals.pocketExpenses, currency)}</span>
+              )}
+            </div>
+            <div className="card card-list">
+              {shiftExpenses.map((e) => (
+                <div className="list-row" key={e.id}>
+                  <span className="well">
+                    <Receipt size={18} strokeWidth={1.8} />
+                  </span>
+                  <span className="grow stack">
+                    <span className="ellipsis">{e.label}</span>
+                    <span className="label ellipsis">
+                      {e.source === "till" ? "From the till" : `Paid by ${e.by ? e.by.split(" ")[0] : "staff"}`}
+                      {" · "}
+                      {time.format(new Date(e.createdAt))}
+                    </span>
+                  </span>
+                  <Money value={e.amount} currency={currency} />
+                  {!external &&
+                    (removing === e.id ? (
+                      <button
+                        type="button"
+                        className="btn ghost danger compact"
+                        onClick={async () => {
+                          setRemoving(null);
+                          await onUnexpense(e.id);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="round flat"
+                        aria-label={"Remove " + e.label}
+                        onClick={() => {
+                          buzz.tap();
+                          setRemoving(e.id);
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    ))}
+                </div>
+              ))}
+              {!external && (
+                <button type="button" className="list-row" onClick={() => setAddingExpense(true)}>
+                  <span className="well">
+                    <Plus size={18} strokeWidth={1.8} />
+                  </span>
+                  <span className="grow stack">
+                    <span>Log an expense</span>
+                    <span className="label">Paid from the till or out of pocket</span>
+                  </span>
+                  <ChevronRight size={18} className="chev" />
+                </button>
+              )}
+            </div>
+          </div>
           {shift.stock && Object.keys(shift.stock).length > 0 && (
             <div className="stack gap-10">
               <p className="group-title">Stock left</p>
               <div className="card card-list">
                 {Object.entries(stockLeft(shift, state.sales)).map(([id, left]) => {
-                  const p = shift.menu.find((m) => m.id === id);
+                  const item = shiftStock(shift).items.find((i) => i.id === id);
                   const opened = shift.stock![id];
                   return (
                     <div className="list-row" key={id}>
                       <span className="grow stack">
-                        <span className="ellipsis">{p?.name ?? "Item"}</span>
+                        <span className="ellipsis">{item?.name ?? "Stock item"}</span>
                         <span className="meter" aria-hidden="true">
                           <i style={{ width: `${opened ? Math.max(0, left / opened) * 100 : 0}%` }} />
                         </span>
                       </span>
                       <span className={"num" + (left <= 0 ? " g" : "")}>
-                        {left <= 0 ? "Sold out" : `${left} of ${opened}`}
+                        {left <= 0 ? "Out" : `${unitText(left, item?.unit ?? "piece")} left`}
                       </span>
                     </div>
                   );
                 })}
               </div>
             </div>
+          )}
+          {!shift.bookingId && !external && (
+            <button className="notice warn" onClick={() => setLinking(true)}>
+              <CalendarDays size={18} strokeWidth={1.8} />
+              <span className="grow stack" style={{ textAlign: "left" }}>
+                <span className="strong">This till isn't on a shift</span>
+                <span className="label">Add it to Shifts so sales, pay and the report line up.</span>
+              </span>
+              <ChevronRight size={18} className="chev" />
+            </button>
           )}
           {shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) && (
             <button className="notice" onClick={onSchedule}>
@@ -594,6 +850,9 @@ export function ShiftScreen({
                   {online ? "Waiting for sales to sync." : "Connect to close the shift."}
                 </p>
               )}
+              <button className="btn secondary" onClick={() => setReport(true)}>
+                <FileText size={17} /> Report so far
+              </button>
               <button className="btn ghost compact" onClick={onSell}>
                 Back to selling
               </button>
@@ -610,7 +869,7 @@ export function ShiftScreen({
             {history.slice(0, 30).map((s) => {
               const t = shiftTotals(s, state.sales);
               return (
-                <button key={s.id} className="list-row" onClick={() => setDetail(s)}>
+                <button key={s.id} className="list-row" onClick={() => setDetail(s.id)}>
                   <span className="well">
                     <Wallet size={18} strokeWidth={1.8} />
                   </span>
@@ -636,22 +895,36 @@ export function ShiftScreen({
       {closing && shift && totals && (
         <CloseSheet
           shift={shift}
+          state={state}
           expected={totals.expectedCash}
           currency={currency}
-          onClose={onClose}
+          onClose={async (closing, pin) => {
+            await onClose(closing, pin);
+            setDetail(shift.id);
+          }}
           onDismiss={() => setClosing(false)}
         />
       )}
-      {detail && (
-        <ShiftDetails
-          shift={detail}
+      {linking && <LinkSheet state={state} onLink={onLink} onDismiss={() => setLinking(false)} />}
+      {addingExpense && (
+        <ExpenseSheet
+          currency={currency}
+          suggestions={pastLabels}
+          name={state.me?.name ?? ""}
+          onSave={onExpense}
+          onDismiss={() => setAddingExpense(false)}
+        />
+      )}
+      {report && shift && (
+        <ReportSheet shift={shift} state={state} business={business} onDismiss={() => setReport(false)} />
+      )}
+      {detailShift && (
+        <ReportSheet
+          shift={detailShift}
           state={state}
           business={business}
+          title={detailShift.closedAt ? `Shift ${detailShift.number} closed` : undefined}
           onDismiss={() => setDetail(null)}
-          onSales={(f) => {
-            setDetail(null);
-            onSales(f);
-          }}
         />
       )}
     </div>

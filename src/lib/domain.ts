@@ -1,10 +1,13 @@
 import { currencyDigits, discountAmount } from "./settings";
+import { canMake, round, shiftStock, stockModel } from "./stock";
 import type {
   CartLine,
+  Expense,
   Product,
   ReceiptLine,
   Sale,
   Shift,
+  StockItem,
   Tender,
 } from "./types";
 
@@ -110,13 +113,15 @@ export function totalLines(lines: ReceiptLine[]) {
   return total;
 }
 
-/** Units of each stock-tracked item still on hand this shift. */
+/** How much of each stock item is still on hand this shift. */
 export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
   const left = { ...(shift.stock ?? {}) };
+  const model = shiftStock(shift);
   for (const sale of sales) {
     if (sale.shiftId !== shift.id || sale.reversedAt) continue;
     for (const line of sale.lines)
-      if (line.productId in left) left[line.productId] -= line.quantity;
+      for (const use of model.uses.get(line.productId) ?? [])
+        if (use.stockId in left) left[use.stockId] = round(left[use.stockId] - line.quantity * use.amount);
   }
   return left;
 }
@@ -133,40 +138,66 @@ export function withNewItems(
   const fresh = menu.filter((p) => !shift.menu.some((m) => m.id === p.id));
   if (!fresh.length) return shift;
   const stock = { ...(shift.stock ?? {}) };
-  for (const p of fresh) if (p.stock) stock[p.id] = counts[p.id] ?? 0;
+  // A new item counted on its own needs a count now. One that uses stock items the
+  // till already counts just draws on them.
+  for (const p of fresh) if (p.stock && !p.uses?.length && !(p.id in stock)) stock[p.id] = counts[p.id] ?? 0;
   return { ...shift, menu: [...shift.menu, ...fresh], stock };
 }
 
-/** Check what the opening screen sends: a count for every tracked item and every checklist line ticked. */
+function validCount(n: unknown): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1_000_000 && round(n) === n;
+}
+
+/** Check what the opening screen sends: a count for every stock item and every checklist line ticked. */
 export function checkOpening(
   menu: Product[],
+  stockItems: StockItem[] | undefined,
   checklist: { id: string }[],
   stock: Record<string, number>,
   checked: string[],
 ) {
-  for (const p of menu)
-    if (p.stock && !(Number.isInteger(stock[p.id]) && stock[p.id] >= 0))
-      throw Error(`Count the ${p.name} before opening.`);
+  const { items } = stockModel(stockItems, menu);
+  for (const item of items)
+    if (!validCount(stock[item.id])) throw Error(`Count the ${item.name} before opening.`);
   if (checklist.some((c) => !checked.includes(c.id)))
     throw Error("Tick every line of the opening checklist.");
-  return Object.fromEntries(menu.filter((p) => p.stock).map((p) => [p.id, stock[p.id]]));
+  return Object.fromEntries(items.map((i) => [i.id, stock[i.id]]));
 }
 
-/** Refuse an order that asks for more of a counted item than is left. */
+/** Check the closing count: a number for every stock item the shift opened with. */
+export function checkClosing(shift: Shift, counted: Record<string, number> | undefined) {
+  const opened = Object.keys(shift.stock ?? {});
+  if (!opened.length) return undefined;
+  const { items } = shiftStock(shift);
+  for (const id of opened)
+    if (!validCount(counted?.[id]))
+      throw Error(`Count the ${items.find((i) => i.id === id)?.name ?? "stock"} left before closing.`);
+  return Object.fromEntries(opened.map((id) => [id, counted![id]]));
+}
+
+/** Refuse an order that needs more of a stock item than is left. */
 export function checkStock(
-  menu: Product[],
+  shift: Pick<Shift, "menu" | "settings">,
   cart: { productId: string; quantity: number }[],
   left: Record<string, number>,
 ) {
-  const wanted = new Map<string, number>();
+  const model = shiftStock(shift);
+  const wanted = new Map<string, { amount: number; productId: string }>();
   for (const line of cart)
-    if (line.productId in left)
-      wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.quantity);
-  for (const [id, quantity] of wanted) {
+    for (const use of model.uses.get(line.productId) ?? [])
+      if (use.stockId in left) {
+        const now = wanted.get(use.stockId);
+        wanted.set(use.stockId, {
+          amount: round((now?.amount ?? 0) + line.quantity * use.amount),
+          productId: now?.productId ?? line.productId,
+        });
+      }
+  for (const [id, need] of wanted) {
     const have = Math.max(0, left[id]);
-    if (quantity > have) {
-      const name = menu.find((p) => p.id === id)?.name ?? "that item";
-      throw Error(have ? `Only ${have} ${name} left.` : `${name} is sold out.`);
+    if (need.amount > have + 1e-9) {
+      const name = shift.menu.find((p) => p.id === need.productId)?.name ?? "That item";
+      const most = canMake(model, left, need.productId) ?? 0;
+      throw Error(most ? `Only ${most} more ${name} can be made.` : `${name} is sold out.`);
     }
   }
 }
@@ -221,7 +252,7 @@ export function makeSale(input: SaleInput): Sale {
   );
   if (!method) throw Error("Invalid payment method.");
   const lines = priceLines(input.shift.menu, input.cart, input.soldOut);
-  if (input.stock) checkStock(input.shift.menu, lines, input.stock);
+  if (input.stock) checkStock(input.shift, lines, input.stock);
   const { subtotal, discount, total } = priceOrder(
     input.shift,
     lines,
@@ -270,7 +301,7 @@ export interface MethodTotal {
   count: number;
 }
 
-export function shiftTotals(shift: Shift, sales: Sale[]) {
+export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = []) {
   const methods = new Map<string, MethodTotal>(
     shift.settings.payments
       .filter((p) => p.on)
@@ -284,7 +315,16 @@ export function shiftTotals(shift: Shift, sales: Sale[]) {
     count: 0,
     reversed: 0,
     methods: [] as MethodTotal[],
+    /** Paid with cash from the till. */
+    tillExpenses: 0,
+    /** Paid by someone out of pocket, owed back to them. */
+    pocketExpenses: 0,
   };
+  for (const e of expenses) {
+    if (e.shiftId !== shift.id || e.voidedAt) continue;
+    if (e.source === "till") result.tillExpenses += e.amount;
+    else result.pocketExpenses += e.amount;
+  }
   for (const sale of sales) {
     if (sale.shiftId !== shift.id) continue;
     if (sale.reversedAt) {
@@ -305,6 +345,6 @@ export function shiftTotals(shift: Shift, sales: Sale[]) {
     result.count++;
   }
   result.methods = [...methods.values()];
-  result.expectedCash += result.cash;
+  result.expectedCash += result.cash - result.tillExpenses;
   return result;
 }
