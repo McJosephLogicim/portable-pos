@@ -450,7 +450,7 @@ export function UsesEditor({
             <SuggestInput
               className="grow"
               label={`${batch ? "Ingredient" : "Stock item"} ${i + 1}`}
-              placeholder={batch ? "e.g. Whip Cream" : "e.g. Strawberry pack"}
+              placeholder={batch ? "e.g. Whip Cream" : "e.g. Milk"}
               value={u.name}
               newText={batch ? false : "New stock item"}
               suggestions={stockItems
@@ -472,7 +472,7 @@ export function UsesEditor({
             </button>
           </div>
           <div className="use-amount">
-            <span className="label grow nowrap">Each {batch ? "batch" : "sale"} uses</span>
+            <span className="label grow nowrap">Per {batch ? "batch" : "sale"}</span>
             <input
               className="input count"
               inputMode="decimal"

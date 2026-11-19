@@ -1034,7 +1034,7 @@ function BookingEditor({
               <input className="input" type="date" value={d.day} onChange={(e) => e.target.value && set({ day: e.target.value })} />
             </label>
           )}
-          <div className="grid-2">
+          <div className="grid-2 time-pair">
             <label className="field">
               <span>Starts</span>
               <input className="input" type="time" value={d.start} onChange={(e) => e.target.value && set({ start: e.target.value })} />

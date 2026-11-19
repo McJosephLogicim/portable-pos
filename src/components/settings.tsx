@@ -1153,7 +1153,7 @@ export function SettingsScreen(props: SettingsProps) {
         <Row
           icon={<Coins size={18} strokeWidth={1.8} />}
           title="Payment methods"
-          detail={methodsOn.map((m) => m.name).slice(0, 3).join(", ") + (methodsOn.length > 3 ? " +" + (methodsOn.length - 3) : "")}
+          detail={methodsOn.length + " on"}
           onClick={() => onPage("payments")}
         />
         <Row
