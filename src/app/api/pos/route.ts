@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "The register service could not complete the request. Retry when connected.",
+          "Something went wrong on our side. Try again in a moment.",
       },
       { status: 503, headers },
     );

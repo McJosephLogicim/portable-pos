@@ -112,22 +112,34 @@ test("failed local writes preserve the cart and sequence number", async () => {
   assert.equal((await checkout(key, "cash", 500)).sale.sequence, 1);
 });
 
-test("stale carts, sold-out items, unacknowledged switches and foreign devices are guarded", async () => {
+test("stale carts and sold-out items are guarded, and any phone can sell on the open shift", async () => {
   const { key, data } = await start();
   await saveCart(key, cart, []);
   await assert.rejects(saveCart(key, [], []), /cart changed/);
   await setAvailability(key, itemId, true);
   assert.deepEqual((await mergeServer(key, data)).soldOut, [itemId]);
   await assert.rejects(checkout(key, "cash", 325));
-  await assert.rejects(mergeServer(key, { ...data, shift: null }), /unsynced/);
   assert.deepEqual((await loadRegister(key)).cart, cart);
   const pending = (await loadRegister(key)).pending;
+  // A shift opened on another phone sells here too.
   await mergeServer(
     key,
     { ...data, shift: { ...data.shift!, deviceId: crypto.randomUUID() } },
     pending.map((event) => event.id),
   );
-  await assert.rejects(saveCart(key, cart), /another device/);
+  await saveCart(key, cart);
+  assert.deepEqual((await loadRegister(key)).cart, cart);
+});
+
+test("work for a shift another phone closed stays queued to sync", async () => {
+  const { key, data } = await start();
+  await saveCart(key, cart);
+  const { sale } = await checkout(key, "cash", 325);
+  const closed = { ...data.shift!, closedAt: new Date().toISOString(), countedCash: 1000, difference: 0 };
+  const after = await mergeServer(key, { ...data, shift: null, shifts: [closed] });
+  assert.deepEqual(after.pending.map((e) => e.id), [sale.id]);
+  assert.ok(after.sales.some((s) => s.id === sale.id));
+  await assert.rejects(saveCart(key, cart), /Open a shift/);
 });
 
 test("a close with an uncertain network outcome still blocks sales after reload", async () => {

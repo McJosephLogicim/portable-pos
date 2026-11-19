@@ -6,7 +6,7 @@ const maxBytes = 4_000_000;
 
 export async function readCommand(request: Request): Promise<unknown> {
   const reader = request.body?.getReader();
-  if (!reader) throw new RegisterError(400, "Send a valid JSON request.");
+  if (!reader) throw new RegisterError(400, "That request didn't come through right. Reload the app and try again.");
   let bytes = 0;
   let json = "";
   const decoder = new TextDecoder();
@@ -27,7 +27,7 @@ export async function readCommand(request: Request): Promise<unknown> {
     return JSON.parse(json + decoder.decode());
   } catch (error) {
     if (error instanceof RegisterError) throw error;
-    throw new RegisterError(400, "Send a valid JSON request.");
+    throw new RegisterError(400, "That request didn't come through right. Reload the app and try again.");
   } finally {
     reader.releaseLock();
   }

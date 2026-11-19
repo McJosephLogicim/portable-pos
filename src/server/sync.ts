@@ -1,17 +1,35 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { makeSale, stockLeft } from "../lib/domain";
+import { makeSale, shiftTotals, stockLeft } from "../lib/domain";
+import type { Shift } from "../lib/types";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
 import { expenses, sales, shifts, syncedEvents } from "./schema";
-import { presentSale, presentShift } from "./snapshot";
+import { presentExpense, presentSale, presentShift } from "./snapshot";
 
+/** The drawer difference and stock used, from everything recorded on a closed shift. */
+export async function closingFigures(tx: Transaction, shift: Shift, countedCash: number) {
+  const sold = (await tx.select().from(sales).where(eq(sales.shiftId, shift.id))).map(presentSale);
+  const spent = (await tx.select().from(expenses).where(eq(expenses.shiftId, shift.id))).map(presentExpense);
+  const { expectedCash } = shiftTotals(shift, sold, spent);
+  const left = stockLeft(shift, sold);
+  const usedStock = shift.stock
+    ? Object.fromEntries(Object.entries(shift.stock).map(([id, n]) => [id, Math.round((n - left[id]) * 1000) / 1000]))
+    : null;
+  return { difference: countedCash - expectedCash, usedStock };
+}
+
+/**
+ * Record what a phone did on a shift. Any phone on the team can sell on the open shift,
+ * so receipts are numbered here as they arrive. Sales and expenses that reach a shift
+ * after another phone closed it are still recorded, and the closing figures are worked
+ * out again, because the money already changed hands.
+ */
 export async function applyEvents(
   tx: Transaction,
   businessId: string,
   currency: string,
-  deviceId: string,
   events: InputEvent[],
 ) {
   if (!events.length) return;
@@ -24,12 +42,9 @@ export async function applyEvents(
     .select()
     .from(shifts)
     .where(and(eq(shifts.id, shiftId), eq(shifts.businessId, businessId)));
-  ensure(
-    shift && shift.deviceId === deviceId,
-    "This shift belongs to a different register.",
-    409,
-  );
+  ensure(shift, "That shift isn't on this account anymore.", 409);
   const current = presentShift(shift, currency);
+  const closed = Boolean(current.closedAt);
   const unavailable = new Set(shift.soldOut);
   const targets = new Set(
     shift.menu.flatMap((item) => [
@@ -44,17 +59,8 @@ export async function applyEvents(
     .orderBy(desc(sales.sequence))
     .limit(1);
   let nextSequence = (last?.sequence ?? 0) + 1;
-  // Counted items can't sell below zero, even from a till that was offline.
-  const left =
-    shift.stock && Object.keys(shift.stock).length
-      ? stockLeft(
-          current,
-          (
-            await tx.select().from(sales).where(eq(sales.shiftId, shift.id))
-          ).map(presentSale),
-        )
-      : undefined;
   let availabilityChanged = false;
+  let recorded = false;
 
   for (const event of events) {
     const fingerprint = createHash("sha256")
@@ -77,18 +83,15 @@ export async function applyEvents(
         );
       ensure(
         prior?.fingerprint === fingerprint,
-        "A sync identifier was reused. Your local records have been kept.",
+        "A record on this phone doesn't match the saved one. This phone's copy is kept.",
         409,
       );
       continue;
     }
 
-    ensure(!current.closedAt, "This shift has already closed.", 409);
     if (event.type === "availability") {
-      ensure(
-        targets.has(event.targetId),
-        "This menu item or option is missing from the shift.",
-      );
+      // Sold-out marks only matter while the shift is open.
+      if (closed || !targets.has(event.targetId)) continue;
       if (event.soldOut) unavailable.add(event.targetId);
       else unavailable.delete(event.targetId);
       availabilityChanged = true;
@@ -97,7 +100,7 @@ export async function applyEvents(
 
     if (event.type === "expense") {
       const e = event.expense;
-      ensure(event.id === e.id && e.shiftId === shift.id, "The expense and sync identifiers do not match.");
+      ensure(event.id === e.id && e.shiftId === shift.id, "This expense couldn't be saved. Try logging it again.");
       await tx
         .insert(expenses)
         .values({
@@ -110,6 +113,7 @@ export async function applyEvents(
           by: e.by ?? null,
         })
         .onConflictDoNothing();
+      recorded = true;
       continue;
     }
     if (event.type === "unexpense") {
@@ -117,51 +121,50 @@ export async function applyEvents(
         .update(expenses)
         .set({ voidedAt: new Date().toISOString() })
         .where(and(eq(expenses.id, event.targetId), eq(expenses.shiftId, shift.id), isNull(expenses.voidedAt)));
+      recorded = true;
       continue;
     }
 
     const { sale } = event;
     ensure(
       event.id === sale.id && sale.shiftId === shift.id,
-      "The receipt and sync identifiers do not match.",
-    );
-    ensure(
-      sale.sequence === nextSequence,
-      "Receipts must sync in order. Retry the earlier pending sale first.",
-      409,
+      "This receipt couldn't be saved. It's still on this phone.",
     );
     let priced;
     try {
       priced = makeSale({
         id: sale.id,
         shift: current,
-        sequence: sale.sequence,
+        sequence: nextSequence,
         cart: sale.lines,
-        soldOut: [...unavailable],
+        soldOut: [],
         tender: sale.tender,
         discountId: sale.discount?.id,
         received: sale.received,
         createdAt: sale.createdAt,
-        stock: left,
         proofs: sale.proofs,
+        recorded: true,
       });
     } catch (error) {
       throw new RegisterError(
         422,
         error instanceof Error
           ? error.message
-          : "Unable to validate this sale.",
+          : "This receipt couldn't be checked. It's still on this phone.",
       );
     }
-    await tx.insert(sales).values(priced);
-    if (left)
-      for (const line of priced.lines)
-        if (line.productId in left) left[line.productId] -= line.quantity;
+    await tx.insert(sales).values(priced).onConflictDoNothing();
     nextSequence++;
+    recorded = true;
   }
   if (availabilityChanged)
     await tx
       .update(shifts)
       .set({ soldOut: [...unavailable] })
+      .where(eq(shifts.id, shift.id));
+  if (closed && recorded && shift.countedCash !== null)
+    await tx
+      .update(shifts)
+      .set(await closingFigures(tx, current, shift.countedCash))
       .where(eq(shifts.id, shift.id));
 }

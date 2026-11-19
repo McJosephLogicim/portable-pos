@@ -91,7 +91,7 @@ export function priceLines(
       product.price,
     );
     if (!Number.isSafeInteger(unitPrice) || unitPrice < 0)
-      throw Error("Invalid item price.");
+      throw Error("An item in this order has a price that isn't right. Check the menu.");
     return {
       productId: product.id,
       quantity: line.quantity,
@@ -216,6 +216,11 @@ interface SaleInput {
   stock?: Record<string, number>;
   /** Photos of the payment or discount ID. */
   proofs?: string[];
+  /**
+   * A sale another phone already took, arriving to be recorded. The money changed hands,
+   * so sold-out marks, stock counts, photos and a closed shift don't turn it away.
+   */
+  recorded?: boolean;
 }
 
 /** How many proof photos a sale needs: one for the payment, one for the discount. */
@@ -244,15 +249,15 @@ export function priceOrder(
 }
 
 export function makeSale(input: SaleInput): Sale {
-  if (input.shift.closedAt || !input.cart.length)
+  if ((input.shift.closedAt && !input.recorded) || !input.cart.length)
     throw Error("An open shift and at least one item are required.");
   // Methods switched off later stay in the shift snapshot so pending receipts still sync.
   const method = input.shift.settings.payments.find(
     (p) => p.id === input.tender,
   );
-  if (!method) throw Error("Invalid payment method.");
-  const lines = priceLines(input.shift.menu, input.cart, input.soldOut);
-  if (input.stock) checkStock(input.shift, lines, input.stock);
+  if (!method) throw Error("That payment method isn't on this shift.");
+  const lines = priceLines(input.shift.menu, input.cart, input.recorded ? [] : input.soldOut);
+  if (input.stock && !input.recorded) checkStock(input.shift, lines, input.stock);
   const { subtotal, discount, total } = priceOrder(
     input.shift,
     lines,
@@ -283,7 +288,7 @@ export function makeSale(input: SaleInput): Sale {
   if (new TextEncoder().encode(JSON.stringify(sale)).length > 1_000_000)
     throw Error("This order is too large for a single receipt.");
   const proofs = input.proofs ?? [];
-  if (proofs.length < proofsNeeded(input.shift, input.tender, input.discountId))
+  if (!input.recorded && proofs.length < proofsNeeded(input.shift, input.tender, input.discountId))
     throw Error(
       discount && input.shift.settings.discounts.find((d) => d.id === discount.id)?.proof
         ? `Take a photo of the ${discount.name} ID first.`

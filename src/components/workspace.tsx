@@ -27,6 +27,7 @@ import {
   uploadProofs,
 } from "@/lib/register-store";
 import { applyTheme } from "@/lib/theme";
+import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import type { CartLine, RegisterState, Tender } from "@/lib/types";
@@ -48,9 +49,7 @@ async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   );
 }
 function message(e: unknown) {
-  return e instanceof Error
-    ? e.message
-    : "The register could not finish this action.";
+  return friendlyError(e, "The register couldn't finish that. Try again.");
 }
 async function syncRegister(
   key: string,
@@ -77,7 +76,10 @@ async function syncRegister(
     while (current.pending.length) {
       const events = [];
       let bytes = 0;
+      // The server takes one shift per batch. Work for a shift another phone closed goes first.
+      const shiftId = current.pending[0].shiftId;
       for (const event of current.pending.slice(0, 25)) {
+        if (event.shiftId !== shiftId) break;
         const size = new TextEncoder().encode(JSON.stringify(event)).length;
         if (events.length && bytes + size > 1_500_000) break;
         events.push(event);
@@ -217,8 +219,11 @@ export function Workspace() {
     window.addEventListener("online", network);
     window.addEventListener("offline", network);
     document.addEventListener("visibilitychange", visible);
+    // Every 15 seconds send what this phone did. Every 30, also pull in what the other
+    // phones on the shift did, so sales, expenses and a close show up everywhere.
+    let tick = 0;
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void flush();
+      if (document.visibilityState === "visible") void flush(++tick % 2 === 0);
     }, 15000);
     return () => {
       window.removeEventListener("online", network);
@@ -237,6 +242,21 @@ export function Workspace() {
       alive = false;
     };
   }, [state?.business?.id, state?.shift?.id, online]);
+
+  // Another phone can close the shift this one is selling on. Say so instead of
+  // silently swapping the till for the opening screen.
+  const openShift = useRef<{ id: string; number: number; business?: string } | null>(null),
+    closingHere = useRef(false);
+  const live = state?.shift && !state.shift.closedAt ? state.shift : null;
+  useEffect(() => {
+    const before = openShift.current;
+    if (!state) return;
+    openShift.current = live ? { id: live.id, number: live.number, business: state.business?.id } : null;
+    if (before && before.business === state.business?.id && before.id !== live?.id && !closingHere.current)
+      setNotice(`Shift ${before.number} was closed on another phone. Anything sold here still counts toward it.`);
+    closingHere.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live?.id, state?.business?.id]);
 
   // The business's branding themes the whole app: buttons, text, font and corners.
   const brandSettings = state?.business?.settings;
@@ -259,6 +279,7 @@ export function Workspace() {
       await locked("sync-" + key, async () => {
         const s = await loadRegister(key);
         const closingId = input.action === "close" ? s.shift?.id : undefined;
+        if (closingId) closingHere.current = true;
         if (closingId) show(key, await beginClose(key, closingId));
         try {
           const data =
@@ -272,6 +293,7 @@ export function Workspace() {
           show(key, await mergeServer(key, data));
           setSyncErr("");
         } catch (error) {
+          closingHere.current = false;
           // A timeout can follow a successful commit. Keep the till locked until a retry confirms the close.
           if (
             closingId &&
@@ -338,8 +360,6 @@ export function Workspace() {
       await locked("write-" + key, async () => {
         await syncRegister(key);
         const s = await loadRegister(key);
-        if (s.shift?.deviceId === s.deviceId)
-          throw Error("Close this till before signing out.");
         if (s.pending.length)
           throw Error("Sync this device before signing out.");
         const { error } = await authClient().auth.signOut({ scope: "local" });
@@ -365,12 +385,7 @@ export function Workspace() {
   // Roles are picked per shift, so everyone sees every tab.
   const shown = tabs;
   const view: Tab = tab;
-  const sellable = Boolean(
-    state?.shift &&
-      !state.shift.closedAt &&
-      !state.closingShiftId &&
-      state.shift.deviceId === state.deviceId,
-  );
+  const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
   const go = (t: Tab) => {
     if (t !== tab) buzz.tap();
     setTab(t);
@@ -520,16 +535,8 @@ export function Workspace() {
         onFocus={setSalesFocus}
       />
     );
-  else if (tab === "shift" || !sellable) {
-    const elsewhere = state.shift && !state.shift.closedAt && state.shift.deviceId !== state.deviceId;
-    screen =
-      tab === "sell" && elsewhere ? (
-        <div className="page narrow">
-          <h1 className="headline" style={{ paddingTop: 24 }}>
-            Shift {state.shift!.number} is open <span className="g">on another phone. Keep selling there.</span>
-          </h1>
-        </div>
-      ) : (
+  else if (tab === "shift" || !sellable)
+    screen = (
         <ShiftScreen
           state={state}
           online={online}
@@ -551,7 +558,7 @@ export function Workspace() {
           }}
         />
       );
-  } else
+  else
     screen = (
       <div className="page">
         <SellScreen

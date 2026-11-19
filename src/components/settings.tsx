@@ -211,7 +211,7 @@ export function useCommit(props: SettingsProps) {
 }
 
 function applyNote(state: RegisterState) {
-  return state.shift && state.shift.deviceId === state.deviceId
+  return state.shift && !state.shift.closedAt
     ? "Applies to this shift right away."
     : state.shift
       ? "Applies when the next shift opens."

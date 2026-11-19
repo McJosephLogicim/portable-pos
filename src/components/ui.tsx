@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyError } from "@/lib/errors";
 import {
   createContext,
   useCallback,
@@ -81,9 +82,7 @@ export function Money({
 }
 
 export function errorText(error: unknown) {
-  return error instanceof Error
-    ? error.message
-    : "That didn't save. Check the connection and try again.";
+  return friendlyError(error, "That didn't save. Check the connection and try again.");
 }
 
 /** A short buzz on phones that support it: a number, or a pattern of buzz and pause. */
@@ -660,3 +659,16 @@ export function Toast({ text, onDone }: { text: string; onDone: () => void }) {
     </div>
   );
 }
+
+/** An empty list inside a card: what goes here, and how it fills up. */
+export function EmptyRow({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <div className="list-row empty-row">
+      <span className="grow stack gap-4">
+        <span className="strong">{title}</span>
+        {detail && <span className="label">{detail}</span>}
+      </span>
+    </div>
+  );
+}
+

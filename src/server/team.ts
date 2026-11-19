@@ -200,7 +200,7 @@ export async function runPlan(
   // A booking id that belongs to another business must never be overwritten.
   if (cmd.action === "booking" && !loaded.has(cmd.booking.id)) {
     const [taken] = await tx.select({ id: bookings.id }).from(bookings).where(eq(bookings.id, cmd.booking.id));
-    if (taken) throw new RegisterError(409, "That shift id is already in use.");
+    if (taken) throw new RegisterError(409, "That shift was already added.");
   }
 
   for (const m of before.members)

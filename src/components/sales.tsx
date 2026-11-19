@@ -40,7 +40,7 @@ export function SalesScreen({
     [...state.shifts, ...(state.shift ? [state.shift] : [])].map((s) => [s.id, s]),
   );
   const pending = new Set(state.pending.map((e) => e.id));
-  const mine = Boolean(shift && shift.deviceId === state.deviceId);
+  const mine = Boolean(shift);
   const canReverse = Boolean(online && mine && state.pending.length === 0);
   const listScope = focus ? "all" : shift ? scope : "all";
   const q = query.trim().toLowerCase();

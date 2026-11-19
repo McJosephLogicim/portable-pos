@@ -20,6 +20,7 @@ import {
   Sheet,
   buzz,
   centerOf,
+  EmptyRow,
   useCelebrate,
   useCountUp,
   usePin,
@@ -643,8 +644,7 @@ export function ShiftScreen({
   const pastLabels = [...new Set([...expenses.map((e) => e.label), ...expenseIdeas])];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
-  const external = Boolean(shift && shift.deviceId !== state.deviceId);
-  const canClose = online && !state.pending.length && !external;
+  const canClose = online && !state.pending.length;
   const history = [
     ...new Map(
       [...state.shifts, ...(state.shift ? [state.shift] : [])].map((s) => [s.id, s]),
@@ -730,8 +730,7 @@ export function ShiftScreen({
                     </span>
                   </span>
                   <Money value={e.amount} currency={currency} />
-                  {!external &&
-                    (removing === e.id ? (
+                  {removing === e.id ? (
                       <button
                         type="button"
                         className="btn ghost danger compact"
@@ -754,21 +753,22 @@ export function ShiftScreen({
                       >
                         <Trash2 size={16} />
                       </button>
-                    ))}
+                  )}
                 </div>
               ))}
-              {!external && (
-                <button type="button" className="list-row" onClick={() => setAddingExpense(true)}>
-                  <span className="well">
-                    <Plus size={18} strokeWidth={1.8} />
-                  </span>
-                  <span className="grow stack">
-                    <span>Log an expense</span>
-                    <span className="label">Paid from the till or out of pocket</span>
-                  </span>
-                  <ChevronRight size={18} className="chev" />
-                </button>
+              {!shiftExpenses.length && (
+                <EmptyRow title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
               )}
+              <button type="button" className="list-row" onClick={() => setAddingExpense(true)}>
+                <span className="well">
+                  <Plus size={18} strokeWidth={1.8} />
+                </span>
+                <span className="grow stack">
+                  <span>Log an expense</span>
+                  <span className="label">Paid from the till or out of pocket</span>
+                </span>
+                <ChevronRight size={18} className="chev" />
+              </button>
             </div>
           </div>
           {shift.stock && Object.keys(shift.stock).length > 0 && (
@@ -795,7 +795,7 @@ export function ShiftScreen({
               </div>
             </div>
           )}
-          {!shift.bookingId && !external && (
+          {!shift.bookingId && (
             <button className="notice warn" onClick={() => setLinking(true)}>
               <CalendarDays size={18} strokeWidth={1.8} />
               <span className="grow stack" style={{ textAlign: "left" }}>
@@ -817,11 +817,7 @@ export function ShiftScreen({
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
-              {!totals.count && (
-                <p className="label" style={{ padding: "18px 0" }}>
-                  No sales yet this shift.
-                </p>
-              )}
+              {!totals.count && <EmptyRow title="No sales yet" detail="Each payment method adds up here as you sell." />}
               {totals.methods.filter((m) => m.count).map((m) => (
                 <div className="list-row" key={m.id}>
                   <span className="well">
@@ -838,10 +834,7 @@ export function ShiftScreen({
               ))}
             </div>
           </div>
-          {external ? (
-            <p className="notice">This shift is open on another phone. Close it there.</p>
-          ) : (
-            <div className="stack gap-8">
+          <div className="stack gap-8">
               <button className="btn block" disabled={!canClose} onClick={() => setClosing(true)}>
                 Count drawer and close
               </button>
@@ -857,7 +850,6 @@ export function ShiftScreen({
                 Back to selling
               </button>
             </div>
-          )}
         </>
       ) : (
         <OpenShift state={state} online={online} onOpen={onOpen} onGoMenu={onGoMenu} />

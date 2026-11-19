@@ -180,12 +180,15 @@ test(
       return { type: "sale" as const, id: s.id, shiftId: shift.id, sale: s };
     };
     await o({ action: "sync", deviceId, events: [sale(1, 2)] });
-    await assert.rejects(o({ action: "sync", deviceId, events: [sale(2, 1)] }), /sold out/);
+    // A second phone sold the last bread while offline. The money was taken, so it's kept
+    // and the stock shows one short until the closing count settles it.
+    const late = await o({ action: "sync", deviceId: randomUUID(), events: [sale(2, 1)] });
+    assert.equal(late.sales.filter((s) => s.shiftId === shift.id).length, 2);
     // An item added mid-shift goes on sale with the count given.
     const added = await o({ action: "menu", menu: [bread, { ...bread, id: "ube", name: "Ube" }], stock: { ube: 4 }, deviceId, pin });
     assert.equal(added.shift!.stock!.ube, 4);
     snap = await o({ action: "bootstrap" });
-    assert.equal(snap.bookings![0].sales, 2000);
+    assert.equal(snap.bookings![0].sales, 3000);
     snap = await o({ action: "removeMember", memberId: asPaolo.me!.memberId, pin });
     assert.equal(snap.bookings![0].staff.length, 1);
     assert.equal((await paolo({ action: "bootstrap" })).business, null);

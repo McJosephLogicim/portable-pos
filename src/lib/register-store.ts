@@ -225,13 +225,10 @@ export function mergeServer(
     const pending = current.pending.filter(
       (event) => !acknowledged.has(event.id),
     );
-    if (
-      pending.some((event) => !sameBusiness || event.shiftId !== data.shift?.id)
-    ) {
-      throw new Error(
-        "This device has unsynced work from a different shift. Its records are still saved here.",
-      );
-    }
+    // Work for a shift another phone has since closed stays queued. It syncs into that
+    // shift, which works its closing figures out again.
+    if (pending.length && !sameBusiness)
+      throw new Error("This phone has unsynced sales for another business. They're still saved here.");
     const sales = new Map<string, Sale>();
     for (const sale of sameBusiness ? current.sales : [])
       sales.set(sale.id, sale);
@@ -258,10 +255,7 @@ export function mergeServer(
       (sameBusiness ? current.shifts : []).map((shift) => [shift.id, shift]),
     );
     for (const shift of data.shifts) shifts.set(shift.id, shift);
-    const sameTill =
-      sameBusiness &&
-      current.shift?.id === data.shift?.id &&
-      data.shift?.deviceId === current.deviceId;
+    const sameTill = sameBusiness && current.shift?.id === data.shift?.id;
     return {
       ...data,
       deviceId: current.deviceId,
@@ -285,8 +279,6 @@ function activeShift(current: RegisterState) {
   const shift = current.shift;
   if (!shift || shift.closedAt)
     throw new Error("Open a shift before taking sales.");
-  if (shift.deviceId !== current.deviceId)
-    throw new Error("This shift is open on another device.");
   return shift;
 }
 

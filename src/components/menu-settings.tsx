@@ -425,7 +425,7 @@ export function MenuPage(props: SettingsProps) {
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
   const grouped = [...categories, ""].map((c) => ({ name: c, items: menu.filter((m) => (m.category || "") === c) }));
-  const live = Boolean(props.state.shift && props.state.shift.deviceId === props.state.deviceId);
+  const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   return (
     <SubPage
       title="Menu items"

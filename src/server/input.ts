@@ -308,11 +308,9 @@ export function parseCommand(input: unknown) {
     (planActions as readonly unknown[]).includes((input as { action?: unknown }).action);
   const parsed = (plan ? planCommand : command).safeParse(input);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    ensure(
-      false,
-      `Check ${issue.path.join(".") || "the request"}. ${issue.message}`,
-    );
+    // Field paths and schema rules stay on the server. The app checks forms before sending,
+    // so this only happens with an outdated app or a hand-made request.
+    ensure(false, "Something in that didn't look right. Check it and try again, or reload the app.");
   }
   const value = parsed.data;
   if (value.action === "settings") {
@@ -347,7 +345,7 @@ export function parseCommand(input: unknown) {
     ]);
     ensure(
       new Set(ids).size === ids.length,
-      "Each menu item and option needs a unique identifier.",
+      "Two menu items or options ended up the same. Reload the app and try again.",
     );
   }
   return value;
