@@ -1,5 +1,34 @@
 import { makeSale, priceLines, totalLines } from "./domain";
-import type { Bootstrap, CartLine, RegisterState, Sale, Tender } from "./types";
+import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
+import type {
+  Bootstrap,
+  CartLine,
+  RegisterState,
+  Sale,
+  Shift,
+  Tender,
+} from "./types";
+
+/** Fill fields that registers saved by an earlier version of the app don't have. */
+function upgrade(state: RegisterState): RegisterState {
+  const currency = state.business?.currency ?? "USD";
+  const shift = (s: Shift): Shift =>
+    s.settings ? s : { ...s, settings: legacyShiftSettings(currency) };
+  return {
+    ...state,
+    business: state.business && {
+      ...state.business,
+      settings: state.business.settings ?? defaultSettings(currency),
+    },
+    shift: state.shift && shift(state.shift),
+    shifts: state.shifts.map(shift),
+    sales: state.sales.map((s) =>
+      s.payment
+        ? s
+        : { ...s, subtotal: s.subtotal ?? s.total, payment: legacyPayment(s.tender) },
+    ),
+  };
+}
 
 const DB_NAME = "portable-pos-register";
 const REGISTERS = "registers";
@@ -78,7 +107,8 @@ export async function loadRegister(key: string): Promise<RegisterState> {
   const [db, id] = await Promise.all([openDatabase(), deviceId()]);
   return new Promise((resolve, reject) => {
     const request = db.transaction(REGISTERS).objectStore(REGISTERS).get(key);
-    request.onsuccess = () => resolve(request.result ?? emptyRegister(id));
+    request.onsuccess = () =>
+      resolve(request.result ? upgrade(request.result) : emptyRegister(id));
     request.onerror = () => reject(request.error);
   });
 }
@@ -117,7 +147,9 @@ async function updateRegister(
     let failure: unknown;
     request.onsuccess = () => {
       try {
-        const next = update(request.result ?? emptyRegister(id));
+        const next = update(
+          request.result ? upgrade(request.result) : emptyRegister(id),
+        );
         result = next ?? emptyRegister(id);
         if (next === null) store.delete(key);
         else store.put(next, key);
@@ -316,6 +348,7 @@ export async function checkout(
   tender: Tender,
   received: number,
   expectedCart?: CartLine[],
+  discountId?: string,
 ) {
   let sale!: Sale;
   const state = await updateRegister(key, (current) => {
@@ -336,6 +369,7 @@ export async function checkout(
       cart: current.cart,
       soldOut: current.soldOut,
       tender,
+      discountId,
       received,
       createdAt: new Date().toISOString(),
     });

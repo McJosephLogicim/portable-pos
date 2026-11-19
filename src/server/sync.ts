@@ -10,6 +10,7 @@ import { presentShift } from "./snapshot";
 export async function applyEvents(
   tx: Transaction,
   businessId: string,
+  currency: string,
   deviceId: string,
   events: InputEvent[],
 ) {
@@ -28,7 +29,7 @@ export async function applyEvents(
     "This shift belongs to a different register.",
     409,
   );
-  const current = presentShift(shift);
+  const current = presentShift(shift, currency);
   const unavailable = new Set(shift.soldOut);
   const targets = new Set(
     shift.menu.flatMap((item) => [
@@ -103,6 +104,7 @@ export async function applyEvents(
         cart: sale.lines,
         soldOut: [...unavailable],
         tender: sale.tender,
+        discountId: sale.discount?.id,
         received: sale.received,
         createdAt: sale.createdAt,
       });

@@ -1,5 +1,11 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { shiftTotals } from "../lib/domain";
+import {
+  currencyDigits,
+  defaultSettings,
+  legacyShiftSettings,
+  mergeShiftSettings,
+} from "../lib/settings";
 import { getDb } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
@@ -13,7 +19,8 @@ export async function runCommand(ownerId: string, input: unknown) {
   if (
     cmd.action === "reverse" ||
     cmd.action === "close" ||
-    cmd.action === "menu"
+    cmd.action === "menu" ||
+    cmd.action === "settings"
   ) {
     await verifyPin(ownerId, cmd.pin);
   }
@@ -47,8 +54,53 @@ export async function runCommand(ownerId: string, input: unknown) {
         .update(businesses)
         .set({ menu: cmd.menu })
         .where(eq(businesses.id, business.id));
+    } else if (cmd.action === "settings") {
+      const [open] = await tx
+        .select()
+        .from(shifts)
+        .where(
+          and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)),
+        );
+      if (cmd.currency !== business.currency) {
+        ensure(!open, "Close the shift before changing currency.", 409);
+        ensure(
+          !business.menu.length ||
+            currencyDigits(cmd.currency) === currencyDigits(business.currency),
+          `${cmd.currency} uses different decimals. Clear the menu first or keep ${business.currency}.`,
+          409,
+        );
+      }
+      await tx
+        .update(businesses)
+        .set({
+          name: cmd.name,
+          currency: cmd.currency,
+          timeZone: cmd.timeZone,
+          settings: cmd.settings,
+        })
+        .where(eq(businesses.id, business.id));
+      // The till applies new checkout settings right away. The client syncs every pending
+      // receipt before this command, and anything removed stays in the snapshot switched
+      // off, so receipts already priced on another path still validate.
+      if (open && open.deviceId === cmd.deviceId) {
+        await tx
+          .update(shifts)
+          .set({
+            settings: mergeShiftSettings(
+              open.settings ?? legacyShiftSettings(business.currency),
+              cmd.settings,
+            ),
+          })
+          .where(eq(shifts.id, open.id));
+      }
     } else if (cmd.action === "sync") {
-      await applyEvents(tx, business.id, cmd.deviceId, cmd.events);
+      await applyEvents(
+        tx,
+        business.id,
+        business.currency,
+        cmd.deviceId,
+        cmd.events,
+      );
     } else if (cmd.action === "open") {
       const [last] = await tx
         .select()
@@ -74,6 +126,10 @@ export async function runCommand(ownerId: string, input: unknown) {
           number: (last?.number ?? 0) + 1,
           openedAt: new Date().toISOString(),
           menu: business.menu,
+          settings: {
+            ...(business.settings ?? defaultSettings(business.currency)),
+            currency: business.currency,
+          },
         });
       }
     } else if (cmd.action === "reverse") {
@@ -117,7 +173,7 @@ export async function runCommand(ownerId: string, input: unknown) {
           .from(sales)
           .where(eq(sales.shiftId, shift.id));
         const { expectedCash } = shiftTotals(
-          presentShift(shift),
+          presentShift(shift, business.currency),
           receipts.map(presentSale),
         );
         await tx

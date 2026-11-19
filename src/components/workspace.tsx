@@ -1,26 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Clock3,
-  CloudOff,
-  Grid2X2,
-  Layers2,
-  LogIn,
-  ReceiptText,
-  Store,
-  Wifi,
-  WifiOff,
-  X,
-} from "lucide-react";
-import { RegisterScreen } from "./register";
-import { MenuScreen, SalesScreen, ShiftScreen } from "./operations";
-import { Account, Overlay, Setup } from "./account";
+import { ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
+import { SellScreen } from "./sell";
+import { SalesScreen } from "./sales";
+import { ShiftScreen } from "./shift";
+import { SettingsScreen } from "./settings";
+import { Account, Setup } from "./account";
+import { PinProvider, Toast } from "./ui";
 import { api, authClient, RequestFailure } from "@/lib/client";
 import {
   beginClose,
@@ -38,12 +25,13 @@ import { prepareOffline } from "@/lib/service-worker";
 import type { CartLine, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
-  { id: "sell", name: "Register", icon: Grid2X2 },
+  { id: "sell", name: "Sell", icon: ShoppingBag },
   { id: "sales", name: "Sales", icon: ReceiptText },
-  { id: "menu", name: "Menu", icon: Layers2 },
-  { id: "shift", name: "Shift", icon: Clock3 },
+  { id: "shift", name: "Shift", icon: Wallet },
+  { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
+type SettingsPage = "business" | "payments" | "discounts" | "currency" | "menu";
 const ACTIVE = "portable-pos-account";
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
@@ -56,18 +44,6 @@ function message(e: unknown) {
   return e instanceof Error
     ? e.message
     : "The register could not finish this action.";
-}
-function Mark() {
-  return (
-    <span className="wordmark">
-      <span className="brand-mark" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
-      PORTABLE<span className="pos-tag">POS</span>
-    </span>
-  );
 }
 async function syncRegister(
   key: string,
@@ -119,9 +95,10 @@ export function Workspace() {
     [syncErr, setSyncErr] = useState(""),
     [ready, setReady] = useState(false);
   const [account, setAccount] = useState(false),
-    [details, setDetails] = useState(false),
     [pending, setPending] = useState(false),
-    [bootError, setBootError] = useState("");
+    [bootError, setBootError] = useState(""),
+    [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
+    [toast, setToast] = useState("");
   const active = useRef<string | null>(null),
     syncBusy = useRef(false);
   const show = useCallback((id: string, s: RegisterState) => {
@@ -289,7 +266,10 @@ export function Workspace() {
       });
     });
     if (input.action === "open") setTab("sell");
-    if (input.action === "setup") setTab("menu");
+    if (input.action === "setup") {
+      setTab("settings");
+      setSettingsPage("menu");
+    }
   }
   async function cart(next: CartLine[]) {
     if (!state || !key) throw Error("Register unavailable.");
@@ -297,12 +277,12 @@ export function Workspace() {
       show(key, await saveCart(key, next, state.cart)),
     );
   }
-  async function sell(tender: Tender, received: number) {
+  async function sell(tender: Tender, received: number, discountId?: string) {
     if (!state || !key) throw Error("Register unavailable.");
     setPending(true);
     try {
       const result = await locked("write-" + key, () =>
-        checkout(key, tender, received, state.cart),
+        checkout(key, tender, received, state.cart, discountId),
       );
       show(key, result.state);
       void flush();
@@ -332,289 +312,167 @@ export function Workspace() {
         if (error) throw error;
         await clearRegister(key);
       });
-      setDetails(false);
+      setSettingsPage(null);
       await connect(DEMO);
     } catch (e) {
       setNotice(message(e));
     }
   }
   const demo = key === DEMO;
-  const current = tabs.find((t) => t.id === tab)!;
   const business = state?.business;
-  const storeName = business?.name || "Your business";
-  const initials = storeName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
-  const date = state
-    ? new Intl.DateTimeFormat("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        timeZone: business?.timeZone,
-      }).format(new Date())
-    : "";
   const status = state?.pending.length
-    ? `${state.pending.length} pending`
+    ? `${state.pending.length} waiting to sync`
     : syncErr
       ? "Sync paused"
       : online
         ? "Online"
         : "Offline";
-  const props = state
-    ? {
-        state,
-        online,
-        onMenu: (menu: RegisterState["menu"], pin: string) =>
-          owner({ action: "menu", menu, pin }),
-        onOpen: (openingCash: number) => owner({ action: "open", openingCash }),
-        onClose: (countedCash: number, pin: string) =>
-          owner({ action: "close", countedCash, pin }),
-        onReverse: (saleId: string, reason: string, pin: string) =>
-          owner({ action: "reverse", saleId, reason, pin }),
-        onAvailability: available,
-        onSell: () => setTab("sell"),
-        onGoMenu: () => setTab("menu"),
-      }
-    : null;
-  const nav = tabs.map((t) => (
-    <button
-      key={t.id}
-      aria-current={tab === t.id ? "page" : undefined}
-      className={tab === t.id ? "selected" : ""}
-      onClick={() => setTab(t.id)}
-    >
-      <t.icon size={19} strokeWidth={1.8} />
-      <span>{t.name}</span>
-    </button>
-  ));
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <Mark />
-        </div>
-        <button className="business-switch" onClick={() => setDetails(true)}>
-          <span className="store-icon">
-            <Store size={20} />
-          </span>
-          <span>
-            <strong>{storeName}</strong>
-            <small>{demo ? "Demo workspace" : "Business workspace"}</small>
-          </span>
-          <ChevronDown size={14} />
+  const sellable = Boolean(
+    state?.shift &&
+      !state.shift.closedAt &&
+      !state.closingShiftId &&
+      state.shift.deviceId === state.deviceId,
+  );
+  const go = (t: Tab) => {
+    setTab(t);
+    if (t === "settings") setSettingsPage(null);
+    window.scrollTo(0, 0);
+  };
+  const reverse = (saleId: string, reason: string, pin: string) =>
+    owner({ action: "reverse", saleId, reason, pin });
+
+  let screen: React.ReactNode;
+  if (bootError)
+    screen = (
+      <div className="page narrow">
+        <h1 className="headline" style={{ paddingTop: 24 }}>
+          Can't open the register. <span className="g">{bootError}</span>
+        </h1>
+        <button className="btn" onClick={() => key && void connect(key)}>
+          Try again
         </button>
-        <nav className="side-nav" aria-label="Main navigation">
-          {nav}
-        </nav>
-        <div className="side-bottom">
-          {state?.shift && (
-            <button className="shift-info" onClick={() => setTab("shift")}>
-              <span className="status-dot" />
-              <span>
-                Shift {String(state.shift.number).padStart(2, "0")} open
-              </span>
-              <ChevronRight size={15} />
-            </button>
-          )}
-          <button
-            className="account-switch"
-            onClick={() => (demo ? setAccount(true) : setDetails(true))}
-          >
-            <span className="avatar">
-              {demo ? <LogIn size={18} /> : initials}
-            </span>
-            <span>
-              <strong>{demo ? "Owner sign in" : "Owner account"}</strong>
-              <small>{demo ? "Open your workspace" : storeName}</small>
-            </span>
-            <ChevronRight size={15} />
-          </button>
+        <button className="link" onClick={() => setAccount(true)}>
+          Sign in
+        </button>
+      </div>
+    );
+  else if (!state) screen = <div className="loading" role="status">Opening register…</div>;
+  else if (!business)
+    screen = <Setup onSave={owner} onSignOut={() => void signOut()} />;
+  else if (tab === "settings")
+    screen = (
+      <SettingsScreen
+        state={state}
+        online={online}
+        demo={demo}
+        status={status}
+        offlineReady={ready}
+        page={settingsPage}
+        onPage={setSettingsPage}
+        onSaved={setToast}
+        onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
+        onMenu={(menu, pin) => owner({ action: "menu", menu, pin })}
+        onSignIn={() => setAccount(true)}
+        onSignOut={() => void signOut()}
+      />
+    );
+  else if (tab === "sales")
+    screen = (
+      <SalesScreen state={state} online={online} onReverse={reverse} onSell={() => go("sell")} />
+    );
+  else if (tab === "shift" || !sellable) {
+    const elsewhere = state.shift && !state.shift.closedAt && state.shift.deviceId !== state.deviceId;
+    screen =
+      tab === "sell" && elsewhere ? (
+        <div className="page narrow">
+          <h1 className="headline" style={{ paddingTop: 24 }}>
+            Shift {state.shift!.number} is open <span className="g">on another phone. Keep selling there.</span>
+          </h1>
         </div>
-      </aside>
-      <div className="main-shell">
-        <header className="toolbar">
-          <div className="breadcrumbs">
-            <Store size={16} />
-            <span>Workspace</span>
-            <ChevronRight size={13} />
-            <strong>{current.name}</strong>
-          </div>
-          <div className="mobile-brand">
-            <Mark />
-          </div>
-          <div className="toolbar-end">
-            <span className="date">
-              <CalendarDays size={15} />
-              {date}
-            </span>
-            <button className="connection" onClick={() => setDetails(true)}>
-              <span
-                className={
-                  online && !syncErr ? "status-dot" : "status-dot paused"
-                }
-              />
-              {status}
-            </button>
-            <button
-              className="mobile-store icon-btn"
-              aria-label="Workspace details"
-              onClick={() => setDetails(true)}
-            >
-              {demo && <span>Demo</span>}
-              <ChevronDown size={15} />
-            </button>
-          </div>
-        </header>
-        <main className="content">
-          {state?.closingShiftId && (
-            <div className="inline-notice" role="status">
-              Shift closing is awaiting confirmation. Reconnect and retry
-              closing to reconcile the till.
-            </div>
-          )}
+      ) : (
+        <ShiftScreen
+          state={state}
+          online={online}
+          onOpen={(openingCash) => owner({ action: "open", openingCash })}
+          onClose={(countedCash, pin) => owner({ action: "close", countedCash, pin })}
+          onSell={() => go("sell")}
+          onGoMenu={() => {
+            setTab("settings");
+            setSettingsPage("menu");
+          }}
+        />
+      );
+  } else
+    screen = (
+      <div className="page">
+        <SellScreen
+          state={state}
+          status={status}
+          online={online}
+          pending={pending}
+          onCart={cart}
+          onCheckout={sell}
+          onAvailability={available}
+          onReverse={reverse}
+        />
+      </div>
+    );
+
+  return (
+    <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
+      {(notice || (syncErr && !bootError)) && (
+        <div className="page narrow" style={{ paddingBottom: 0, marginBottom: -14 }}>
           {notice && (
-            <div className="inline-notice" role="alert">
-              {notice}
-              <button
-                aria-label="Dismiss message"
-                className="icon-btn"
-                onClick={() => setNotice("")}
-              >
+            <div className="notice" role="alert">
+              <span className="grow">{notice}</span>
+              <button className="round flat" aria-label="Dismiss" onClick={() => setNotice("")}>
                 <X size={16} />
               </button>
             </div>
           )}
           {syncErr && !bootError && (
-            <div className="inline-notice" role="alert">
-              {syncErr}
-              <button className="text-button" onClick={() => setAccount(true)}>
-                Sign in
+            <div className="notice" role="alert">
+              <span className="dot danger" />
+              <span className="grow">{syncErr}</span>
+              <button className="btn small secondary" onClick={() => void flush(true)}>
+                Retry
               </button>
-              <button className="text-button" onClick={() => void flush(true)}>
-                Retry sync
-              </button>
+              {!demo && (
+                <button className="btn small" onClick={() => setAccount(true)}>
+                  Sign in
+                </button>
+              )}
             </div>
           )}
-          {bootError ? (
-            <section className="setup-card">
-              <h1>Register unavailable</h1>
-              <p>{bootError}</p>
-              <button
-                className="black-button"
-                onClick={() => key && void connect(key)}
-              >
-                Try again
-              </button>
-              <button className="text-button" onClick={() => setAccount(true)}>
-                Owner sign in
-              </button>
-            </section>
-          ) : !state || !props ? (
-            <div className="loading" role="status">
-              Opening register…
-            </div>
-          ) : !business ? (
-            <Setup onSave={owner} onSignOut={() => void signOut()} />
-          ) : tab === "menu" ? (
-            <MenuScreen {...props} />
-          ) : tab === "sales" ? (
-            <SalesScreen {...props} />
-          ) : tab === "shift" || !state.shift || state.closingShiftId ? (
-            <ShiftScreen {...props} />
-          ) : state.deviceId !== state.shift.deviceId ? (
-            <section className="setup-card">
-              <h1>Till in use</h1>
-              <p>
-                This shift is open on another device. Continue taking sales on
-                that till.
-              </p>
-            </section>
-          ) : (
-            <RegisterScreen
-              state={state}
-              onCart={cart}
-              onCheckout={sell}
-              onAvailability={available}
-              pending={pending}
-            />
-          )}
-        </main>
-      </div>
-      <nav className="bottom-nav" aria-label="Mobile navigation">
-        {nav}
-      </nav>
-      {details && (
-        <Overlay title={storeName} onDismiss={() => setDetails(false)}>
-          <p className="dialog-intro">
-            {demo
-              ? "Demo workspace · Sales are saved on this device."
-              : "Business workspace"}
-          </p>
-          <div className="workspace-facts">
-            <div>
-              <span>Connection</span>
-              <strong>
-                {online ? <Wifi size={16} /> : <WifiOff size={16} />} {status}
-              </strong>
-            </div>
-            <div>
-              <span>Offline register</span>
-              <strong>
-                {ready ? <Check size={16} /> : <CloudOff size={16} />}{" "}
-                {ready ? "Ready" : "Preparing"}
-              </strong>
-            </div>
-            {business && (
-              <div>
-                <span>Currency</span>
-                <strong>{business.currency}</strong>
-              </div>
-            )}
-            {state?.pending.length ? (
-              <div>
-                <span>Saved on this device</span>
-                <strong>{state.pending.length} pending</strong>
-              </div>
-            ) : null}
-            {demo && (
-              <div>
-                <span>Demo owner PIN</span>
-                <strong>1234</strong>
-              </div>
-            )}
-          </div>
-          {demo ? (
-            <button
-              className="black-button"
-              onClick={() => {
-                setDetails(false);
-                setAccount(true);
-              }}
-            >
-              Sign in to your business
-              <ArrowRight size={16} />
-            </button>
-          ) : (
-            <button className="text-button" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          )}
-        </Overlay>
+        </div>
       )}
+      <main>{screen}</main>
+      {business && (
+        <nav className="tabbar" aria-label="Main">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              aria-current={tab === t.id ? "page" : undefined}
+              onClick={() => go(t.id)}
+            >
+              <t.icon size={21} strokeWidth={tab === t.id ? 2 : 1.7} />
+              {t.name}
+              {t.id === "settings" && (syncErr || !online) && <span className="tab-dot" />}
+            </button>
+          ))}
+        </nav>
+      )}
+      {toast && <Toast text={toast} onDone={() => setToast("")} />}
       {account && (
         <Account
           onDismiss={() => setAccount(false)}
           requiredUser={key && key !== DEMO ? key : undefined}
           onSignedIn={async (id) => {
             setAccount(false);
-            setDetails(false);
             await connect(id);
           }}
         />
       )}
-    </div>
+    </PinProvider>
   );
 }

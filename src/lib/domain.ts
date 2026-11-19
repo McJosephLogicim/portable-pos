@@ -1,3 +1,4 @@
+import { currencyDigits, discountAmount } from "./settings";
 import type {
   CartLine,
   Product,
@@ -8,13 +9,13 @@ import type {
 } from "./types";
 
 function scale(currency: string) {
-  return (
-    10 **
-    (new Intl.NumberFormat("en", {
-      style: "currency",
-      currency,
-    }).resolvedOptions().maximumFractionDigits ?? 2)
-  );
+  return 10 ** currencyDigits(currency);
+}
+
+/** A minor-unit amount as the plain text a seller would type, such as "120.00". */
+export function amountText(minor: number, currency: string) {
+  const digits = currencyDigits(currency);
+  return (minor / 10 ** digits).toFixed(digits);
 }
 
 export function money(minor: number, currency: string) {
@@ -109,32 +110,62 @@ interface SaleInput {
   cart: CartLine[];
   soldOut: string[];
   tender: Tender;
+  discountId?: string;
   received: number;
   createdAt: string;
 }
+
+/** Subtotal, discount and total for a cart, using the shift's own discount list. */
+export function priceOrder(
+  shift: Shift,
+  lines: ReceiptLine[],
+  discountId?: string,
+) {
+  const subtotal = totalLines(lines);
+  if (!discountId) return { subtotal, total: subtotal };
+  const found = shift.settings.discounts.find((d) => d.id === discountId);
+  if (!found) throw Error("That discount is not available this shift.");
+  const amount = discountAmount(found, subtotal);
+  return {
+    subtotal,
+    discount: { id: found.id, name: found.name, amount },
+    total: subtotal - amount,
+  };
+}
+
 export function makeSale(input: SaleInput): Sale {
   if (input.shift.closedAt || !input.cart.length)
     throw Error("An open shift and at least one item are required.");
-  if (!["cash", "qr", "card"].includes(input.tender))
-    throw Error("Invalid payment method.");
+  // Methods switched off later stay in the shift snapshot so pending receipts still sync.
+  const method = input.shift.settings.payments.find(
+    (p) => p.id === input.tender,
+  );
+  if (!method) throw Error("Invalid payment method.");
   const lines = priceLines(input.shift.menu, input.cart, input.soldOut);
-  const total = totalLines(lines);
+  const { subtotal, discount, total } = priceOrder(
+    input.shift,
+    lines,
+    input.discountId,
+  );
   if (
     !Number.isSafeInteger(input.received) ||
     input.received < total ||
     input.received > 2_147_483_647
   )
     throw Error("Enter cash that covers the order total.");
-  if (input.tender !== "cash" && input.received !== total)
+  if (method.kind !== "cash" && input.received !== total)
     throw Error("Confirm the exact amount received.");
-  const sale = {
+  const sale: Sale = {
     id: input.id,
     shiftId: input.shift.id,
     sequence: input.sequence,
     createdAt: input.createdAt,
     lines,
+    subtotal,
+    ...(discount ? { discount } : {}),
     total,
-    tender: input.tender,
+    tender: method.id,
+    payment: { id: method.id, name: method.name, kind: method.kind },
     received: input.received,
     change: input.received - total,
   };
@@ -143,21 +174,49 @@ export function makeSale(input: SaleInput): Sale {
   return sale;
 }
 
+export interface MethodTotal {
+  id: string;
+  name: string;
+  kind: string;
+  amount: number;
+  count: number;
+}
+
 export function shiftTotals(shift: Shift, sales: Sale[]) {
+  const methods = new Map<string, MethodTotal>(
+    shift.settings.payments
+      .filter((p) => p.on)
+      .map((p) => [p.id, { ...p, amount: 0, count: 0 }]),
+  );
   const result = {
     cash: 0,
-    qr: 0,
-    card: 0,
     total: 0,
+    discounts: 0,
     expectedCash: shift.openingCash,
     count: 0,
+    reversed: 0,
+    methods: [] as MethodTotal[],
   };
   for (const sale of sales) {
-    if (sale.shiftId !== shift.id || sale.reversedAt) continue;
-    result[sale.tender] += sale.total;
+    if (sale.shiftId !== shift.id) continue;
+    if (sale.reversedAt) {
+      result.reversed++;
+      continue;
+    }
+    const row = methods.get(sale.payment.id) ?? {
+      ...sale.payment,
+      amount: 0,
+      count: 0,
+    };
+    row.amount += sale.total;
+    row.count++;
+    methods.set(row.id, row);
+    if (sale.payment.kind === "cash") result.cash += sale.total;
     result.total += sale.total;
+    result.discounts += sale.discount?.amount ?? 0;
     result.count++;
   }
+  result.methods = [...methods.values()];
   result.expectedCash += result.cash;
   return result;
 }

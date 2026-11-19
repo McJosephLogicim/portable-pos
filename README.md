@@ -1,6 +1,6 @@
 # PORTABLE POS
 
-A mobile-first, installable register for small food and beverage businesses. The first visit opens a sample coffee counter. Its PIN is **1234** and its records stay in that browser. Sign in to create a separate live business with an empty menu, local currency, time zone, and owner PIN.
+A mobile-first, installable register for small food and beverage businesses. The first visit opens a sample coffee counter priced in pesos. Its PIN is **1234** and its records stay in that browser. Sign in to create a separate live business with an empty menu, local currency, time zone, and owner PIN.
 
 ## Run locally
 
@@ -9,15 +9,16 @@ Use Node 22.12 or later and install packages with `npm ci`. Run `npm run dev` fo
 ## Configure live registers
 
 1. Create a Supabase project. Enable email/password sign-in, set the Auth Site URL and allowed redirect URLs to the app origin, and configure confirmation email delivery for public signups.
-2. Set the variables in `.env.example` in the shell or deployment environment. The client uses the project URL and publishable key. The Node.js API uses `DATABASE_URL` with the Supabase transaction pooler. Keep it server-only. For migrations, `DATABASE_MIGRATION_URL` can point to a direct or session connection.
-3. Apply the checked-in Drizzle migration with `npm run db:migrate` using an exported migration connection. Use a server role that can access the private `portable_pos` schema. Keep that schema outside the Supabase Data API.
-4. Set the same production variables in Vercel and redeploy. Next.js embeds public client configuration at build time. Open the production URL, create an account, add an item, and open a shift.
+2. Set the variables in `.env.example` in the shell or deployment environment. Use a server-only `DATABASE_URL` for the register API and a separate, server-only `DATABASE_MIGRATION_URL` for schema changes. The migration role needs ownership of the application's schema objects and the Drizzle migration journal. Keep the `portable_pos` schema outside the Supabase Data API.
+3. For a local database, run `npm run db:migrate`. For live registers, set the migration URL in the Vercel production environment. Vercel builds the app, applies pending Drizzle migrations, and releases the deployment only if both succeed. Git pushes to `main` trigger production deployments. Preview deployments without a database use the demo. If you configure live data in Preview, give it its own database and migration URL.
+
+The migration command checks the existing journal against the checkout and runs pending SQL in one transaction. Use additive migrations that let the previous release continue serving traffic until Vercel switches over.
 
 ## At the counter
 
 Open the shift while connected and use the same device throughout. Once the register shows **Offline register · Ready** in workspace details, the installed app can reopen offline. Checkout saves the receipt and pending record together. Reconnecting submits sales in sequence. Clearing browser storage or uninstalling before sync can erase pending receipts.
 
-One tender applies to each sale. For QR or card, verify payment on the seller's existing wallet or terminal. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
+One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Settings saved on the till's own phone apply to the open shift at once; menu edits apply from the next shift. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
 
 ## Verification
 

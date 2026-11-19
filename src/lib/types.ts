@@ -1,4 +1,29 @@
-export type Tender = "cash" | "qr" | "card";
+/** The id of a payment method in the shift's settings. Legacy shifts use "cash", "qr" and "card". */
+export type Tender = string;
+export type PaymentKind = "cash" | "wallet" | "card" | "bank" | "other";
+export interface PaymentMethod {
+  id: string;
+  name: string;
+  kind: PaymentKind;
+  on: boolean;
+}
+export interface Discount {
+  id: string;
+  name: string;
+  /** percent: whole percent from 1 to 100. fixed: an amount in minor units. */
+  type: "percent" | "fixed";
+  value: number;
+  on: boolean;
+}
+export interface Settings {
+  receiptNote: string;
+  payments: PaymentMethod[];
+  discounts: Discount[];
+}
+/** What a shift sells with. Copied when the shift opens, like its menu. */
+export interface ShiftSettings extends Settings {
+  currency: string;
+}
 export interface Option {
   id: string;
   name: string;
@@ -23,6 +48,7 @@ export interface Business {
   name: string;
   currency: string;
   timeZone: string;
+  settings: Settings;
 }
 export interface Shift {
   id: string;
@@ -33,6 +59,7 @@ export interface Shift {
   closedAt: string | null;
   openingCash: number;
   menu: Product[];
+  settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
 }
@@ -52,8 +79,11 @@ export interface Sale {
   sequence: number;
   createdAt: string;
   lines: ReceiptLine[];
+  subtotal: number;
+  discount?: { id: string; name: string; amount: number };
   total: number;
   tender: Tender;
+  payment: { id: string; name: string; kind: PaymentKind };
   received: number;
   change: number;
   reversedAt?: string;

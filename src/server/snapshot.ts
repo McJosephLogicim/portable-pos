@@ -3,9 +3,17 @@ import type { Bootstrap, Sale, Shift } from "../lib/types";
 import type { Transaction } from "./db";
 import { z } from "zod";
 import { ensure } from "./errors";
+import {
+  defaultSettings,
+  legacyPayment,
+  legacyShiftSettings,
+} from "../lib/settings";
 import { businesses, sales, shifts } from "./schema";
 
-export function presentShift(row: typeof shifts.$inferSelect): Shift {
+export function presentShift(
+  row: typeof shifts.$inferSelect,
+  currency: string,
+): Shift {
   return {
     id: row.id,
     businessId: row.businessId,
@@ -15,14 +23,19 @@ export function presentShift(row: typeof shifts.$inferSelect): Shift {
     closedAt: row.closedAt && new Date(row.closedAt).toISOString(),
     openingCash: row.openingCash,
     menu: row.menu,
+    settings: row.settings ?? legacyShiftSettings(currency),
     countedCash: row.countedCash ?? undefined,
     difference: row.difference ?? undefined,
   };
 }
 
 export function presentSale(row: typeof sales.$inferSelect): Sale {
+  const { subtotal, discount, payment, ...rest } = row;
   return {
-    ...row,
+    ...rest,
+    subtotal: subtotal ?? row.total,
+    ...(discount ? { discount } : {}),
+    payment: payment ?? legacyPayment(row.tender),
     createdAt: new Date(row.createdAt).toISOString(),
     reversedAt: row.reversedAt
       ? new Date(row.reversedAt).toISOString()
@@ -151,13 +164,14 @@ export async function snapshot(
       )
     : { sales: [] };
   const { id, name, currency, timeZone, menu } = business;
+  const settings = business.settings ?? defaultSettings(currency);
   return {
-    business: { id, name, currency, timeZone },
+    business: { id, name, currency, timeZone, settings },
     menu,
-    shift: active ? presentShift(active) : null,
+    shift: active ? presentShift(active, currency) : null,
     soldOut: active?.soldOut ?? [],
     shifts: recent.map((row) =>
-      presentShift(row.closedAt ? { ...row, menu: [] } : row),
+      presentShift(row.closedAt ? { ...row, menu: [] } : row, currency),
     ),
     ...history,
   };

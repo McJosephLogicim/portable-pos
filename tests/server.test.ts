@@ -198,6 +198,52 @@ test(
       getDb().transaction((tx) => historyPage(tx, owner, "broken cursor")),
       { status: 400 },
     );
+    const business = reopened.business!;
+    const settingsCmd = {
+      action: "settings",
+      deviceId,
+      name: "Renamed booth",
+      currency: "USD",
+      timeZone: "UTC",
+      pin,
+      settings: {
+        ...business.settings,
+        payments: business.settings.payments.filter((p) => p.id !== "qr"),
+        discounts: [
+          { id: "staff", name: "Staff", type: "percent", value: 10, on: true },
+        ],
+      },
+    };
+    await assert.rejects(cmd({ ...settingsCmd, currency: "JPY" }), {
+      status: 409,
+    });
+    const saved = await cmd(settingsCmd);
+    assert.equal(saved.business!.name, "Renamed booth");
+    assert.equal(saved.shift!.settings.discounts[0].id, "staff");
+    assert.equal(
+      saved.shift!.settings.payments.find((p) => p.id === "qr")?.on,
+      false,
+    );
+    const discounted = makeSale({
+      id: randomUUID(),
+      shift: saved.shift!,
+      sequence: 102,
+      cart: [{ productId: "tea", quantity: 1, optionIds: [] }],
+      soldOut: [],
+      tender: "card",
+      discountId: "staff",
+      received: 900,
+      createdAt: new Date().toISOString(),
+    });
+    const withDiscount = await cmd(
+      sync([
+        { type: "sale", id: discounted.id, shiftId: discounted.shiftId, sale: discounted },
+      ]),
+    );
+    const stored = withDiscount.sales.find((s) => s.id === discounted.id)!;
+    assert.equal(stored.total, 900);
+    assert.equal(stored.discount?.amount, 100);
+    assert.equal(stored.payment.name, "Card");
     for (let attempt = 0; attempt < 5; attempt++) {
       await assert.rejects(cmd({ action: "menu", menu: [], pin: "0000" }), {
         status: 403,
