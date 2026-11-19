@@ -752,7 +752,7 @@ export function SellScreen({
         disabled={!count || busy || blocked}
         onClick={() => setCharging(true)}
       >
-        Charge <Money value={total} currency={currency} />
+        Charge {count > 0 && <Money value={total} currency={currency} />}
       </button>
     </>
   );

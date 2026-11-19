@@ -425,10 +425,12 @@ function PinSheet({
 }
 
 export function Toast({ text, onDone }: { text: string; onDone: () => void }) {
+  const done = useRef(onDone);
+  done.current = onDone;
   useEffect(() => {
-    const t = setTimeout(onDone, 2200);
+    const t = setTimeout(() => done.current(), 2200);
     return () => clearTimeout(t);
-  }, [text, onDone]);
+  }, [text]);
   return (
     <div className="toast" role="status">
       {text}

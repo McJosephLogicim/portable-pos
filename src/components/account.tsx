@@ -1,51 +1,10 @@
 "use client";
-import {
-  useState,
-  useEffect,
-  useRef,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import { ArrowRight, X } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import { accountsEnabled, authClient } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
+import { CurrencyOptions } from "./settings";
+import { errorText, Sheet } from "./ui";
 
-export function Overlay({
-  title,
-  onDismiss,
-  children,
-}: {
-  title: string;
-  onDismiss?: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    el?.showModal();
-    return () => el?.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className="account-dialog"
-      onCancel={(e) => {
-        e.preventDefault();
-        onDismiss?.();
-      }}
-    >
-      <div className="dialog-top">
-        <h2>{title}</h2>
-        {onDismiss && (
-          <button className="icon-btn" aria-label="Close" onClick={onDismiss}>
-            <X size={19} />
-          </button>
-        )}
-      </div>
-      {children}
-    </dialog>
-  );
-}
 export function Account({
   onDismiss,
   onSignedIn,
@@ -55,12 +14,12 @@ export function Account({
   onSignedIn: (id: string) => Promise<void>;
   requiredUser?: string;
 }) {
-  const [create, setCreate] = useState(false),
-    [email, setEmail] = useState(""),
-    [password, setPassword] = useState("");
-  const [error, setError] = useState(""),
-    [info, setInfo] = useState(""),
-    [busy, setBusy] = useState(false);
+  const [create, setCreate] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -81,48 +40,48 @@ export function Account({
           throw Error("Sign in with the owner account for this register.");
         await onSignedIn(data.session.user.id);
       } else {
-        setInfo("Check your email to confirm your account, then sign in here.");
+        setInfo("Check your email to confirm, then sign in here.");
         setCreate(false);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed.");
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
   }
   if (!accountsEnabled)
     return (
-      <Overlay title="Demo workspace" onDismiss={onDismiss}>
-        <p className="dialog-intro">
-          Live business accounts are waiting for the Supabase database. You can
-          try a full shift here. Demo sales stay on this device.
+      <Sheet
+        title="Demo only"
+        onClose={onDismiss}
+        footer={
+          <button className="btn block" onClick={onDismiss}>
+            Keep selling
+          </button>
+        }
+      >
+        <p className="muted">
+          Live accounts aren't connected on this server yet. The demo runs a full
+          shift and keeps its sales on this phone. The owner PIN is 1234.
         </p>
-        <div className="workspace-facts">
-          <div>
-            <span>Demo owner PIN</span>
-            <strong>1234</strong>
-          </div>
-        </div>
-        <button className="black-button" onClick={onDismiss}>
-          Back to register
-          <ArrowRight size={16} />
-        </button>
-      </Overlay>
+      </Sheet>
     );
   return (
-    <Overlay
-      title={create ? "Create your account" : "Owner sign in"}
-      onDismiss={onDismiss}
+    <Sheet
+      title={create ? "Create your account" : "Sign in"}
+      onClose={onDismiss}
+      busy={busy}
     >
-      <p className="dialog-intro">
-        {create
-          ? "Set up a register with your own menu and currency."
-          : "Use your email and password to open your business."}
-      </p>
-      <form onSubmit={submit} className="account-form">
-        <label>
-          Email address
+      <form onSubmit={submit} className="stack gap-14">
+        <p className="muted">
+          {create
+            ? "Your own menu, prices and sales. Free to start."
+            : "Open your business on this phone."}
+        </p>
+        <label className="field">
+          <span>Email</span>
           <input
+            className="input"
             type="email"
             autoComplete="email"
             value={email}
@@ -130,9 +89,10 @@ export function Account({
             required
           />
         </label>
-        <label>
-          Password
+        <label className="field">
+          <span>Password</span>
           <input
+            className="input"
             type="password"
             autoComplete={create ? "new-password" : "current-password"}
             minLength={create ? 8 : 1}
@@ -142,33 +102,36 @@ export function Account({
           />
         </label>
         {error && (
-          <p role="alert" className="form-error">
+          <p role="alert" className="alert">
             {error}
           </p>
         )}
-        {info && <p role="status">{info}</p>}
-        <button className="black-button" disabled={busy}>
-          {busy ? "Please wait…" : create ? "Create account" : "Sign in"}
-          <ArrowRight size={16} />
+        {info && (
+          <p role="status" className="notice">
+            {info}
+          </p>
+        )}
+        <button className="btn block" disabled={busy}>
+          {busy ? "One moment…" : create ? "Create account" : "Sign in"}
         </button>
+        {!requiredUser && (
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              setCreate(!create);
+              setError("");
+              setInfo("");
+            }}
+          >
+            {create ? "I already have an account" : "New here? Create an account"}
+          </button>
+        )}
       </form>
-      {!requiredUser && (
-        <button
-          className="text-button"
-          onClick={() => {
-            setCreate(!create);
-            setError("");
-            setInfo("");
-          }}
-        >
-          {create
-            ? "Already have an account? Sign in"
-            : "New business? Create an account"}
-        </button>
-      )}
-    </Overlay>
+    </Sheet>
   );
 }
+
 export function Setup({
   onSave,
   onSignOut,
@@ -176,80 +139,88 @@ export function Setup({
   onSave: (a: OwnerAction) => Promise<void>;
   onSignOut: () => void;
 }) {
-  const [err, setErr] = useState(""),
-    [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    setBusy(true);
-    setErr("");
-    try {
-      await onSave({
-        action: "setup",
-        name: String(f.get("name")).trim(),
-        pin: String(f.get("pin")),
-        currency: String(f.get("currency")),
-        timeZone: String(f.get("zone")),
-      });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Setup failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  const defaultZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const [name, setName] = useState("");
+  const [currency, setCurrency] = useState("PHP");
+  const [timeZone, setTimeZone] = useState(zone);
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
-    <section className="setup-card">
-      <h1>Set up your register</h1>
-      <p>Your menu and sales belong to this business.</p>
-      <form onSubmit={submit} className="account-form">
-        <label>
-          Business name
-          <input name="name" required maxLength={80} />
+    <div className="page narrow">
+      <h1 className="headline" style={{ paddingTop: 24 }}>
+        Set up your stall. <span className="g">It takes a minute.</span>
+      </h1>
+      <form
+        className="card card-pad stack gap-14"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setErr("");
+          try {
+            await onSave({ action: "setup", name: name.trim(), pin, currency, timeZone });
+          } catch (e) {
+            setErr(errorText(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="field">
+          <span>Business name</span>
+          <input
+            className="input"
+            required
+            maxLength={80}
+            placeholder="e.g. Kape sa Kanto"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
-        <label>
-          Currency
-          <select name="currency" defaultValue="USD">
-            {Intl.supportedValuesOf("currency").map((c) => (
-              <option key={c}>{c}</option>
-            ))}
+        <label className="field">
+          <span>Currency</span>
+          <select className="select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <CurrencyOptions />
           </select>
         </label>
-        <label>
-          Time zone
-          <select name="zone" defaultValue={defaultZone}>
-            {Array.from(
-              new Set([defaultZone, ...Intl.supportedValuesOf("timeZone")]),
-            ).map((z) => (
+        <label className="field">
+          <span>Time zone</span>
+          <select className="select" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
+            {Array.from(new Set([zone, ...Intl.supportedValuesOf("timeZone")])).map((z) => (
               <option key={z}>{z}</option>
             ))}
           </select>
         </label>
-        <label>
-          Owner PIN
+        <label className="field">
+          <span>Owner PIN, 4 to 8 digits</span>
           <input
+            className="input"
             type="password"
             inputMode="numeric"
-            name="pin"
             pattern="[0-9]{4,8}"
             minLength={4}
             maxLength={8}
             required
-            aria-describedby="pin-hint"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
           />
         </label>
-        <small id="pin-hint">
-          Use 4–8 digits to protect pricing, reversals, and shift closing.
-        </small>
-        {err && <p role="alert">{err}</p>}
-        <button className="black-button" disabled={busy}>
-          Create register
-          <ArrowRight size={16} />
+        <p className="label">
+          The PIN guards prices, settings, reversals and closing the drawer. Staff
+          can sell without it.
+        </p>
+        {err && (
+          <p role="alert" className="alert">
+            {err}
+          </p>
+        )}
+        <button className="btn block" disabled={busy}>
+          {busy ? "Creating…" : "Create register"}
         </button>
       </form>
-      <button className="text-button" onClick={onSignOut}>
+      <button className="link" onClick={onSignOut}>
         Sign out
       </button>
-    </section>
+    </div>
   );
 }

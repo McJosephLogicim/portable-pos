@@ -358,7 +358,12 @@ export function ShiftScreen({
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
-              {totals.methods.map((m) => (
+              {!totals.count && (
+                <p className="label" style={{ padding: "18px 0" }}>
+                  No sales yet this shift.
+                </p>
+              )}
+              {totals.methods.filter((m) => m.count).map((m) => (
                 <div className="list-row" key={m.id}>
                   <span className="well">
                     <MethodIcon kind={m.kind as never} size={18} />

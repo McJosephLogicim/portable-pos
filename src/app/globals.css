@@ -1262,3 +1262,25 @@ button.list-row:active {
     display: none !important;
   }
 }
+
+/* ---------- big numbers ---------- */
+.due-num {
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+.big-num {
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+.tile-num {
+  font-size: 28px;
+  line-height: 1.1;
+}
+.sheet-body > * {
+  flex-shrink: 0;
+}
+.sheet-head > .btn {
+  margin-top: 12px;
+}

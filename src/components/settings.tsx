@@ -340,9 +340,11 @@ function PaymentsPage(props: SettingsProps) {
               </span>
               <span className="grow stack">
                 <span className={m.on ? "" : "g"}>{m.name}</span>
-                <span className="label">
-                  {paymentKinds.find((k) => k.kind === m.kind)?.name}
-                </span>
+                {paymentKinds.find((k) => k.kind === m.kind)?.name !== m.name && (
+                  <span className="label">
+                    {paymentKinds.find((k) => k.kind === m.kind)?.name}
+                  </span>
+                )}
               </span>
             </button>
             <Switch
