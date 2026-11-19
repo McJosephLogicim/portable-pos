@@ -202,9 +202,11 @@ export function PhotoPicker({
   label,
   size = "large",
   disabled,
+  onError,
 }: {
   value?: string;
   onChange: (url: string | undefined) => void;
+  onError?: (message: string) => void;
   label: string;
   size?: "large" | "small";
   disabled?: boolean;
@@ -236,7 +238,11 @@ export function PhotoPicker({
       {size === "large" && (
         <span className="stack gap-4 grow">
           <span className="strong">{value ? "Photo" : "Add a photo"}</span>
-          <span className="label">{error || (value ? "Tap it to take another." : "Take one or pick from your gallery.")}</span>
+          {error ? (
+            <span className="label alert" role="alert">{error}</span>
+          ) : (
+            <span className="label">{value ? "Tap it to take another." : "Take one or pick from your gallery."}</span>
+          )}
           {value && (
             <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} onClick={() => onChange(undefined)}>
               Remove photo
@@ -255,11 +261,14 @@ export function PhotoPicker({
           if (!file) return;
           setBusy(true);
           setError("");
+          onError?.("");
           try {
             onChange(await upload(file));
             buzz.success();
           } catch (err) {
-            setError(errorText(err));
+            const message = errorText(err);
+            setError(message);
+            onError?.(message);
             buzz.error();
           } finally {
             setBusy(false);

@@ -15,6 +15,7 @@ import {
   parseMoney,
   priceLines,
   priceOrder,
+  saveMenuItem,
   stockLeft,
   totalLines,
 } from "@/lib/domain";
@@ -1028,7 +1029,7 @@ export function SellScreen({
           onClose={() => setAdding(false)}
           onSave={async (item, count) => {
             const done = await withPin((pin) =>
-              onMenu([...state.menu, item], pin, count !== undefined ? { [item.id]: count } : undefined),
+              onMenu(saveMenuItem(state.menu, item), pin, count !== undefined ? { [item.id]: count } : undefined),
             );
             if (done) onSaved("Added " + item.name);
             return done;

@@ -263,14 +263,21 @@ export function TeamPage(props: SettingsProps) {
 }
 
 export function ChecklistPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props);
+  const { draft, setDraft, bar } = useDraft(props, "Save checklist", "Checklist saved");
   const [text, setText] = useState("");
+  const [photoError, setPhotoError] = useState("");
   const list = draft.settings.checklist ?? [];
-  const set = (checklist: typeof list) => setDraft({ ...draft, settings: { ...draft.settings, checklist } });
+  const full = list.length >= 30;
+  const update = (change: (steps: typeof list) => typeof list) =>
+    setDraft((current) => ({
+      ...current,
+      settings: { ...current.settings, checklist: change(current.settings.checklist ?? []) },
+    }));
   function add() {
     const value = text.trim();
-    if (!value || list.length >= 30) return;
-    set([...list, { id: crypto.randomUUID(), text: value }]);
+    if (!value || full) return;
+    const step = { id: crypto.randomUUID(), text: value };
+    update((steps) => steps.length < 30 ? [...steps, step] : steps);
     setText("");
   }
   return (
@@ -298,8 +305,11 @@ export function ChecklistPage(props: SettingsProps) {
                 size="small"
                 value={item.image}
                 label={"photo for step " + (i + 1)}
+                onError={setPhotoError}
                 onChange={(image) =>
-                  set(list.map((x) => (x.id === item.id ? { id: x.id, text: x.text, ...(image ? { image } : {}) } : x)))
+                  update((steps) => steps.map((step) =>
+                    step.id === item.id ? { ...step, image } : step,
+                  ))
                 }
               />
               <input
@@ -307,13 +317,16 @@ export function ChecklistPage(props: SettingsProps) {
                 aria-label={`Step ${i + 1}`}
                 maxLength={120}
                 value={item.text}
-                onChange={(e) => set(list.map((x) => (x.id === item.id ? { ...x, text: e.target.value } : x)))}
+                onChange={(e) => {
+                  const text = e.currentTarget.value;
+                  update((steps) => steps.map((step) => step.id === item.id ? { ...step, text } : step));
+                }}
               />
               <button
                 type="button"
                 className="round flat"
                 aria-label={"Remove " + item.text}
-                onClick={() => set(list.filter((x) => x.id !== item.id))}
+                onClick={() => update((steps) => steps.filter((step) => step.id !== item.id))}
               >
                 <Trash2 size={16} />
               </button>
@@ -321,28 +334,29 @@ export function ChecklistPage(props: SettingsProps) {
           ))}
         </div>
       )}
-      <form
-        className="row gap-8"
-        onSubmit={(e) => {
-          e.preventDefault();
-          add();
-        }}
-      >
+      {photoError && <p className="alert" role="alert">{photoError}</p>}
+      <div className="row gap-8">
         <input
           className="input grow"
           maxLength={120}
           aria-label="New step"
           placeholder={list.length ? "Add a step" : "e.g. Count the cash float"}
           value={text}
+          disabled={full}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            add();
+          }}
         />
-        <button className="round" style={{ width: 52, height: 52 }} aria-label="Add step" disabled={!text.trim()}>
-          <Plus size={20} />
+        <button type="button" className="btn secondary compact" onClick={add} disabled={!text.trim() || full}>
+          Add step
         </button>
-      </form>
+      </div>
       <p className="label">
-        Whoever opens the till ticks every step first. Add a photo to show how it should look. The ticked list
-        is kept with the shift.
+        {full ? "The checklist can hold up to 30 steps. " : ""}
+        Saved steps appear the next time you open the till.
       </p>
       {bar}
     </SubPage>
