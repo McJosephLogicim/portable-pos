@@ -7,6 +7,7 @@ import { authenticatedOwner } from "../src/server/auth";
 import { getDb } from "../src/server/db";
 import { historyPage } from "../src/server/snapshot";
 import { runCommand } from "../src/server/register";
+import { shiftNow } from "./schedule";
 
 test("the register API requires an authenticated Supabase bearer", async () => {
   await assert.rejects(
@@ -46,7 +47,7 @@ test(
     await cmd(setup);
     await runCommand(other, setup);
     await cmd({ action: "menu", menu: [menuItem], pin });
-    const open = { action: "open", openingCash: 5000, deviceId };
+    const open = { action: "open", openingCash: 5000, deviceId, bookingId: await shiftNow(cmd, pin) };
     const [one, retry] = await Promise.all([cmd(open), cmd(open)]);
     const shift = one.shift!;
     assert.equal(retry.shift!.id, shift.id);
@@ -152,7 +153,7 @@ test(
     );
     assert.equal((await cmd(sync(events))).sales.length, 4);
     await assert.rejects(cmd(reverse), { status: 409 });
-    const reopened = await cmd(open);
+    const reopened = await cmd({ ...open, bookingId: await shiftNow(cmd, pin) });
     assert.equal(reopened.shift!.number, 2);
     assert.equal(reopened.shift!.menu[0].price, 1000);
     assert.deepEqual(reopened.soldOut, []);

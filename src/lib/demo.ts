@@ -3,7 +3,7 @@ import { checkCount, type CashCount } from "./cash";
 import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "./domain";
 import { round } from "./stock";
 import { demoPlan } from "./demo-plan";
-import { applyPlan, PlanError, walkInBooking, type PlanCommand } from "./team";
+import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { defaultSettings, mergeShiftSettings } from "./settings";
 import type {
@@ -131,10 +131,11 @@ export function demoAction(
       const checklist = business.settings.checklist ?? [];
       const stock = checkOpening(state.menu, business.settings.stockItems, checklist, input.stock, input.checked);
       const openingCount = checkCount(input.openingCount, input.openingCash);
-      if (input.bookingId && !state.bookings?.some((b) => b.id === input.bookingId))
-        throw Error("That scheduled shift was removed.");
-      const walkIn = input.bookingId ? undefined : walkInBooking(input.newShift ?? { hours: 8 }, state.me!);
-      const bookings = walkIn ? [...(state.bookings ?? []), walkIn] : state.bookings;
+      const booking = state.bookings?.find((b) => b.id === input.bookingId);
+      if (!input.bookingId) throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
+      if (!booking) throw Error("That scheduled shift was removed.");
+      const problem = startProblem(booking, business.timeZone);
+      if (problem) throw Error(problem);
       const shift: Shift = {
         ...newShift(
           state.deviceId,
@@ -147,10 +148,10 @@ export function demoAction(
         ...(Object.keys(stock).length ? { stock } : {}),
         ...(openingCount ? { openingCount } : {}),
         openedBy: state.me?.name,
-        bookingId: input.bookingId ?? walkIn!.id,
+        bookingId: booking.id,
         checklist: checklist.map((c) => c.text),
       };
-      return { ...state, bookings, shift, shifts: [shift, ...state.shifts], soldOut: [] };
+      return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
     }
     case "profile": {
       const me = state.me!;

@@ -4,6 +4,7 @@ import test from "node:test";
 import { makeSale } from "../src/lib/domain";
 import type { RegisterEvent, Shift, Tender } from "../src/lib/types";
 import { runCommand } from "../src/server/register";
+import { shiftNow } from "./schedule";
 
 test(
   "any phone sells on, manages and closes a shift, and late sales reconcile after closing",
@@ -25,11 +26,12 @@ test(
       pin,
       menu: [{ id: "tea", name: "Tea", category: "", price: 10000, groups: [], stock: true }],
     });
-    const opened = await cmd({ action: "open", deviceId: phoneA, openingCash: 50000, stock: { tea: 3 } });
+    const bookingId = await shiftNow(cmd, pin);
+    const opened = await cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 50000, stock: { tea: 3 } });
     const shift = opened.shift!;
 
     // Phone B joins the shift phone A opened.
-    const joined = await cmd({ action: "open", deviceId: phoneB, openingCash: 0, stock: { tea: 9 } });
+    const joined = await cmd({ action: "open", deviceId: phoneB, bookingId: await shiftNow(cmd, pin), openingCash: 0, stock: { tea: 9 } });
     assert.equal(joined.shift!.id, shift.id);
     assert.equal(joined.shift!.openingCash, 50000);
 
@@ -93,7 +95,7 @@ test(
     await sync(phoneA, [{ type: "availability", id: randomUUID(), shiftId: shift.id, targetId: "tea", soldOut: true }]);
 
     // Reopening still works and the shift counter moves on.
-    const next = await cmd({ action: "open", deviceId: phoneA, openingCash: 0, stock: { tea: 1 } });
+    const next = await cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 0, stock: { tea: 1 } });
     assert.equal(next.shift!.number, 2);
   },
 );

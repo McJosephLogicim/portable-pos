@@ -11,6 +11,8 @@ import { shiftCurrency } from "./receipt";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
+import { RecordEmpty } from "./records";
+import { OPEN_EARLY, startProblem } from "@/lib/team";
 import {
   errorText,
   formatMoney,
@@ -181,11 +183,123 @@ function Difference({ value, currency }: { value: number; currency: string }) {
   );
 }
 
-/** Scheduled shifts a till opened now is most likely for: running now or starting within three hours. */
-function nearBookings(state: RegisterState) {
+/** Scheduled shifts that haven't ended, soonest first, with the ones you're on ahead of others at the same time. */
+function upcoming(state: RegisterState) {
   const now = Date.now();
-  return (state.bookings ?? []).filter(
-    (b) => Date.parse(b.endsAt) > now && Date.parse(b.startsAt) - now < 3 * 3600000,
+  const mine = (b: Booking) => (b.staff.some((s) => s.memberId === state.me?.memberId) ? 0 : 1);
+  return (state.bookings ?? [])
+    .filter((b) => Date.parse(b.endsAt) > now)
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || mine(a) - mine(b));
+}
+
+function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zone: string; note?: string; onClick?: () => void }) {
+  const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
+  const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
+  const today = day.format(Date.now()) === day.format(new Date(b.startsAt));
+  const body = (
+    <>
+      <span className="well">
+        <CalendarDays size={18} strokeWidth={1.8} />
+      </span>
+      <span className="grow stack">
+        <span className="ellipsis">{bookingTitle(b)}</span>
+        <span className="label ellipsis">
+          {today ? "" : day.format(new Date(b.startsAt)) + " · "}
+          {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
+          {b.place && b.event ? " · " + b.place.name : ""}
+        </span>
+        {note && <span className="label">{note}</span>}
+      </span>
+      {onClick && <ChevronRight size={18} className="chev" />}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="list-row" onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className="list-row">{body}</div>
+  );
+}
+
+/** What Sell and the Till show when no shift is running: the shift you can start now, or the next one. */
+function NoShift({
+  state,
+  onStart,
+  onSchedule,
+  onGoMenu,
+}: {
+  state: RegisterState;
+  onStart: (bookingId: string) => void;
+  onSchedule: () => void;
+  onGoMenu: () => void;
+}) {
+  const zone = state.business!.timeZone;
+  if (!state.menu.length)
+    return (
+      <div className="stack gap-18">
+        <h1 className="headline">
+          Add what you sell <span className="g">before the first shift.</span>
+        </h1>
+        <div className="card card-pad stack gap-12">
+          <p className="muted">A name and a price is enough. Photos and options can come later.</p>
+          <button className="btn" onClick={onGoMenu}>
+            Add menu items
+          </button>
+        </div>
+      </div>
+    );
+  const list = upcoming(state);
+  const ready = list.filter((b) => !startProblem(b, zone));
+  const next = list.find((b) => startProblem(b, zone));
+  const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="stack gap-18">
+      <h1 className="headline">
+        No shift running.{" "}
+        <span className="g">
+          {ready.length
+            ? ready.length === 1
+              ? "Start it when the stall is set up."
+              : "Start the one you're working."
+            : next
+              ? "The till opens when the next one starts."
+              : "Add one on Shifts to open the till."}
+        </span>
+      </h1>
+      {ready.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Ready to start</p>
+          <div className="card card-list">
+            {ready.map((b) => (
+              <BookingRow key={b.id} booking={b} zone={zone} onClick={() => onStart(b.id)} />
+            ))}
+          </div>
+        </div>
+      )}
+      {next && (
+        <div className="stack gap-10">
+          <p className="group-title">Next shift</p>
+          <div className="card card-list">
+            <BookingRow
+              booking={next}
+              zone={zone}
+              note={`Till opens from ${time.format(Date.parse(next.startsAt) - OPEN_EARLY)}`}
+            />
+          </div>
+        </div>
+      )}
+      {!list.length ? (
+        <RecordEmpty
+          icon={<CalendarDays size={22} />}
+          title="Nothing scheduled"
+          text="Each till runs for a shift on the schedule. Add one, and it shows up here when it's time to open."
+        />
+      ) : null}
+      <button className={"btn" + (list.length ? " ghost compact" : "")} onClick={onSchedule}>
+        {list.length ? "See all shifts" : "Add a shift"}
+      </button>
+    </div>
   );
 }
 
@@ -195,14 +309,16 @@ export function bookingTitle(b: Booking) {
 
 function OpenShift({
   state,
+  booking,
   online,
   onOpen,
-  onGoMenu,
+  onBack,
 }: {
   state: RegisterState;
+  booking: Booking;
   online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
-  onGoMenu: () => void;
+  onBack: () => void;
 }) {
   const business = state.business!;
   const currency = business.currency;
@@ -211,10 +327,6 @@ function OpenShift({
   const [busy, setBusy] = useState(false);
   const tracked = stockModel(business.settings.stockItems, state.menu).items;
   const checklist = business.settings.checklist ?? [];
-  const near = nearBookings(state);
-  const mine = near.find((b) => b.staff.some((s) => s.memberId === state.me?.memberId));
-  const [bookingId, setBookingId] = useState<string | null>((mine ?? near[0])?.id ?? null);
-  const [walkIn, setWalkIn] = useState<WalkIn>({ hours: 8 });
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<string[]>([]);
   const value = cash.amount;
@@ -223,60 +335,21 @@ function OpenShift({
   const ready = value !== undefined && !uncounted && !unticked;
   const celebrate = useCelebrate();
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
-  const time = new Intl.DateTimeFormat("en", { timeZone: business.timeZone, hour: "numeric", minute: "2-digit" });
-  if (!state.menu.length)
-    return (
-      <div className="stack gap-18">
-        <h1 className="headline">
-          Add what you sell <span className="g">before the first shift.</span>
-        </h1>
-        <div className="card card-pad stack gap-12">
-          <p className="muted">
-            A name and a price is enough. Photos and options can come later.
-          </p>
-          <button className="btn" onClick={onGoMenu}>
-            Add menu items
-          </button>
-        </div>
-      </div>
-    );
   return (
     <div className="stack gap-18">
       <h1 className="headline">
         Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span>
       </h1>
       <div className="stack gap-10">
-        <p className="group-title">{near.length ? "This till is for" : "Today's shift"}</p>
-        {near.length > 0 && (
-          <div className="card card-list">
-            {[...near, null].map((b) => (
-              <button
-                key={b?.id ?? "none"}
-                type="button"
-                className="list-row"
-                aria-pressed={bookingId === (b?.id ?? null)}
-                onClick={() => setBookingId(b?.id ?? null)}
-              >
-                <span className="well">
-                  {b ? <CalendarDays size={18} strokeWidth={1.8} /> : <Plus size={18} strokeWidth={1.8} />}
-                </span>
-                <span className="grow stack">
-                  <span className="ellipsis">{b ? bookingTitle(b) : "Start a new shift now"}</span>
-                  {b && (
-                    <span className="label ellipsis">
-                      {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
-                      {b.place && b.event ? " · " + b.place.name : ""}
-                    </span>
-                  )}
-                </span>
-                <span className={"tick" + (bookingId === (b?.id ?? null) ? " on" : "")}>
-                  <Check size={14} strokeWidth={2.6} />
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        {(!near.length || bookingId === null) && <WalkInFields state={state} value={walkIn} onChange={setWalkIn} />}
+        <div className="between section-head">
+          <p className="group-title">Shift</p>
+          <button type="button" className="link small-link" onClick={onBack}>
+            Change
+          </button>
+        </div>
+        <div className="card card-list">
+          <BookingRow booking={booking} zone={business.timeZone} />
+        </div>
       </div>
       <div className="stack gap-10">
         <p className="group-title">Cash float</p>
@@ -380,7 +453,7 @@ function OpenShift({
                 ...(cash.count ? { openingCount: cash.count } : {}),
                 stock: Object.fromEntries(tracked.map((p) => [p.id, countOf(counts[p.id])!])),
                 checked,
-                ...(bookingId ? { bookingId } : { newShift: walkIn }),
+                bookingId: booking.id,
               });
               celebrate(centerOf(button));
             } catch (e) {
@@ -616,6 +689,7 @@ export function ShiftScreen({
   onGoMenu,
   onSchedule,
   demo,
+  compact,
 }: {
   state: RegisterState;
   online: boolean;
@@ -629,8 +703,11 @@ export function ShiftScreen({
   onSchedule: () => void;
   onSales: (focus: SalesFocus) => void;
   demo: boolean;
+  /** On Sell: just the shift, without the past ones. */
+  compact?: boolean;
 }) {
   const [closing, setClosing] = useState(false);
+  const [starting, setStarting] = useState<string | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
   const [detail, setDetail] = useState<string | null>(null);
   const [report, setReport] = useState(false);
@@ -638,6 +715,7 @@ export function ShiftScreen({
   const [linking, setLinking] = useState(false);
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
+  const startingBooking = starting ? state.bookings?.find((b) => b.id === starting) : undefined;
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
@@ -852,9 +930,22 @@ export function ShiftScreen({
             </div>
         </>
       ) : (
-        <OpenShift state={state} online={online} onOpen={onOpen} onGoMenu={onGoMenu} />
+        startingBooking ? (
+          <OpenShift
+            state={state}
+            booking={startingBooking}
+            online={online}
+            onOpen={async (opening) => {
+              await onOpen(opening);
+              setStarting(null);
+            }}
+            onBack={() => setStarting(null)}
+          />
+        ) : (
+          <NoShift state={state} onStart={setStarting} onSchedule={onSchedule} onGoMenu={onGoMenu} />
+        )
       )}
-      {history.length > 0 && (
+      {history.length > 0 && !compact && !startingBooking && (
         <div className="stack gap-10">
           <p className="group-title">Past shifts</p>
           <div className="card card-list">
