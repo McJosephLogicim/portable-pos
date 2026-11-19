@@ -1,6 +1,7 @@
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { round, stockModel, unitText } from "./stock";
+import { roleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -24,6 +25,8 @@ export interface ShiftReport {
   hours: string;
   place?: string;
   people: string[];
+  /** What each person did on the shift, like "Cashier", by name. */
+  roles: Record<string, string>;
   /** Profile photos, by person's name. */
   faces: Record<string, string>;
   /** Biggest hour of sales, like "3 PM". */
@@ -141,6 +144,7 @@ export function shiftReport(
       (shift.closedAt ? time.format(new Date(shift.closedAt)) : "now"),
     place,
     people,
+    roles: Object.fromEntries((booking?.staff ?? []).map((s) => [nameOf(s), roleNames[s.role] ?? s.role])),
     faces: Object.fromEntries(
       [
         ...Object.entries(extra.names ?? {}).map(([id, name]) => [name, extra.faces?.[id]] as const),
@@ -194,7 +198,7 @@ export function reportText(r: ShiftReport, fmt: Format) {
   out.push(`${r.business.name} · Shift ${r.number}`);
   out.push([r.date, r.hours].join(" · "));
   if (r.place) out.push(r.place);
-  if (r.people.length) out.push(r.people.join(", "));
+  if (r.people.length) out.push(r.people.map((p) => (r.roles[p] ? `${p} (${r.roles[p]})` : p)).join(", "));
   out.push("");
   out.push(`SALES ${fmt(r.sales.total)} (${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"})`);
   for (const m of r.methods) out.push(`${m.name} ${fmt(m.amount)}`);

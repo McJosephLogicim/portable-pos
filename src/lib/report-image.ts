@@ -294,7 +294,9 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         const ty = top + i * row;
         if (i) divider(ctx, ty - 8);
         avatar(ctx, p, faces[i], L, ty, 36);
-        text(ctx, fit(p, font(15, 500), R - L - 52), L + 50, ty + 9, font(15, 500), ink);
+        const role = r.roles[p];
+        text(ctx, fit(p, font(15, 500), R - L - 52), L + 50, role ? ty : ty + 9, font(15, 500), ink);
+        if (role) text(ctx, role, L + 50, ty + 20, font(13.5), ink2);
       });
     }, "On shift", r.place ? undefined : r.hours);
   }
