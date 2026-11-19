@@ -22,7 +22,7 @@ import {
   stockLeft,
   totalLines,
 } from "@/lib/domain";
-import { ItemSheet } from "./settings";
+import { ItemSheet } from "./menu-settings";
 import { BusinessMark } from "./businesses";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits } from "@/lib/settings";

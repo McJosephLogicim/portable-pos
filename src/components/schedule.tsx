@@ -863,7 +863,7 @@ function BookingEditor({
               setOrganizers([...organizers, o]);
               return o;
             }}
-            onRemove={(o) => setOrganizers(organizers.filter((x) => x.id !== o.id))}
+            hint={organizers.length ? "Rename or remove organizers in Settings." : undefined}
           />
           <Combobox
             label="Event"
@@ -880,13 +880,6 @@ function BookingEditor({
               );
               return e;
             }}
-            onRemove={(e) =>
-              setOrganizers(
-                organizers.map((o) =>
-                  o.id === d.organizer!.id ? { ...o, events: o.events.filter((x) => x.id !== e.id) } : o,
-                ),
-              )
-            }
           />
           <div className="field">
             <span>Location</span>

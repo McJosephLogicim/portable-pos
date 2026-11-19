@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -9,30 +9,32 @@ import {
   ListChecks,
   Users,
   Coins,
-  Image as ImageIcon,
   LayoutGrid,
+  ListPlus,
   Percent,
   Package,
   Plus,
   Store,
+  Tag,
+  Ticket,
   Trash2,
 } from "lucide-react";
 import type {
   Discount,
-  OptionGroup,
   PaymentKind,
   PaymentMethod,
   Product,
   RegisterState,
   Settings,
-  StockItem,
 } from "@/lib/types";
-import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
+import { amountText, parseMoney } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
-import { StockPage, UsesEditor, usesFrom, usesText } from "./stock-settings";
+import { StockPage } from "./stock-settings";
+import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
+import { OrganizersPage } from "./organizer-settings";
+import { plural } from "./records";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
-import { SuggestInput } from "./combobox";
 import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import {
@@ -61,6 +63,9 @@ export type SettingsPage =
   | "discounts"
   | "currency"
   | "menu"
+  | "categories"
+  | "choices"
+  | "organizers"
   | "checklist"
   | "stock"
   | "team";
@@ -84,6 +89,8 @@ export interface SettingsProps {
   onBusinesses: () => void;
 }
 
+const countText = (n: number) => (n ? String(n) : "None");
+
 export function Row({
   icon,
   title,
@@ -99,7 +106,7 @@ export function Row({
     <button className="list-row" onClick={onClick}>
       <span className="well">{icon}</span>
       <span className="grow row-title">{title}</span>
-      {detail !== undefined && <span className="label end">{detail}</span>}
+      {detail !== undefined && <span className="record-end">{detail}</span>}
       <ChevronRight size={18} className="chev" />
     </button>
   );
@@ -177,6 +184,30 @@ export function useDraft(
       </div>
     ) : null;
   return { draft, setDraft, bar, business };
+}
+
+/** Saves one change from a settings sheet behind the owner PIN, then says what was saved. */
+export function useCommit(props: SettingsProps) {
+  const withPin = usePin();
+  const business = props.state.business!;
+  const input = (patch: Partial<Settings>): SettingsInput => ({
+    name: business.name,
+    currency: business.currency,
+    timeZone: business.timeZone,
+    settings: { ...business.settings, ...patch },
+  });
+  async function run(fn: (pin: string) => Promise<void>, label: string) {
+    const done = await withPin(fn);
+    if (done) props.onSaved(label);
+    return done;
+  }
+  return {
+    input,
+    run,
+    menu: (menu: Product[], label: string, stock?: Record<string, number>) =>
+      run((pin) => props.onMenu(menu, pin, stock), label),
+    settings: (patch: Partial<Settings>, label: string) => run((pin) => props.onSave(input(patch), pin), label),
+  };
 }
 
 function applyNote(state: RegisterState) {
@@ -914,488 +945,6 @@ function CurrencyPage(props: SettingsProps) {
   );
 }
 
-/* ---------- menu ---------- */
-
-type GroupDraft = Omit<OptionGroup, "options"> & {
-  options: { id: string; name: string; price: string }[];
-};
-
-/** Categories, choices and options already on the menu, so they're picked instead of retyped. */
-function reusable(menu: Product[], skip: string | undefined, currency: string) {
-  const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
-  const groups = new Map<string, { key: string; name: string; required: boolean; detail: string; options: { name: string; price: string }[] }>();
-  const options = new Map<string, { key: string; name: string; price: string; detail: string }>();
-  for (const item of menu) {
-    if (item.id === skip) continue;
-    for (const g of item.groups ?? []) {
-      const opts = g.options.map((o) => ({ name: o.name, price: o.price ? amountText(o.price, currency) : "" }));
-      const key = (g.required ? "1" : "0") + g.name.toLocaleLowerCase() + "|" + opts.map((o) => o.name + o.price).join(",");
-      if (!groups.has(key))
-        groups.set(key, {
-          key,
-          name: g.name,
-          required: g.required,
-          options: opts,
-          detail: `${g.options.map((o) => o.name).join(", ")} · from ${item.name}`,
-        });
-      for (const o of g.options) {
-        const okey = o.name.toLocaleLowerCase() + "|" + o.price;
-        if (!options.has(okey))
-          options.set(okey, {
-            key: okey,
-            name: o.name,
-            price: o.price ? amountText(o.price, currency) : "",
-            detail: o.price ? "+" + formatMoney(o.price, currency) : "No extra charge",
-          });
-      }
-    }
-  }
-  return { categories, groups: [...groups.values()], options: [...options.values()] };
-}
-
-export function ItemSheet({
-  product,
-  currency,
-  menu,
-  liveShift = false,
-  stockItems = [],
-  onSave,
-  onRemove,
-  onClose,
-}: {
-  product?: Product;
-  /** What the item can use up with each sale. */
-  stockItems?: StockItem[];
-  currency: string;
-  /** The rest of the menu, whose categories, choices and options can be reused. */
-  menu: Product[];
-  /** A new item goes on sale on the shift open on this phone, so ask how many there are. */
-  liveShift?: boolean;
-  onSave: (p: Product, count?: number) => Promise<boolean>;
-  onRemove?: () => Promise<boolean>;
-  onClose: () => void;
-}) {
-  const [itemId] = useState(() => product?.id ?? crypto.randomUUID());
-  const [name, setName] = useState(product?.name ?? "");
-  const [tracked, setTracked] = useState(Boolean(product?.stock && !product.uses?.length));
-  const [uses, setUses] = useState(() =>
-    (product?.uses ?? []).map((u) => ({ stockId: u.stockId, amount: String(u.amount) })),
-  );
-  const [count, setCount] = useState("");
-  const askCount = tracked && liveShift && !product;
-  const [price, setPrice] = useState(product ? amountText(product.price, currency) : "");
-  const [category, setCategory] = useState(product?.category ?? "");
-  const [image, setImage] = useState(product?.image);
-  const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
-  const [groups, setGroups] = useState<GroupDraft[]>(() =>
-    (product?.groups ?? []).map((g) => ({
-      ...g,
-      options: g.options.map((o) => ({ ...o, price: amountText(o.price, currency) })),
-    })),
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const setGroup = (id: string, fn: (g: GroupDraft) => GroupDraft) =>
-    setGroups((all) => all.map((g) => (g.id === id ? fn(g) : g)));
-  async function run(fn: () => Promise<boolean>) {
-    setBusy(true);
-    setError("");
-    try {
-      if (await fn()) onClose();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Sheet
-      title={product ? "Edit item" : "New item"}
-      onClose={onClose}
-      busy={busy}
-      footer={
-        <>
-          {error && (
-            <p className="alert" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            className="btn block"
-            disabled={busy || !name.trim() || !price.trim() || (askCount && !count.trim())}
-            onClick={() =>
-              void run(async () => {
-                const saved = groups.map((g) => {
-                  if (!g.name.trim() || !g.options.length || g.options.some((o) => !o.name.trim()))
-                    throw Error("Name each choice and every option in it.");
-                  return {
-                    id: g.id,
-                    name: g.name.trim(),
-                    required: g.required,
-                    options: g.options.map((o) => ({
-                      id: o.id,
-                      name: o.name.trim(),
-                      price: parseMoney(o.price || "0", currency),
-                    })),
-                  };
-                });
-                const { stock: _, image: _image, uses: _uses, ...rest } = product ?? ({} as Partial<Product>);
-                const picked = usesFrom(uses.filter((u) => stockItems.some((s) => s.id === u.stockId)));
-                return onSave(
-                  {
-                    ...rest,
-                    id: itemId,
-                    name: name.trim(),
-                    category: category.trim(),
-                    price: parseMoney(price, currency),
-                    groups: saved,
-                    ...(image ? { image } : {}),
-                    ...(picked.length ? { uses: picked } : tracked ? { stock: true } : {}),
-                  },
-                  askCount ? Number(count) : undefined,
-                );
-              })
-            }
-          >
-            {busy ? "Saving…" : product ? "Save item" : "Add item"}
-          </button>
-          {product && onRemove && (
-            <button
-              className="btn ghost danger compact block"
-              disabled={busy}
-              onClick={() => void run(onRemove)}
-            >
-              <Trash2 size={16} /> Remove from menu
-            </button>
-          )}
-        </>
-      }
-    >
-      <div className="card card-pad">
-        <PhotoPicker value={image} onChange={setImage} label="item photo" />
-      </div>
-      <div className="card card-pad stack gap-14">
-        <label className="field">
-          <span>Name</span>
-          <input
-            className="input"
-            maxLength={80}
-            autoFocus={!product}
-            placeholder="e.g. Iced Spanish latte"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
-        <div className="field">
-          <span>Category</span>
-          {reuse.categories.length > 0 && (
-            <div className="chips wrap" role="group" aria-label="Categories used before">
-              {reuse.categories.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-pressed={category.trim() === c}
-                  onClick={() => {
-                    buzz.tap();
-                    setCategory(category.trim() === c ? "" : c);
-                  }}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
-          <input
-            className="input"
-            aria-label="Category"
-            maxLength={60}
-            placeholder={reuse.categories.length ? "Or type a new one" : "e.g. Drinks"}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="card card-pad stack gap-12">
-        <span className="grow stack">
-          <span className="strong">Uses stock</span>
-          <span className="label">
-            {stockItems.length
-              ? "Each sale takes this much off what's left in the shift."
-              : "Add stock items in Settings first, like a strawberry pack or ice. Then pick them here."}
-          </span>
-        </span>
-        {stockItems.length > 0 && <UsesEditor stockItems={stockItems} uses={uses} onChange={setUses} />}
-        {product && liveShift && (product.uses?.length ?? 0) !== uses.length && (
-          <p className="label">Stock use changes apply from the next shift.</p>
-        )}
-      </div>
-      {(product?.stock || !stockItems.length) && !uses.length && (
-      <div className="card card-pad stack gap-12">
-        <div className="row gap-12">
-          <span className="grow stack">
-            <span className="strong">Count this item itself</span>
-            <span className="label">
-              For a set supply, like bread or pastries. You count it when the shift opens and it
-              sells out at zero.
-            </span>
-          </span>
-          <Switch checked={tracked} label="Count this item itself" onChange={setTracked} />
-        </div>
-        {askCount && (
-          <label className="field">
-            <span>How many do you have now?</span>
-            <input
-              className="input"
-              inputMode="numeric"
-              placeholder="0"
-              value={count}
-              onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 5))}
-            />
-          </label>
-        )}
-        {tracked && product && liveShift && !product.stock && (
-          <p className="label">Counting starts when the next shift opens.</p>
-        )}
-      </div>
-      )}
-      {groups.map((g) => (
-        <div className="card card-pad stack gap-12" key={g.id}>
-          <div className="between">
-            <span className="strong">{g.required ? "Pick one" : "Add-ons"}</span>
-            <button
-              type="button"
-              className="btn ghost small"
-              onClick={() => setGroups((all) => all.filter((x) => x.id !== g.id))}
-            >
-              Remove
-            </button>
-          </div>
-          <SuggestInput
-            label="Choice name"
-            placeholder={g.required ? "e.g. Size" : "e.g. Extras"}
-            value={g.name}
-            newText="New choice"
-            suggestions={reuse.groups
-              .filter((r) => r.required === g.required && !groups.some((x) => x.name.trim() === r.name && x.id !== g.id))
-              .map((r) => ({ key: r.key, name: r.name, detail: r.detail }))}
-            onChange={(name) => setGroup(g.id, (x) => ({ ...x, name }))}
-            onPick={(pick) => {
-              const r = reuse.groups.find((x) => x.key === pick.key)!;
-              buzz.tick();
-              setGroup(g.id, (x) => ({
-                ...x,
-                name: r.name,
-                options: r.options.map((o) => ({ id: crypto.randomUUID(), name: o.name, price: o.price })),
-              }));
-            }}
-          />
-          {g.options.map((o, i) => (
-            <div className="option-row" key={o.id}>
-              <SuggestInput
-                className="grow"
-                label={`Option ${i + 1} name`}
-                placeholder={g.required ? (i ? "Large" : "Regular") : "Extra shot"}
-                value={o.name}
-                newText="New option"
-                suggestions={reuse.options
-                  .filter((r) => !g.options.some((x) => x.name.trim() === r.name))
-                  .map((r) => ({ key: r.key, name: r.name, detail: r.detail }))}
-                onChange={(name) =>
-                  setGroup(g.id, (x) => ({
-                    ...x,
-                    options: x.options.map((r) => (r.id === o.id ? { ...r, name } : r)),
-                  }))
-                }
-                onPick={(pick) => {
-                  const r = reuse.options.find((x) => x.key === pick.key)!;
-                  setGroup(g.id, (x) => ({
-                    ...x,
-                    options: x.options.map((y) => (y.id === o.id ? { ...y, name: r.name, price: r.price } : y)),
-                  }));
-                }}
-              />
-              <span className="money-input option-price">
-                <input
-                  className="input"
-                  aria-label={`Option ${i + 1} extra price`}
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={o.price === amountText(0, currency) ? "" : o.price}
-                  onChange={(e) =>
-                    setGroup(g.id, (x) => ({
-                      ...x,
-                      options: x.options.map((r) =>
-                        r.id === o.id ? { ...r, price: e.target.value.replace(/[^\d.]/g, "") } : r,
-                      ),
-                    }))
-                  }
-                />
-                <span className="prefix">+</span>
-              </span>
-              <button
-                type="button"
-                className="round flat"
-                aria-label={`Remove option ${i + 1}`}
-                onClick={() =>
-                  setGroup(g.id, (x) => ({ ...x, options: x.options.filter((r) => r.id !== o.id) }))
-                }
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className="btn secondary compact"
-            onClick={() =>
-              setGroup(g.id, (x) => ({
-                ...x,
-                options: [...x.options, { id: crypto.randomUUID(), name: "", price: "" }],
-              }))
-            }
-          >
-            <Plus size={16} /> Option
-          </button>
-        </div>
-      ))}
-      <div className="grid-2">
-        {[true, false].map((required) => (
-          <button
-            key={String(required)}
-            type="button"
-            className="btn secondary compact"
-            onClick={() =>
-              setGroups((all) => [
-                ...all,
-                {
-                  id: crypto.randomUUID(),
-                  name: "",
-                  required,
-                  options: [{ id: crypto.randomUUID(), name: "", price: "" }],
-                },
-              ])
-            }
-          >
-            <Plus size={16} /> {required ? "Pick-one choice" : "Add-ons"}
-          </button>
-        ))}
-      </div>
-    </Sheet>
-  );
-}
-
-function MenuPage(props: SettingsProps) {
-  const business = props.state.business!;
-  const menu = props.state.menu;
-  const [editing, setEditing] = useState<Product | "new" | null>(null);
-  const withPin = usePin();
-  const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
-  const grouped = [...categories, ""].map((c) => ({
-    name: c,
-    items: menu.filter((m) => (m.category || "") === c),
-  }));
-  const live = Boolean(props.state.shift && props.state.shift.deviceId === props.state.deviceId);
-  async function save(next: Product[], label: string, stock?: Record<string, number>) {
-    const done = await withPin((pin) => props.onMenu(next, pin, stock));
-    if (done) props.onSaved(label);
-    return done;
-  }
-  return (
-    <SubPage
-      title="Menu"
-      sentence={
-        <>
-          {menu.length} {menu.length === 1 ? "item" : "items"}{" "}
-          <span className="g">for sale.</span>
-        </>
-      }
-      onBack={() => props.onPage(null)}
-    >
-      <button className="btn" disabled={!props.online} onClick={() => setEditing("new")}>
-        <Plus size={18} /> Add item
-      </button>
-      {grouped
-        .filter((g) => g.items.length)
-        .map((g) => (
-          <div className="stack gap-10" key={g.name || "none"}>
-            <p className="group-title">{g.name || (categories.length ? "No category" : "Items")}</p>
-            <div className="card card-list">
-              {g.items.map((p) => (
-                <button
-                  key={p.id}
-                  className="list-row"
-                  disabled={!props.online}
-                  onClick={() => setEditing(p)}
-                >
-                  {p.image ? (
-                    <img
-                      src={p.image}
-                      alt=""
-                      width={44}
-                      height={44}
-                      style={{ borderRadius: 12, objectFit: "cover", flex: "none" }}
-                    />
-                  ) : (
-                    <span className="well">
-                      <ImageIcon size={18} strokeWidth={1.6} className="g" />
-                    </span>
-                  )}
-                  <span className="grow stack">
-                    <span className="ellipsis">{p.name}</span>
-                    {(p.groups.length > 0 || p.stock || p.uses?.length) && (
-                      <span className="label ellipsis">
-                        {[
-                          p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
-                          ...p.groups.map((x) => x.name),
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </span>
-                    )}
-                  </span>
-                  <Money value={p.price} currency={business.currency} />
-                  <ChevronRight size={18} className="chev" />
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      <p className="label">
-        {props.online
-          ? props.state.shift
-            ? live
-              ? "New items go on sale right away. Edits to existing items apply from the next shift. To pause an item now, mark it sold out on Sell."
-              : "Changes reach the register when the next shift opens."
-            : "Changes reach the register when you open the next shift."
-          : "Connect to edit the menu."}
-      </p>
-      {editing && (
-        <ItemSheet
-          product={editing === "new" ? undefined : editing}
-          currency={business.currency}
-          menu={menu}
-          liveShift={live}
-          stockItems={business.settings.stockItems}
-          onClose={() => setEditing(null)}
-          onSave={(item, count) =>
-            save(
-              saveMenuItem(menu, item),
-              editing === "new" ? "Added " + item.name : "Saved " + item.name,
-              count !== undefined ? { [item.id]: count } : undefined,
-            )
-          }
-          onRemove={
-            editing === "new"
-              ? undefined
-              : () => save(menu.filter((p) => p.id !== editing.id), "Removed " + editing.name)
-          }
-        />
-      )}
-    </SubPage>
-  );
-}
-
 /* ---------- your profile ---------- */
 
 function ProfileCard(props: SettingsProps) {
@@ -1482,6 +1031,9 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "discounts") return <DiscountsPage {...props} />;
   if (page === "currency") return <CurrencyPage {...props} />;
   if (page === "menu") return <MenuPage {...props} />;
+  if (page === "categories") return <CategoriesPage {...props} />;
+  if (page === "choices") return <ChoicesPage {...props} />;
+  if (page === "organizers") return <OrganizersPage {...props} />;
   if (page === "checklist") return <ChecklistPage {...props} />;
   if (page === "stock") return <StockPage {...props} />;
   if (page === "team") return <TeamPage {...props} />;
@@ -1549,11 +1101,32 @@ export function SettingsScreen(props: SettingsProps) {
           detail={discountsOn ? discountsOn + " on" : "Off"}
           onClick={() => onPage("discounts")}
         />
+      </div>
+      <p className="group-title">Menu</p>
+      <div className="card card-list">
         <Row
           icon={<LayoutGrid size={18} strokeWidth={1.8} />}
-          title="Menu"
-          detail={state.menu.length + (state.menu.length === 1 ? " item" : " items")}
+          title="Menu items"
+          detail={plural(state.menu.length, "item")}
           onClick={() => onPage("menu")}
+        />
+        <Row
+          icon={<Tag size={18} strokeWidth={1.8} />}
+          title="Categories"
+          detail={countText(categoriesOf(state.menu).length)}
+          onClick={() => onPage("categories")}
+        />
+        <Row
+          icon={<ListPlus size={18} strokeWidth={1.8} />}
+          title="Choices"
+          detail={countText(choicesOf(state.menu).length)}
+          onClick={() => onPage("choices")}
+        />
+        <Row
+          icon={<Package size={18} strokeWidth={1.8} />}
+          title="Stock items"
+          detail={countText(s.stockItems?.length ?? 0)}
+          onClick={() => onPage("stock")}
         />
       </div>
       <p className="group-title">Shifts</p>
@@ -1561,20 +1134,20 @@ export function SettingsScreen(props: SettingsProps) {
         <Row
           icon={<Users size={18} strokeWidth={1.8} />}
           title="Team"
-          detail={(state.team?.length ?? 1) + ((state.team?.length ?? 1) === 1 ? " person" : " people")}
+          detail={plural(state.team?.length ?? 1, "person", "people")}
           onClick={() => onPage("team")}
         />
         <Row
           icon={<ListChecks size={18} strokeWidth={1.8} />}
           title="Opening checklist"
-          detail={(s.checklist?.length ?? 0) ? s.checklist!.length + " steps" : "Off"}
+          detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
           onClick={() => onPage("checklist")}
         />
         <Row
-          icon={<Package size={18} strokeWidth={1.8} />}
-          title="Stock items"
-          detail={(s.stockItems?.length ?? 0) ? s.stockItems!.length + " counted" : "Off"}
-          onClick={() => onPage("stock")}
+          icon={<Ticket size={18} strokeWidth={1.8} />}
+          title="Organizers"
+          detail={countText(state.organizers?.length ?? 0)}
+          onClick={() => onPage("organizers")}
         />
       </div>
       <p className="group-title">Register</p>
