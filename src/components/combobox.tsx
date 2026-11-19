@@ -5,8 +5,8 @@ import { Check, Plus, X } from "lucide-react";
 import type { Tag } from "@/lib/types";
 
 /**
- * Pick one name from a list, add a new one by typing it, or remove one from the list,
- * all in the same field.
+ * Pick one name from a list, or add a new one by typing it. Removing names from the list
+ * happens in Settings, so a slip here never deletes anything.
  */
 export function Combobox({
   label,
@@ -17,7 +17,6 @@ export function Combobox({
   hint,
   onChange,
   onCreate,
-  onRemove,
 }: {
   label: string;
   options: Tag[];
@@ -27,7 +26,6 @@ export function Combobox({
   hint?: string;
   onChange: (tag: Tag | null) => void;
   onCreate: (name: string) => Tag;
-  onRemove: (tag: Tag) => void;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -108,30 +106,19 @@ export function Combobox({
       {open && (
         <div className="combo-list card" id={id + "-list"} role="listbox" aria-label={label}>
           {shown.map((o, i) => (
-            <div
+            <button
+              type="button"
               key={o.id}
               id={`${id}-o${i}`}
               role="option"
               aria-selected={value?.id === o.id}
-              className={"combo-row" + (i === active ? " active" : "")}
+              className={"combo-row combo-pick" + (i === active ? " active" : "")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(o)}
             >
-              <button type="button" className="grow combo-pick" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)}>
-                <span className="ellipsis">{o.name}</span>
-                {value?.id === o.id && <Check size={16} />}
-              </button>
-              <button
-                type="button"
-                className="round flat combo-remove"
-                aria-label={"Remove " + o.name + " from the list"}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onRemove(o);
-                  if (value?.id === o.id) onChange(null);
-                }}
-              >
-                <X size={15} />
-              </button>
-            </div>
+              <span className="ellipsis grow">{o.name}</span>
+              {value?.id === o.id && <Check size={16} />}
+            </button>
           ))}
           {canCreate && (
             <button

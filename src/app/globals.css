@@ -1356,7 +1356,7 @@ button.list-row:active {
 .inline-input {
   border: 0;
   background: none;
-  font-size: 15px;
+  font-size: 16px;
   min-height: 40px;
   color: var(--ink);
   padding: 0;
@@ -1726,11 +1726,6 @@ button.notice {
   color: inherit;
   text-align: left;
   font-size: 15px;
-}
-.combo-remove {
-  width: 36px;
-  height: 36px;
-  color: var(--ink-tertiary);
 }
 .combo-add {
   min-height: 44px;
@@ -2131,14 +2126,6 @@ button.list-row:active:not(:disabled),
 }
 
 /* ---------- narrow phones ---------- */
-.list-row .row-title {
-  flex: 1 0 auto;
-  max-width: 70%;
-}
-.list-row .row-title + .end {
-  flex: 0 1 auto;
-  min-width: 0;
-}
 .notice {
   flex-wrap: wrap;
 }
@@ -2730,4 +2717,45 @@ html {
   width: 64px;
   height: 64px;
   font-size: 20px;
+}
+
+/* ---------- record lists (menu, categories, choices, stock, organizers) ---------- */
+/* Title grows, the value sits flush against the chevron, and every chevron lines up. */
+.list-row .row-title {
+  flex: 1 0 auto;
+}
+.record-end {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 14px;
+  color: var(--ink-secondary);
+}
+.record-row .record-end .num {
+  color: var(--ink);
+}
+.list-row .chev {
+  margin-right: -4px;
+}
+.list-row.edit-row {
+  min-height: 52px;
+  padding: 4px 0;
+  gap: 8px;
+}
+.list-row.edit-row .inline-input {
+  min-height: 44px;
+}
+.list-row.edit-row .inline-input::placeholder {
+  color: var(--ink-tertiary);
+}
+.record-row .thumb {
+  width: 40px;
+  height: 40px;
+}
+.list-row:disabled {
+  opacity: 0.5;
 }
