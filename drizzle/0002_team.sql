@@ -35,3 +35,17 @@ ALTER TABLE "portable_pos"."members" ADD CONSTRAINT "members_business_id_busines
 CREATE INDEX "bookings_business_id_starts_at_index" ON "portable_pos"."bookings" USING btree ("business_id","starts_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "members_user" ON "portable_pos"."members" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "members_email" ON "portable_pos"."members" USING btree ("business_id",lower("email"));
+--> statement-breakpoint
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portable_pos_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE
+      ON TABLE portable_pos.bookings, portable_pos.members TO portable_pos_app;
+
+    CREATE POLICY application_role ON portable_pos.bookings
+      FOR ALL TO portable_pos_app USING (true) WITH CHECK (true);
+    CREATE POLICY application_role ON portable_pos.members
+      FOR ALL TO portable_pos_app USING (true) WITH CHECK (true);
+  END IF;
+END;
+$$;
