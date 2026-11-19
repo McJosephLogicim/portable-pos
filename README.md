@@ -20,6 +20,22 @@ Open the shift while connected and use the same device throughout. Once the regi
 
 One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Settings saved on the till's own phone apply to the open shift at once; menu edits apply from the next shift. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
 
+## Menu and stock
+
+The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. A new item goes on sale on the till open on that phone right away. Edits to items already on the till apply from the next shift. Switch on **Track stock** for a set supply, like bread or pastries. The opening screen asks for a count of each one. Each sale takes the count down, a reversal puts it back, and the item sells out at zero, offline too.
+
+Settings › Opening checklist holds the steps to tick before the till opens. The ticked list is saved with the shift.
+
+## Team and schedule
+
+Only the owner invites people (Settings › Team). An invite is an email plus a role: cashier, server, or both. The person joins the first time they sign in with that address, once Supabase has confirmed it. Cashiers run the till. Servers see only the schedule.
+
+The Schedule tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
+
+When the till opens, it asks which scheduled shift it's for. That shift's profit is the till's net sales minus rent, salaries and any incentives. Cost of goods isn't counted. Rent, other people's pay, and profit are visible only to the owner.
+
+Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. Both need a connection. Without one, the typed name can still be saved as the location.
+
 ## Verification
 
 `npm test` exercises local persistence, retry behavior, and the API authentication boundary. For the integration suite, migrate a disposable PostgreSQL database and set `POS_TEST_DATABASE_URL` before running the same command. Optional `POS_TEST_AUTH_URL` and `POS_TEST_AUTH_KEY` enable the real Supabase Auth tests against an isolated instance configured to confirm test accounts automatically.

@@ -1,4 +1,4 @@
-import { and, between, desc, eq, lt, or } from "drizzle-orm";
+import { and, between, desc, eq, gte, inArray, isNull, lt, or, sum } from "drizzle-orm";
 import type { Bootstrap, Sale, Shift } from "../lib/types";
 import type { Transaction } from "./db";
 import { z } from "zod";
@@ -8,7 +8,9 @@ import {
   legacyPayment,
   legacyShiftSettings,
 } from "../lib/settings";
-import { businesses, sales, shifts } from "./schema";
+import { bookings, businesses, members, sales, shifts } from "./schema";
+import { redactBooking } from "../lib/team";
+import { presentBooking, presentMe, presentMember } from "./team";
 
 export function presentShift(
   row: typeof shifts.$inferSelect,
@@ -26,6 +28,9 @@ export function presentShift(
     settings: row.settings ?? legacyShiftSettings(currency),
     countedCash: row.countedCash ?? undefined,
     difference: row.difference ?? undefined,
+    ...(row.stock ? { stock: row.stock } : {}),
+    ...(row.bookingId ? { bookingId: row.bookingId } : {}),
+    ...(row.checklist ? { checklist: row.checklist } : {}),
   };
 }
 
@@ -55,7 +60,7 @@ type Page = { sales: Sale[]; nextSales?: string };
 
 export async function historyPage(
   tx: Transaction,
-  ownerId: string,
+  businessId: string | undefined,
   cursor: unknown,
 ): Promise<Page> {
   ensure(
@@ -73,12 +78,13 @@ export async function historyPage(
   ensure(values.success, "Invalid sales history cursor.");
   const { newestShift, oldestShift } = values.data;
   ensure(oldestShift <= newestShift, "Invalid sales history cursor.");
-  return receiptsPage(tx, ownerId, oldestShift, newestShift, values.data);
+  if (!businessId) return { sales: [] };
+  return receiptsPage(tx, businessId, oldestShift, newestShift, values.data);
 }
 
 async function receiptsPage(
   tx: Transaction,
-  ownerId: string,
+  businessId: string,
   oldestShift: number,
   newestShift: number,
   after?: Position,
@@ -88,10 +94,9 @@ async function receiptsPage(
     .select({ row: sales, shiftNumber: shifts.number })
     .from(sales)
     .innerJoin(shifts, eq(sales.shiftId, shifts.id))
-    .innerJoin(businesses, eq(shifts.businessId, businesses.id))
     .where(
       and(
-        eq(businesses.ownerId, ownerId),
+        eq(shifts.businessId, businessId),
         between(shifts.number, oldestShift, newestShift),
         after &&
           or(
@@ -130,23 +135,82 @@ async function receiptsPage(
   return { sales: result, nextSales };
 }
 
+type Access = {
+  business: typeof businesses.$inferSelect;
+  member: typeof members.$inferSelect;
+} | null;
+
+const empty = {
+  business: null,
+  me: null,
+  team: [],
+  organizers: [],
+  bookings: [],
+  menu: [],
+  shift: null,
+  soldOut: [],
+  shifts: [],
+  sales: [],
+};
+
 export async function snapshot(
   tx: Transaction,
-  ownerId: string,
+  access: Access,
 ): Promise<Bootstrap & { nextSales?: string }> {
-  const [business] = await tx
+  if (!access) return empty;
+  // Read again: the command may have just changed them.
+  const [business] = await tx.select().from(businesses).where(eq(businesses.id, access.business.id));
+  const [member] = await tx.select().from(members).where(eq(members.id, access.member.id));
+  if (!business) return empty;
+  const me = presentMe(member ?? access.member);
+  const till = me.owner || me.roles.includes("cashier");
+
+  // Two months back for the books, and everything ahead.
+  const since = new Date(Date.now() - 62 * 86400000).toISOString();
+  const bookingRows = await tx
     .select()
-    .from(businesses)
-    .where(eq(businesses.ownerId, ownerId));
-  if (!business)
+    .from(bookings)
+    .where(and(eq(bookings.businessId, business.id), gte(bookings.endsAt, since)))
+    .orderBy(bookings.startsAt)
+    .limit(1000);
+  const takings = new Map<string, number>();
+  if (me.owner && bookingRows.length) {
+    const rows = await tx
+      .select({ bookingId: shifts.bookingId, total: sum(sales.total).mapWith(Number) })
+      .from(sales)
+      .innerJoin(shifts, eq(sales.shiftId, shifts.id))
+      .where(
+        and(
+          eq(shifts.businessId, business.id),
+          isNull(sales.reversedAt),
+          inArray(
+            shifts.bookingId,
+            bookingRows.map((b) => b.id),
+          ),
+        ),
+      )
+      .groupBy(shifts.bookingId);
+    for (const row of rows) if (row.bookingId) takings.set(row.bookingId, row.total ?? 0);
+  }
+  const plan = {
+    me,
+    team: me.owner
+      ? (await tx.select().from(members).where(eq(members.businessId, business.id))).map(presentMember)
+      : [],
+    organizers: me.owner ? business.organizers : [],
+    bookings: bookingRows.map((row) =>
+      redactBooking({ ...presentBooking(row), sales: takings.get(row.id) ?? 0 }, me),
+    ),
+  };
+  const { id, name, currency, timeZone, menu } = business;
+  const settings = business.settings ?? defaultSettings(currency);
+  if (!till)
     return {
-      business: null,
-      menu: [],
-      shift: null,
-      soldOut: [],
-      shifts: [],
-      sales: [],
+      ...empty,
+      ...plan,
+      business: { id, name, currency, timeZone, settings },
     };
+
   const recent = await tx
     .select()
     .from(shifts)
@@ -158,14 +222,13 @@ export async function snapshot(
   const history = recent.length
     ? await receiptsPage(
         tx,
-        ownerId,
+        business.id,
         recent[recent.length - 1].number,
         recent[0].number,
       )
     : { sales: [] };
-  const { id, name, currency, timeZone, menu } = business;
-  const settings = business.settings ?? defaultSettings(currency);
   return {
+    ...plan,
     business: { id, name, currency, timeZone, settings },
     menu,
     shift: active ? presentShift(active, currency) : null,

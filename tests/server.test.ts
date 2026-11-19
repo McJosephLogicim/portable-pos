@@ -175,10 +175,11 @@ test(
       };
     });
     const page = await cmd(sync(many));
+    const otherId = (await runCommand(other, { action: "bootstrap" })).business!.id;
     assert.equal(page.sales.length, 100);
     assert.ok(page.nextSales);
     const tail = await getDb().transaction((tx) =>
-      historyPage(tx, owner, page.nextSales),
+      historyPage(tx, page.business!.id, page.nextSales),
     );
     assert.equal(tail.sales.length, 4);
     assert.equal(tail.nextSales, undefined);
@@ -189,13 +190,13 @@ test(
     assert.deepEqual(
       (
         await getDb().transaction((tx) =>
-          historyPage(tx, other, page.nextSales),
+          historyPage(tx, otherId, page.nextSales),
         )
       ).sales,
       [],
     );
     await assert.rejects(
-      getDb().transaction((tx) => historyPage(tx, owner, "broken cursor")),
+      getDb().transaction((tx) => historyPage(tx, page.business!.id, "broken cursor")),
       { status: 400 },
     );
     const business = reopened.business!;

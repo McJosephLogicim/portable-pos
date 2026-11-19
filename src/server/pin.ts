@@ -15,12 +15,12 @@ export async function hashPin(pin: string) {
 }
 
 // Commit the attempt counter even when the subsequent owner operation is refused.
-export async function verifyPin(ownerId: string, pin: string) {
+export async function verifyPin(businessId: string, pin: string) {
   const result = await getDb().transaction(async (tx) => {
     const [business] = await tx
       .select()
       .from(businesses)
-      .where(eq(businesses.ownerId, ownerId))
+      .where(eq(businesses.id, businessId))
       .for("update");
     ensure(business, "Create your business first.", 404);
     const recentFailure =

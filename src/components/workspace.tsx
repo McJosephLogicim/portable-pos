@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
+import { CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen } from "./sales";
 import { ShiftScreen } from "./shift";
-import { SettingsScreen } from "./settings";
+import { SettingsScreen, type SettingsPage } from "./settings";
+import { ScheduleScreen } from "./schedule";
 import { Account, Setup } from "./account";
 import { PinProvider, Toast } from "./ui";
 import { api, authClient, RequestFailure } from "@/lib/client";
@@ -20,18 +21,18 @@ import {
   setAvailability,
   subscribeRegister,
 } from "@/lib/register-store";
-import { demoAction, demoBootstrap, DEMO, type OwnerAction } from "@/lib/demo";
+import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import type { CartLine, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
   { id: "sales", name: "Sales", icon: ReceiptText },
-  { id: "shift", name: "Shift", icon: Wallet },
+  { id: "shift", name: "Till", icon: Wallet },
+  { id: "schedule", name: "Schedule", icon: CalendarDays },
   { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
-type SettingsPage = "business" | "payments" | "discounts" | "currency" | "menu";
 const ACTIVE = "portable-pos-account";
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
@@ -327,6 +328,11 @@ export function Workspace() {
       : online
         ? "Online"
         : "Offline";
+  const me = state?.me;
+  // Servers who don't run the till only need the schedule.
+  const till = !me || me.owner || me.roles.includes("cashier");
+  const shown = tabs.filter((t) => till || t.id === "schedule" || t.id === "settings");
+  const view: Tab = till || tab === "settings" ? tab : "schedule";
   const sellable = Boolean(
     state?.shift &&
       !state.shift.closedAt &&
@@ -359,7 +365,17 @@ export function Workspace() {
   else if (!state) screen = <div className="loading" role="status">Opening register…</div>;
   else if (!business)
     screen = <Setup onSave={owner} onSignOut={() => void signOut()} />;
-  else if (tab === "settings")
+  else if (view === "schedule")
+    screen = (
+      <ScheduleScreen
+        state={state}
+        online={online}
+        demo={demo}
+        onAction={owner}
+        onSaved={setToast}
+      />
+    );
+  else if (view === "settings")
     screen = (
       <SettingsScreen
         state={state}
@@ -371,7 +387,8 @@ export function Workspace() {
         onPage={setSettingsPage}
         onSaved={setToast}
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
-        onMenu={(menu, pin) => owner({ action: "menu", menu, pin })}
+        onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
+        onAction={owner}
         onSignIn={() => setAccount(true)}
         onSignOut={() => void signOut()}
       />
@@ -393,7 +410,8 @@ export function Workspace() {
         <ShiftScreen
           state={state}
           online={online}
-          onOpen={(openingCash) => owner({ action: "open", openingCash })}
+          onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
+          onSchedule={() => go("schedule")}
           onClose={(countedCash, pin) => owner({ action: "close", countedCash, pin })}
           onSell={() => go("sell")}
           onGoMenu={() => {
@@ -414,6 +432,8 @@ export function Workspace() {
           onCheckout={sell}
           onAvailability={available}
           onReverse={reverse}
+          onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
+          onSaved={setToast}
         />
       </div>
     );
@@ -449,13 +469,13 @@ export function Workspace() {
       <main>{screen}</main>
       {business && (
         <nav className="tabbar" aria-label="Main">
-          {tabs.map((t) => (
+          {shown.map((t) => (
             <button
               key={t.id}
-              aria-current={tab === t.id ? "page" : undefined}
+              aria-current={view === t.id ? "page" : undefined}
               onClick={() => go(t.id)}
             >
-              <t.icon size={21} strokeWidth={tab === t.id ? 2 : 1.7} />
+              <t.icon size={21} strokeWidth={view === t.id ? 2 : 1.7} />
               {t.name}
               {t.id === "settings" && (syncErr || !online) && <span className="tab-dot" />}
             </button>

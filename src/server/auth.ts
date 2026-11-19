@@ -26,5 +26,9 @@ export async function authenticatedOwner(request: Request) {
     "Please sign in again to sync your register.",
     401,
   );
-  return data.user.id;
+  return {
+    id: data.user.id,
+    // Only a confirmed address can claim a team invite.
+    email: data.user.email_confirmed_at ? data.user.email ?? null : null,
+  };
 }

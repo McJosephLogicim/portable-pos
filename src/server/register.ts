@@ -1,36 +1,48 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { shiftTotals } from "../lib/domain";
+import { checkOpening, shiftTotals, withNewItems } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
+import { ownerPlanActions, planActions, type PlanCommand } from "../lib/team";
 import { getDb } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
 import { hashPin, verifyPin } from "./pin";
-import { businesses, sales, shifts } from "./schema";
+import { bookings, businesses, members, sales, shifts } from "./schema";
 import { presentSale, presentShift, snapshot } from "./snapshot";
 import { applyEvents } from "./sync";
+import { presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
-export async function runCommand(ownerId: string, input: unknown) {
+const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
+const ownerActions = ["menu", "settings", ...ownerPlanActions];
+const tillActions = ["sync", "open", "reverse", "close"];
+
+export async function runCommand(who: string | Actor, input: unknown) {
+  const actor: Actor = typeof who === "string" ? { id: who } : who;
   const cmd = parseCommand(input);
-  if (
-    cmd.action === "reverse" ||
-    cmd.action === "close" ||
-    cmd.action === "menu" ||
-    cmd.action === "settings"
-  ) {
-    await verifyPin(ownerId, cmd.pin);
+  if (pinActions.includes(cmd.action) || cmd.action === "leave") {
+    // Joining by invite happens here too, so the PIN is checked against the right business.
+    const access = await getDb().transaction((tx) => resolveAccess(tx, actor));
+    ensure(access, "Create your business first.", 404);
+    // Taking yourself off a shift needs no PIN. Taking someone else off does.
+    if (cmd.action !== "leave" || cmd.memberId !== access.member.id) {
+      const pin = "pin" in cmd ? cmd.pin : undefined;
+      ensure(pin, "Enter the owner PIN.", 403);
+      await verifyPin(access.business.id, pin);
+    }
   }
 
   return getDb().transaction(async (tx) => {
     if (cmd.action === "setup") {
+      const [onTeam] = await tx.select().from(members).where(eq(members.userId, actor.id));
+      ensure(!onTeam || onTeam.owner, "This account is already on a team. Sign in with another email to start a business.", 409);
       await tx
         .insert(businesses)
         .values({
-          ownerId,
+          ownerId: actor.id,
           name: cmd.name,
           currency: cmd.currency,
           timeZone: cmd.timeZone,
@@ -40,20 +52,41 @@ export async function runCommand(ownerId: string, input: unknown) {
     }
     // The business is the write lock for its register. Independent sellers never
     // block each other. Snapshots are taken while the same lock is still held.
-    const [business] = await tx
-      .select()
-      .from(businesses)
-      .where(eq(businesses.ownerId, ownerId))
-      .for("update");
+    const access = await resolveAccess(tx, actor);
     if (cmd.action === "bootstrap" || cmd.action === "setup")
-      return snapshot(tx, ownerId);
-    ensure(business, "Create your business first.", 404);
+      return snapshot(tx, access);
+    ensure(access, "Create your business first.", 404);
+    const { business, member } = access;
+    const me = presentMe(member);
+    ensure(!ownerActions.includes(cmd.action) || me.owner, "Only the owner can change this.", 400);
+    ensure(
+      !tillActions.includes(cmd.action) || me.owner || me.roles.includes("cashier"),
+      "Only cashiers can use the till.",
+      400,
+    );
+
+    if ((planActions as readonly string[]).includes(cmd.action)) {
+      await runPlan(tx, business, me, cmd as PlanCommand);
+      return snapshot(tx, access);
+    }
 
     if (cmd.action === "menu") {
       await tx
         .update(businesses)
         .set({ menu: cmd.menu })
         .where(eq(businesses.id, business.id));
+      // New items reach the till that is open on this phone straight away.
+      const [open] = await tx
+        .select()
+        .from(shifts)
+        .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
+      if (open && cmd.deviceId && open.deviceId === cmd.deviceId) {
+        const next = withNewItems(presentShift(open, business.currency), cmd.menu, cmd.stock);
+        await tx
+          .update(shifts)
+          .set({ menu: next.menu, stock: next.stock ?? null })
+          .where(eq(shifts.id, open.id));
+      }
     } else if (cmd.action === "settings") {
       const [open] = await tx
         .select()
@@ -119,7 +152,25 @@ export async function runCommand(ownerId: string, input: unknown) {
           business.menu.length,
           "Add a menu item before opening the till.",
         );
+        const settings = business.settings ?? defaultSettings(business.currency);
+        const checklist = settings.checklist ?? [];
+        let stock;
+        try {
+          stock = checkOpening(business.menu, checklist, cmd.stock, cmd.checked);
+        } catch (error) {
+          ensure(false, (error as Error).message);
+        }
+        if (cmd.bookingId) {
+          const [booking] = await tx
+            .select({ id: bookings.id })
+            .from(bookings)
+            .where(and(eq(bookings.id, cmd.bookingId), eq(bookings.businessId, business.id)));
+          ensure(booking, "That scheduled shift was removed.", 404);
+        }
         await tx.insert(shifts).values({
+          stock,
+          bookingId: cmd.bookingId ?? null,
+          checklist: checklist.map((c) => c.text),
           businessId: business.id,
           deviceId: cmd.deviceId,
           openingCash: cmd.openingCash,
@@ -186,6 +237,6 @@ export async function runCommand(ownerId: string, input: unknown) {
           .where(eq(shifts.id, shift.id));
       }
     }
-    return snapshot(tx, ownerId);
+    return snapshot(tx, access);
   });
 }

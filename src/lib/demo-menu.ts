@@ -34,6 +34,7 @@ export const demoMenu: Product[] = [
     price: 12000,
     image: "/menu/butter-croissant.webp",
     groups: [],
+    stock: true,
   },
   {
     id: "60e817b8-6fc4-5c17-931e-76285d156e47",
@@ -94,6 +95,7 @@ export const demoMenu: Product[] = [
     price: 12500,
     image: "/menu/cinnamon-roll.webp",
     groups: [],
+    stock: true,
   },
   {
     id: "91d842b3-f2fb-5bb6-bb7a-613ff9152fab",
@@ -118,6 +120,7 @@ export const demoMenu: Product[] = [
     price: 9500,
     image: "/menu/chocolate-chunk-cookie.webp",
     groups: [],
+    stock: true,
   },
   {
     id: "50bdf8f1-b035-5ae0-9744-62bca9cd7778",

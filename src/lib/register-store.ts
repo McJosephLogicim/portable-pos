@@ -1,5 +1,6 @@
-import { makeSale, priceLines, totalLines } from "./domain";
+import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domain";
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
+import { demoPlan } from "./demo-plan";
 import type {
   Bootstrap,
   CartLine,
@@ -27,6 +28,7 @@ function upgrade(state: RegisterState): RegisterState {
         ? s
         : { ...s, subtotal: s.subtotal ?? s.total, payment: legacyPayment(s.tender) },
     ),
+    ...(state.business?.id === "demo" && !state.bookings ? demoPlan(state) : {}),
   };
 }
 
@@ -305,6 +307,13 @@ export function saveCart(
     const shift = writableShift(current);
     checkCart(current, expectedCart);
     totalLines(priceLines(shift.menu, cart));
+    // Taking items out of an order is always allowed.
+    const before = new Map<string, number>();
+    for (const l of current.cart) before.set(l.productId, (before.get(l.productId) ?? 0) + l.quantity);
+    const grew = cart.some(
+      (l) => cart.filter((x) => x.productId === l.productId).reduce((s, x) => s + x.quantity, 0) > (before.get(l.productId) ?? 0),
+    );
+    if (grew) checkStock(shift.menu, cart, stockLeft(shift, current.sales));
     return { ...current, cart };
   });
 }
@@ -372,6 +381,7 @@ export async function checkout(
       discountId,
       received,
       createdAt: new Date().toISOString(),
+      stock: stockLeft(shift, current.sales),
     });
     return {
       ...current,
