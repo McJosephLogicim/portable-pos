@@ -6,6 +6,8 @@ export interface PaymentMethod {
   name: string;
   kind: PaymentKind;
   on: boolean;
+  /** A photo of the payment, like a wallet screenshot, must be taken at checkout. */
+  proof?: boolean;
 }
 export interface Discount {
   id: string;
@@ -14,6 +16,8 @@ export interface Discount {
   type: "percent" | "fixed";
   value: number;
   on: boolean;
+  /** A photo, like a senior or PWD ID, must be taken before the discount applies. */
+  proof?: boolean;
 }
 export interface ChecklistItem {
   id: string;
@@ -27,6 +31,10 @@ export interface Settings {
   discounts: Discount[];
   /** Ticked off before a shift opens. Missing on registers saved before checklists existed. */
   checklist?: ChecklistItem[];
+  /** The business logo, an image address. */
+  logo?: string;
+  /** Brand color as #rrggbb. */
+  brand?: string;
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
 export interface ShiftSettings extends Settings {
@@ -104,6 +112,8 @@ export interface Sale {
   change: number;
   reversedAt?: string;
   reason?: string;
+  /** Photos of the payment or discount ID. Data URLs until they sync. */
+  proofs?: string[];
 }
 export type RegisterEvent =
   | { id: string; shiftId: string; type: "sale"; sale: Sale }
@@ -175,7 +185,16 @@ export interface Booking {
   /** Whether sales reached the quota. Shared with the team, unlike the sales figure. */
   hit?: boolean;
 }
+/** A business this person can switch to. */
+export interface BusinessSummary {
+  id: string;
+  name: string;
+  owner: boolean;
+  logo?: string;
+  brand?: string;
+}
 export interface Bootstrap {
+  businesses?: BusinessSummary[];
   business: Business | null;
   me?: Me | null;
   team?: Member[];

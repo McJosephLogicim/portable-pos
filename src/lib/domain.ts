@@ -183,6 +183,15 @@ interface SaleInput {
   createdAt: string;
   /** Units left of stock-tracked items before this sale. */
   stock?: Record<string, number>;
+  /** Photos of the payment or discount ID. */
+  proofs?: string[];
+}
+
+/** How many proof photos a sale needs: one for the payment, one for the discount. */
+export function proofsNeeded(shift: Shift, tender: Tender, discountId?: string) {
+  const method = shift.settings.payments.find((p) => p.id === tender);
+  const discount = discountId ? shift.settings.discounts.find((d) => d.id === discountId) : undefined;
+  return (method?.proof ? 1 : 0) + (discount?.proof ? 1 : 0);
 }
 
 /** Subtotal, discount and total for a cart, using the shift's own discount list. */
@@ -242,6 +251,14 @@ export function makeSale(input: SaleInput): Sale {
   };
   if (new TextEncoder().encode(JSON.stringify(sale)).length > 1_000_000)
     throw Error("This order is too large for a single receipt.");
+  const proofs = input.proofs ?? [];
+  if (proofs.length < proofsNeeded(input.shift, input.tender, input.discountId))
+    throw Error(
+      discount && input.shift.settings.discounts.find((d) => d.id === discount.id)?.proof
+        ? `Take a photo of the ${discount.name} ID first.`
+        : `Take a photo of the ${method.name} payment first.`,
+    );
+  if (proofs.length) sale.proofs = proofs.slice(0, 4);
   return sale;
 }
 

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Check,
+  Repeat,
   ChevronRight,
   ListChecks,
   Users,
@@ -28,6 +30,7 @@ import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
 import { SuggestInput } from "./combobox";
+import { BusinessMark, businessList } from "./businesses";
 import {
   buzz,
   errorText,
@@ -72,6 +75,8 @@ export interface SettingsProps {
   onSaved: (text: string) => void;
   page: Page | null;
   onPage: (page: Page | null) => void;
+  /** Opens the list of businesses to switch to or add. */
+  onBusinesses: () => void;
 }
 
 export function Row({
@@ -179,8 +184,17 @@ function applyNote(state: RegisterState) {
 
 /* ---------- business ---------- */
 
+const brands = ["#0a0a0a", "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8", "#6d28d9", "#be185d"];
+
 function BusinessPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
+  const setBrand = (patch: Partial<Settings>) => {
+    const settings = { ...draft.settings, ...patch };
+    if (!settings.logo) delete settings.logo;
+    if (!settings.brand) delete settings.brand;
+    setDraft({ ...draft, settings });
+  };
+  const brand = draft.settings.brand ?? brands[0];
   return (
     <SubPage
       title="Business"
@@ -191,6 +205,45 @@ function BusinessPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
+      <div className="brand-preview" style={{ background: brand }}>
+        <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
+        <span className="stack grow" style={{ minWidth: 0 }}>
+          <span className="strong ellipsis" style={{ color: "#fff" }}>{draft.name || "Your stall"}</span>
+          <span className="label" style={{ color: "rgb(255 255 255 / 0.72)" }}>How your brand shows up</span>
+        </span>
+      </div>
+      <div className="stack gap-10">
+        <p className="group-title">Branding</p>
+        <div className="card card-pad stack gap-16">
+          <PhotoPicker
+            value={draft.settings.logo}
+            onChange={(logo) => setBrand({ logo })}
+            label="logo"
+            disabled={!props.online && !props.demo}
+          />
+          <div className="field">
+            <span>Brand color</span>
+            <div className="swatches" role="group" aria-label="Brand color">
+              {brands.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={"Brand color " + c}
+                  aria-pressed={brand === c}
+                  style={{ background: c }}
+                  onClick={() => {
+                    buzz.tap();
+                    setBrand({ brand: c === brands[0] ? undefined : c });
+                  }}
+                >
+                  {brand === c && <Check size={16} strokeWidth={2.6} />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="label">The logo and color show on receipts, the business switcher and the top of the till.</p>
+        </div>
+      </div>
       <div className="card card-pad stack gap-14">
         <label className="field">
           <span>Business name</span>
@@ -220,6 +273,7 @@ function BusinessPage(props: SettingsProps) {
       <div className="stack gap-10">
         <p className="group-title">Receipt preview</p>
         <div className="mini-receipt">
+          {draft.settings.logo && <img className="receipt-logo" src={draft.settings.logo} alt="" />}
           <p className="strong">{draft.name || "Your stall"}</p>
           <p className="label">#4-021 · Nov 19, 2:41 PM</p>
           <p className="between" style={{ marginTop: 10 }}>
@@ -257,6 +311,7 @@ function MethodSheet({
 }) {
   const [name, setName] = useState(method?.name ?? "");
   const [kind, setKind] = useState<PaymentKind>(method?.kind ?? "wallet");
+  const [proof, setProof] = useState(Boolean(method?.proof));
   return (
     <Sheet
       title={method ? "Edit method" : "New payment method"}
@@ -272,6 +327,7 @@ function MethodSheet({
                 name: name.trim(),
                 kind,
                 on: method?.on ?? true,
+                ...(proof && kind !== "cash" ? { proof: true } : {}),
               });
               onClose();
             }}
@@ -326,6 +382,18 @@ function MethodSheet({
             : "Checkout asks you to confirm the exact amount arrived."}
         </p>
       </div>
+      {kind !== "cash" && (
+        <div className="card card-pad row gap-12">
+          <span className="grow stack">
+            <span className="strong">Require a payment photo</span>
+            <span className="label">
+              The cashier takes a photo of the payment screen before the sale completes. It stays with the
+              receipt. Without this, the photo is optional.
+            </span>
+          </span>
+          <Switch checked={proof} label="Require a payment photo" onChange={setProof} />
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -360,9 +428,16 @@ function PaymentsPage(props: SettingsProps) {
               </span>
               <span className="grow stack">
                 <span className={m.on ? "" : "g"}>{m.name}</span>
-                {paymentKinds.find((k) => k.kind === m.kind)?.name !== m.name && (
+                {(paymentKinds.find((k) => k.kind === m.kind)?.name !== m.name || m.proof) && (
                   <span className="label">
-                    {paymentKinds.find((k) => k.kind === m.kind)?.name}
+                    {[
+                      paymentKinds.find((k) => k.kind === m.kind)?.name !== m.name
+                        ? paymentKinds.find((k) => k.kind === m.kind)?.name
+                        : "",
+                      m.proof ? "needs a photo" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 )}
               </span>
@@ -432,6 +507,7 @@ function DiscountSheet({
 }) {
   const [name, setName] = useState(discount?.name ?? "");
   const [type, setType] = useState<Discount["type"]>(discount?.type ?? "percent");
+  const [proof, setProof] = useState(Boolean(discount?.proof));
   const [value, setValue] = useState(
     discount
       ? discount.type === "percent"
@@ -469,6 +545,7 @@ function DiscountSheet({
                 type,
                 value: parsed!,
                 on: discount?.on ?? true,
+                ...(proof ? { proof: true } : {}),
               });
               onClose();
             }}
@@ -545,6 +622,16 @@ function DiscountSheet({
           currency={currency}
         />
       )}
+      <div className="card card-pad row gap-12">
+        <span className="grow stack">
+          <span className="strong">Require a proof photo</span>
+          <span className="label">
+            For discounts that need an ID, like Senior or PWD. Checkout asks for a photo before the discount
+            applies, and keeps it with the receipt.
+          </span>
+        </span>
+        <Switch checked={proof} label="Require a proof photo" onChange={setProof} />
+      </div>
       {problem && <p className="alert">{problem}</p>}
     </Sheet>
   );
@@ -588,7 +675,10 @@ function DiscountsPage(props: SettingsProps) {
                 </span>
                 <span className="grow stack">
                   <span className={d.on ? "" : "g"}>{d.name}</span>
-                  <span className="label">{discountLabel(d, draft.currency)}</span>
+                  <span className="label">
+                    {discountLabel(d, draft.currency)}
+                    {d.proof ? " · needs a photo" : ""}
+                  </span>
                 </span>
               </button>
               <Switch
@@ -1211,6 +1301,13 @@ export function SettingsScreen(props: SettingsProps) {
             </span>
           </div>
         </div>
+        <div className="card card-list">
+          <Row
+            icon={<Repeat size={18} strokeWidth={1.8} />}
+            title={businessList(state).length > 1 ? "Switch business" : "Start your own business"}
+            onClick={props.onBusinesses}
+          />
+        </div>
         <p className="label" style={{ padding: "0 4px" }}>
           The owner manages the menu, payments and team.
         </p>
@@ -1221,13 +1318,7 @@ export function SettingsScreen(props: SettingsProps) {
         </div>
       </div>
     );
-  const initials = business.name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+  const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;
   return (
@@ -1237,13 +1328,19 @@ export function SettingsScreen(props: SettingsProps) {
       </div>
       <div className="card card-list">
         <button className="list-row" onClick={() => onPage("business")}>
-          <span className="mark">{initials || "P"}</span>
+          <BusinessMark name={business.name} logo={s.logo} brand={s.brand} />
           <span className="grow stack">
             <span className="strong ellipsis">{business.name}</span>
-            <span className="label">{demo ? "Demo stall · sample menu" : "Name and receipt"}</span>
+            <span className="label">{demo ? "Demo stall · sample menu" : "Name, logo and receipt"}</span>
           </span>
           <ChevronRight size={18} className="chev" />
         </button>
+        <Row
+          icon={<Repeat size={18} strokeWidth={1.8} />}
+          title={businesses > 1 ? "Switch business" : "Add a business"}
+          detail={businesses > 1 ? businesses + " businesses" : undefined}
+          onClick={props.onBusinesses}
+        />
       </div>
       <p className="group-title">Checkout</p>
       <div className="card card-list">

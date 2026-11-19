@@ -27,3 +27,10 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+export function dataUrlToBlob(url: string): Blob {
+  const [head, body] = url.split(",");
+  const type = head.match(/^data:([^;]+)/)?.[1] ?? "image/jpeg";
+  const bytes = Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
+  return new Blob([bytes], { type });
+}

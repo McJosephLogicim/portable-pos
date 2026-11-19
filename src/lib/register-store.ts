@@ -385,6 +385,7 @@ export async function checkout(
   received: number,
   expectedCart?: CartLine[],
   discountId?: string,
+  proofs?: string[],
 ) {
   let sale!: Sale;
   const state = await updateRegister(key, (current) => {
@@ -409,6 +410,7 @@ export async function checkout(
       received,
       createdAt: new Date().toISOString(),
       stock: stockLeft(shift, current.sales),
+      proofs,
     });
     return {
       ...current,
@@ -429,4 +431,28 @@ export function clearRegister(key: string): Promise<RegisterState> {
       throw new Error("Sync pending records before signing out.");
     return null;
   });
+}
+
+/**
+ * Proof photos are kept on the phone until they upload. Before a sale syncs for the first
+ * time, swap each photo for the private address it was uploaded to.
+ */
+export async function uploadProofs(
+  key: string,
+  upload: (dataUrl: string) => Promise<string>,
+): Promise<void> {
+  const current = await loadRegister(key);
+  for (const event of current.pending) {
+    if (event.type !== "sale" || !event.sale.proofs?.some((p) => p.startsWith("data:"))) continue;
+    const proofs: string[] = [];
+    for (const p of event.sale.proofs) proofs.push(p.startsWith("data:") ? await upload(p) : p);
+    await updateRegister(key, (state) => {
+      const swap = (sale: Sale) => (sale.id === event.sale.id ? { ...sale, proofs } : sale);
+      return {
+        ...state,
+        sales: state.sales.map(swap),
+        pending: state.pending.map((e) => (e.type === "sale" && e.id === event.id ? { ...e, sale: swap(e.sale) } : e)),
+      };
+    });
+  }
 }

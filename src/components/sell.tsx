@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Ban, Check, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { Ban, Camera, Check, ChevronDown, Minus, Plus, Search, Trash2, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -15,14 +15,18 @@ import {
   parseMoney,
   priceLines,
   priceOrder,
+  proofsNeeded,
   saveMenuItem,
   stockLeft,
   totalLines,
 } from "@/lib/domain";
 import { ItemSheet } from "./settings";
+import { BusinessMark } from "./businesses";
+import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
+  buzz,
   DoneCheck,
   errorText,
   usePin,
@@ -348,6 +352,76 @@ function OptionAvailability({
 
 type Done = { sale: Sale; shiftNumber: number };
 
+/** A photo taken at checkout. It stays on the phone until the sale syncs. */
+function ProofShot({
+  label,
+  hint,
+  required,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  required: boolean;
+  value?: string;
+  onChange: (url: string | undefined) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div className={"proof" + (value ? " has" : required ? " needed" : "")}>
+      <button
+        type="button"
+        className="proof-slot"
+        aria-label={(value ? "Retake " : "Take ") + label}
+        disabled={busy}
+        onClick={() => {
+          buzz.tap();
+          input.current?.click();
+        }}
+      >
+        {value ? <img src={value} alt="" /> : <Camera size={20} strokeWidth={1.7} />}
+      </button>
+      <span className="grow stack">
+        <span className="strong-ish">
+          {label}
+          {required && !value ? <span className="proof-tag">Needed</span> : null}
+        </span>
+        <span className="label">{error || (value ? "Tap the photo to retake it." : hint)}</span>
+      </span>
+      {value && (
+        <button type="button" className="round flat" aria-label={"Remove " + label} onClick={() => onChange(undefined)}>
+          <X size={16} />
+        </button>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setBusy(true);
+          setError("");
+          try {
+            onChange(await blobToDataUrl(await compressPhoto(file, 1000, 0.7)));
+            buzz.success();
+          } catch (err) {
+            setError(errorText(err));
+            buzz.error();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function Checkout({
   state,
   lines,
@@ -363,7 +437,7 @@ function Checkout({
   busy: boolean;
   onQuantity: (index: number, value: number) => void;
   onClear: () => void;
-  onPay: (tender: Tender, received: number, discountId?: string) => Promise<Sale | null>;
+  onPay: (tender: Tender, received: number, discountId?: string, proofs?: string[]) => Promise<Sale | null>;
   onClose: () => void;
   onReceipt: (sale: Sale) => void;
 }) {
@@ -379,6 +453,17 @@ function Checkout({
   const chosen = methods.find((m) => m.id === method);
   const order = lines.length ? priceOrder(shift, lines, discountId) : null;
   const total = order?.total ?? 0;
+  const [payPhoto, setPayPhoto] = useState<string>();
+  const [idPhoto, setIdPhoto] = useState<string>();
+  const discount = discounts.find((d) => d.id === discountId);
+  const nonCash = Boolean(chosen && chosen.kind !== "cash");
+  const proofs = [nonCash ? payPhoto : undefined, discount?.proof ? idPhoto : undefined].filter(
+    (p): p is string => Boolean(p),
+  );
+  const missing = chosen ? proofsNeeded(shift, chosen.id, discountId) > proofs.length : false;
+  const missingText = discount?.proof && !idPhoto
+    ? `Take a photo of the ${discount.name} ID first.`
+    : `Take a photo of the ${chosen?.name ?? ""} payment first.`;
 
   let typed: number | undefined;
   if (cash.trim()) {
@@ -391,9 +476,14 @@ function Checkout({
 
   async function pay(received: number) {
     if (!chosen || busy) return;
+    if (missing) {
+      setError(missingText);
+      buzz.error();
+      return;
+    }
     setError("");
     try {
-      const sale = await onPay(chosen.id, received, discountId);
+      const sale = await onPay(chosen.id, received, discountId, proofs);
       if (sale) {
         haptic(18);
         setDone({ sale, shiftNumber: shift.number });
@@ -472,16 +562,16 @@ function Checkout({
         chosen && chosen.kind !== "cash" ? (
           <button
             className="btn block"
-            disabled={busy || !lines.length}
+            disabled={busy || !lines.length || missing}
             onClick={() => void pay(total)}
           >
-            {busy ? "Saving…" : `${chosen.name} received ·`}
+            {busy ? "Saving…" : missing ? "Take the photo first ·" : `${chosen.name} received ·`}
             {!busy && <Money value={total} currency={currency} />}
           </button>
         ) : typed !== undefined && cash !== exactText ? (
           <button
             className="btn block"
-            disabled={busy || typed < total}
+            disabled={busy || typed < total || missing}
             onClick={() => void pay(typed!)}
           >
             {typed < total ? (
@@ -565,13 +655,35 @@ function Checkout({
           </button>
         ))}
       </div>
+      {(discount?.proof || nonCash) && (
+        <div className="card card-list proofs">
+          {discount?.proof && (
+            <ProofShot
+              label={discount.name + " ID"}
+              hint="Photo of the ID, kept with the receipt."
+              required
+              value={idPhoto}
+              onChange={setIdPhoto}
+            />
+          )}
+          {nonCash && chosen && (
+            <ProofShot
+              label={chosen.name + " payment"}
+              hint={chosen.proof ? "Photo of the payment screen." : "Optional. A photo of the payment screen."}
+              required={Boolean(chosen.proof)}
+              value={payPhoto}
+              onChange={setPayPhoto}
+            />
+          )}
+        </div>
+      )}
       {chosen?.kind === "cash" && (
         <div className="stack gap-10">
-          <p className="label">Cash received · tap to finish</p>
+          <p className="label">{missing ? missingText : "Cash received · tap to finish"}</p>
           <div className="quick">
             <button
               type="button"
-              disabled={busy || !total}
+              disabled={busy || !total || missing}
               onClick={() => void pay(total)}
             >
               Exact
@@ -580,7 +692,7 @@ function Checkout({
               <button
                 key={amount}
                 type="button"
-                disabled={busy}
+                disabled={busy || missing}
                 onClick={() => void pay(amount)}
               >
                 {formatMoney(amount, currency)}
@@ -620,11 +732,13 @@ export interface SellProps {
     tender: Tender,
     received: number,
     discountId?: string,
+    proofs?: string[],
   ) => Promise<Sale>;
   onAvailability: (targetId: string, soldOut: boolean) => Promise<void>;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
   onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
   onSaved: (text: string) => void;
+  onBusinesses: () => void;
 }
 
 export function SellScreen({
@@ -638,6 +752,7 @@ export function SellScreen({
   onReverse,
   onMenu,
   onSaved,
+  onBusinesses,
 }: SellProps) {
   const [adding, setAdding] = useState(false);
   const withPin = usePin();
@@ -774,9 +889,14 @@ export function SellScreen({
     <>
       <div className="sell-head">
         <div className="page-top">
-          <div className="grow">
-            <h1 className="sell-title ellipsis">{business.name}</h1>
-            <p className="label row gap-6">
+          <button type="button" className="grow sell-brand" onClick={onBusinesses} aria-label={"Switch business, now " + business.name}>
+            <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} size={38} />
+            <span className="grow stack" style={{ minWidth: 0 }}>
+            <span className="sell-title ellipsis row gap-4">
+              <span className="ellipsis">{business.name}</span>
+              <ChevronDown size={16} className="chev-down" />
+            </span>
+            <span className="label row gap-6">
               {status !== "Online" && (
                 <span className={"dot" + (online ? "" : " danger")} />
               )}
@@ -785,8 +905,9 @@ export function SellScreen({
                 {shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}
                 {status !== "Online" ? " · " + status : ""}
               </span>
-            </p>
-          </div>
+            </span>
+            </span>
+          </button>
           {menu.length > 8 && (
             <button
               className="round"
@@ -1000,12 +1121,12 @@ export function SellScreen({
             void write(() => onCart([]));
             setCharging(false);
           }}
-          onPay={async (tender, received, discountId) => {
+          onPay={async (tender, received, discountId, proofs) => {
             if (lock.current || pending) return null;
             lock.current = true;
             setWorking(true);
             try {
-              return await onCheckout(tender, received, discountId);
+              return await onCheckout(tender, received, discountId, proofs);
             } finally {
               lock.current = false;
               setWorking(false);

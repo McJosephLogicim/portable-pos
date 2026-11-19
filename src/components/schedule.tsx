@@ -38,7 +38,7 @@ import type {
   Tag,
 } from "@/lib/types";
 import { Combobox } from "./combobox";
-import { ShiftSales } from "./insights";
+import { Leaderboards, ShiftSales } from "./insights";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
@@ -1160,11 +1160,22 @@ export function ScheduleScreen(props: ScheduleProps) {
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
   const openBooking = openId ? bookings.find((b) => b.id === openId) : undefined;
+  const [board, setBoard] = useState(false);
 
   return (
     <div className="page narrow">
       <div className="page-top">
-        <h1 className="headline grow">Schedule</h1>
+        <h1 className="headline grow">Shifts</h1>
+        <button
+          className="round"
+          aria-label="Leaderboard"
+          onClick={() => {
+            buzz.tap();
+            setBoard(true);
+          }}
+        >
+          <Trophy size={19} />
+        </button>
         {me?.owner && (
           <>
             <button
@@ -1257,6 +1268,11 @@ export function ScheduleScreen(props: ScheduleProps) {
         )}
       </div>
 
+      {board && (
+        <Sheet title="Leaderboard" onClose={() => setBoard(false)}>
+          <Leaderboards state={state} demo={props.demo} empty />
+        </Sheet>
+      )}
       {openBooking && (
         <BookingSheet
           booking={openBooking}

@@ -35,7 +35,7 @@ export function presentShift(
 }
 
 export function presentSale(row: typeof sales.$inferSelect): Sale {
-  const { subtotal, discount, payment, ...rest } = row;
+  const { subtotal, discount, payment, proofs, ...rest } = row;
   return {
     ...rest,
     subtotal: subtotal ?? row.total,
@@ -46,6 +46,7 @@ export function presentSale(row: typeof sales.$inferSelect): Sale {
       ? new Date(row.reversedAt).toISOString()
       : undefined,
     reason: row.reason ?? undefined,
+    ...(proofs?.length ? { proofs } : {}),
   };
 }
 

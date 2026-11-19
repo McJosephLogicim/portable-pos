@@ -39,6 +39,7 @@ export function defaultDiscounts(currency: string): Discount[] {
           type: "percent",
           value: 20,
           on: true,
+          proof: true,
         },
       ]
     : [];

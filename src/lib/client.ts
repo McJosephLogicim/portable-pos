@@ -27,6 +27,17 @@ export function authClient() {
     );
   return (client ??= createClient(url, key));
 }
+/**
+ * A register on this device is keyed by the account, plus the business when the
+ * person switched away from their first one.
+ */
+export function registerKey(userId: string, businessId?: string) {
+  return businessId ? `${userId}@${businessId}` : userId;
+}
+export function parseKey(key: string) {
+  const [userId, businessId] = key.split("@");
+  return { userId, businessId: businessId || undefined };
+}
 async function post(
   path: string,
   init: RequestInit,
@@ -59,25 +70,33 @@ async function post(
   }
 }
 
-export async function api(
-  userId: string,
-  body: Record<string, unknown>,
-): Promise<Bootstrap> {
+async function sessionFor(key: string, what: string) {
+  const { userId, businessId } = parseKey(key);
   const {
     data: { session },
     error,
   } = await authClient().auth.getSession();
   if (error || !session || session.user.id !== userId)
-    throw Error("Sign back into this owner account to sync this register.");
-  const token = session.access_token;
+    throw Error(`Sign back into this account to ${what}.`);
+  return {
+    session,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      ...(businessId ? { "X-Business-Id": businessId } : {}),
+    } as Record<string, string>,
+  };
+}
+
+export async function api(
+  key: string,
+  body: Record<string, unknown>,
+): Promise<Bootstrap> {
+  const { headers: auth } = await sessionFor(key, "sync this register");
   async function send<T>(command: Record<string, unknown>): Promise<T> {
     const { response, data } = await post(
       "/api/pos",
       {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", ...auth },
         body: JSON.stringify(command),
         cache: "no-store",
       },
@@ -106,27 +125,25 @@ export async function api(
   return data;
 }
 
-/** Upload a photo and return the address it is served from. */
-export async function uploadImage(userId: string, photo: Blob): Promise<string> {
-  const {
-    data: { session },
-    error,
-  } = await authClient().auth.getSession();
-  if (error || !session || session.user.id !== userId)
-    throw Error("Sign back into this owner account to add photos.");
+/** Upload a photo and return the address it is served from. Proofs stay private. */
+export async function uploadImage(key: string, photo: Blob, proof = false): Promise<string> {
+  const { headers } = await sessionFor(key, "add photos");
   const { response, data } = await post(
-    "/api/images",
-    {
-      headers: {
-        "Content-Type": photo.type,
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: photo,
-    },
+    "/api/images" + (proof ? "?proof=1" : ""),
+    { headers: { "Content-Type": photo.type, ...headers }, body: photo },
     30_000,
     "Couldn't upload the photo. Check your connection and try again.",
   );
   if (!response.ok || !data?.url)
     throw new RequestFailure(response.status, data?.error || "The photo didn't upload. Try again.");
   return data.url as string;
+}
+
+/** A proof photo needs the account's sign-in, so it's fetched and shown from memory. */
+export async function proofBlob(key: string, url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  const { headers } = await sessionFor(key, "see this photo");
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw Error("The photo isn't available.");
+  return URL.createObjectURL(await response.blob());
 }

@@ -135,9 +135,12 @@ export function Account({
 export function Setup({
   onSave,
   onSignOut,
+  adding = false,
 }: {
   onSave: (a: OwnerAction) => Promise<void>;
   onSignOut: () => void;
+  /** Adding another business, rather than the first one. */
+  adding?: boolean;
 }) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState("");
@@ -149,7 +152,7 @@ export function Setup({
   return (
     <div className="page narrow">
       <h1 className="headline" style={{ paddingTop: 24 }}>
-        Set up your stall. <span className="g">It takes a minute.</span>
+        {adding ? "Add a business." : "Set up your stall."} <span className="g">{adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>
       </h1>
       <form
         className="card card-pad stack gap-14"
@@ -215,11 +218,11 @@ export function Setup({
           </p>
         )}
         <button className="btn block" disabled={busy}>
-          {busy ? "Creating…" : "Create register"}
+          {busy ? "Creating…" : adding ? "Add business" : "Create register"}
         </button>
       </form>
       <button className="link" onClick={onSignOut}>
-        Sign out
+        {adding ? "Cancel" : "Sign out"}
       </button>
     </div>
   );

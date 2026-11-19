@@ -9,6 +9,44 @@ import type { SalesFocus } from "./sales";
 import { Avatar } from "./team";
 import { buzz, formatMoney, Money } from "./ui";
 
+const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
+
+/** Sales by hour as bars, with the busiest hour in black. */
+export function HourChart({
+  hours,
+  currency,
+  title = "By hour",
+}: {
+  hours: { hour: number; total: number }[];
+  currency: string;
+  title?: string;
+}) {
+  if (hours.length < 2) return null;
+  const peak = Math.max(...hours.map((h) => h.total), 1);
+  const busiest = hours.reduce((a, b) => (b.total > a.total ? b : a), hours[0]);
+  return (
+    <div className="card card-pad stack gap-12">
+      <div className="between">
+        <span className="label">{title}</span>
+        <span className="label">
+          Busiest {hourName(busiest.hour)} · {formatMoney(busiest.total, currency)}
+        </span>
+      </div>
+      <div className="hours" role="img" aria-label={`Sales by hour, busiest at ${hourName(busiest.hour)}`}>
+        {hours.map((h) => (
+          <span key={h.hour} className="hour">
+            <i
+              className={h.hour === busiest.hour ? "peak" : ""}
+              style={{ height: `${Math.max(4, (h.total / peak) * 100)}%` }}
+            />
+            <small>{h.hour % 3 === 0 || hours.length <= 8 ? hourName(h.hour) : ""}</small>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** What sold on some tills: the top items and the busy hours. Tapping opens those receipts. */
 export function ShiftSales({
   state,
@@ -31,9 +69,6 @@ export function ShiftSales({
   const count = state.sales.filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt).length;
   if (!sellers.length) return null;
   const top = sellers[0].quantity;
-  const peak = Math.max(...hours.map((h) => h.total), 1);
-  const busiest = hours.reduce((a, b) => (b.total > a.total ? b : a), hours[0]);
-  const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
   const image = (id: string) => menu.find((p) => p.id === id)?.image;
   return (
     <div className="stack gap-10">
@@ -74,27 +109,7 @@ export function ShiftSales({
           </button>
         ))}
       </div>
-      {hours.length > 1 && (
-        <div className="card card-pad stack gap-12">
-          <div className="between">
-            <span className="label">By hour</span>
-            <span className="label">
-              Busiest {hourName(busiest.hour)} · {formatMoney(busiest.total, currency)}
-            </span>
-          </div>
-          <div className="hours" role="img" aria-label={`Sales by hour, busiest at ${hourName(busiest.hour)}`}>
-            {hours.map((h) => (
-              <span key={h.hour} className="hour">
-                <i
-                  className={h.hour === busiest.hour ? "peak" : ""}
-                  style={{ height: `${Math.max(4, (h.total / peak) * 100)}%` }}
-                />
-                <small>{h.hour % 3 === 0 || hours.length <= 8 ? hourName(h.hour) : ""}</small>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <HourChart hours={hours} currency={currency} />
     </div>
   );
 }
@@ -107,7 +122,7 @@ const boards: { id: Board; name: string }[] = [
 ];
 
 /** Who and where did best over finished shifts. */
-export function Leaderboards({ state, demo }: { state: RegisterState; demo: boolean }) {
+export function Leaderboards({ state, demo, empty = false }: { state: RegisterState; demo: boolean; empty?: boolean }) {
   const [board, setBoard] = useState<Board>("event");
   const [range, setRange] = useState<"month" | "all">("month");
   const business = state.business!;
@@ -131,11 +146,14 @@ export function Leaderboards({ state, demo }: { state: RegisterState; demo: bool
   const rows = leaderboard(state.bookings ?? [], board, me, salesOf, since);
   const owner = Boolean(me?.owner);
   const best = rows[0]?.score || 1;
-  if (!(state.bookings ?? []).some((b) => Date.parse(b.endsAt) < Date.now())) return null;
+  if (!(state.bookings ?? []).some((b) => Date.parse(b.endsAt) < Date.now()))
+    return empty ? (
+      <p className="label">Rankings start once the first scheduled shift is over.</p>
+    ) : null;
   return (
     <div className="stack gap-10">
       <div className="between section-head">
-        <p className="group-title">Leaderboard</p>
+        <p className="group-title">{empty ? "Ranked by " + (owner ? "sales" : "quotas hit") : "Leaderboard"}</p>
         <button
           className="link small-link"
           onClick={() => {

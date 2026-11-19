@@ -195,6 +195,13 @@ const PhotoContext = createContext<Upload>(async () => {
 });
 export const PhotoProvider = PhotoContext.Provider;
 
+/** Turns a stored proof photo address into something an img can show. */
+const ProofContext = createContext<(url: string) => Promise<string>>(async (url) => url);
+export const ProofProvider = ProofContext.Provider;
+export function useProof() {
+  return useContext(ProofContext);
+}
+
 /** A square photo slot. Tap to take or choose a photo; it shrinks and uploads it. */
 export function PhotoPicker({
   value,
@@ -237,7 +244,9 @@ export function PhotoPicker({
       )}
       {size === "large" && (
         <span className="stack gap-4 grow">
-          <span className="strong">{value ? "Photo" : "Add a photo"}</span>
+          <span className="strong">
+            {value ? label[0].toUpperCase() + label.slice(1) : "Add " + (/^[aeiou]/i.test(label) ? "an " : "a ") + label}
+          </span>
           {error ? (
             <span className="label alert" role="alert">{error}</span>
           ) : (
