@@ -12,15 +12,15 @@ import { ensure } from "./errors";
 import { parseCommand } from "./input";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, members, sales, shifts } from "./schema";
-import { presentSale, presentShift, snapshot } from "./snapshot";
+import { presentSale, presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents } from "./sync";
-import { presentMe, resolveAccess, runPlan, type Actor } from "./team";
+import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
 const ownerActions = ["menu", "settings", ...ownerPlanActions];
 
 export async function runCommand(who: string | Actor, input: unknown) {
-  const actor: Actor = typeof who === "string" ? { id: who } : who;
+  const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
   const cmd = parseCommand(input);
   const selfAction = cmd.action === "leave" || cmd.action === "role";
   if (pinActions.includes(cmd.action) || selfAction) {
@@ -36,25 +36,44 @@ export async function runCommand(who: string | Actor, input: unknown) {
   }
 
   return getDb().transaction(async (tx) => {
+    const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => ({
+      ...(await baseSnapshot(tx, access)),
+      businesses: await listBusinesses(tx, actor),
+    });
     if (cmd.action === "setup") {
-      const [onTeam] = await tx.select().from(members).where(eq(members.userId, actor.id));
-      ensure(!onTeam || onTeam.owner, "This account is already on a team. Sign in with another email to start a business.", 409);
-      await tx
-        .insert(businesses)
-        .values({
-          ownerId: actor.id,
-          name: cmd.name,
-          currency: cmd.currency,
-          timeZone: cmd.timeZone,
-          pinHash: await hashPin(cmd.pin),
-        })
-        .onConflictDoNothing({ target: businesses.ownerId });
+      if (cmd.id) {
+        // Another business: the new one is what the app works in from now on.
+        await tx
+          .insert(businesses)
+          .values({
+            id: cmd.id,
+            ownerId: actor.id,
+            name: cmd.name,
+            currency: cmd.currency,
+            timeZone: cmd.timeZone,
+            pinHash: await hashPin(cmd.pin),
+          })
+          .onConflictDoNothing({ target: businesses.id });
+        actor.businessId = cmd.id;
+      } else {
+        const [onTeam] = await tx.select().from(members).where(eq(members.userId, actor.id)).limit(1);
+        const [owns] = await tx.select({ id: businesses.id }).from(businesses).where(eq(businesses.ownerId, actor.id)).limit(1);
+        if (!onTeam && !owns)
+          await tx.insert(businesses).values({
+            ownerId: actor.id,
+            name: cmd.name,
+            currency: cmd.currency,
+            timeZone: cmd.timeZone,
+            pinHash: await hashPin(cmd.pin),
+          });
+        else ensure(owns, "This account is already on a team. Add your own business from Settings.", 409);
+      }
     }
     // The business is the write lock for its register. Independent sellers never
     // block each other. Snapshots are taken while the same lock is still held.
     const access = await resolveAccess(tx, actor);
     if (cmd.action === "bootstrap" || cmd.action === "setup")
-      return snapshot(tx, access);
+      return snapshot(access);
     ensure(access, "Create your business first.", 404);
     const { business, member } = access;
     const me = presentMe(member);
@@ -62,7 +81,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
       await runPlan(tx, business, me, cmd as PlanCommand);
-      return snapshot(tx, access);
+      return snapshot(access);
     }
 
     if (cmd.action === "menu") {
@@ -232,6 +251,6 @@ export async function runCommand(who: string | Actor, input: unknown) {
           .where(eq(shifts.id, shift.id));
       }
     }
-    return snapshot(tx, access);
+    return snapshot(access);
   });
 }

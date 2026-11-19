@@ -26,8 +26,11 @@ export async function authenticatedOwner(request: Request) {
     "Please sign in again to sync your register.",
     401,
   );
+  // The business picked in the app, when the person is on more than one.
+  const businessId = request.headers.get("x-business-id")?.trim();
   return {
     id: data.user.id,
+    ...(businessId && /^[0-9a-f-]{36}$/i.test(businessId) ? { businessId } : {}),
     // Only a confirmed address can claim a team invite.
     email: data.user.email_confirmed_at ? data.user.email ?? null : null,
   };

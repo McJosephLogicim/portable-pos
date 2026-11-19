@@ -8,9 +8,10 @@ import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { ScheduleScreen } from "./schedule";
 import { Account, Setup } from "./account";
-import { buzz, CelebrateProvider, PhotoProvider, PinProvider, Toast } from "./ui";
-import { blobToDataUrl, compressPhoto } from "@/lib/photo";
-import { api, authClient, RequestFailure, uploadImage } from "@/lib/client";
+import { BusinessSwitcher } from "./businesses";
+import { buzz, CelebrateProvider, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
+import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import {
   beginClose,
   cancelClose,
@@ -21,6 +22,7 @@ import {
   saveCart,
   setAvailability,
   subscribeRegister,
+  uploadProofs,
 } from "@/lib/register-store";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
@@ -30,7 +32,7 @@ const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
   { id: "sales", name: "Sales", icon: ReceiptText },
   { id: "shift", name: "Till", icon: Wallet },
-  { id: "schedule", name: "Schedule", icon: CalendarDays },
+  { id: "schedule", name: "Shifts", icon: CalendarDays },
   { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
@@ -65,6 +67,10 @@ async function syncRegister(
     }
     if (!current.pending.length && force)
       return mergeServer(key, await api(key, { action: "bootstrap" }));
+    if (current.pending.length) {
+      await uploadProofs(key, (url) => uploadImage(key, dataUrlToBlob(url), true));
+      current = await loadRegister(key);
+    }
     while (current.pending.length) {
       const events = [];
       let bytes = 0;
@@ -101,7 +107,9 @@ export function Workspace() {
     [bootError, setBootError] = useState(""),
     [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
     [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
-    [toast, setToast] = useState("");
+    [toast, setToast] = useState(""),
+    [adding, setAdding] = useState(false),
+    [switching, setSwitching] = useState(false);
   const active = useRef<string | null>(null),
     syncBusy = useRef(false);
   const show = useCallback((id: string, s: RegisterState) => {
@@ -227,6 +235,19 @@ export function Workspace() {
     };
   }, [state?.business?.id, state?.shift?.id, online]);
 
+  // The business's brand color tints the dark cards and the active tab.
+  const brandColor = state?.business?.settings.brand;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (brandColor) {
+      root.style.setProperty("--brand", brandColor);
+      root.classList.add("branded");
+    } else {
+      root.style.removeProperty("--brand");
+      root.classList.remove("branded");
+    }
+  }, [brandColor]);
+
   async function owner(input: OwnerAction) {
     if (!key) throw Error("Register unavailable.");
     if (!navigator.onLine)
@@ -280,12 +301,12 @@ export function Workspace() {
       show(key, await saveCart(key, next, state.cart)),
     );
   }
-  async function sell(tender: Tender, received: number, discountId?: string) {
+  async function sell(tender: Tender, received: number, discountId?: string, proofs?: string[]) {
     if (!state || !key) throw Error("Register unavailable.");
     setPending(true);
     try {
       const result = await locked("write-" + key, () =>
-        checkout(key, tender, received, state.cart, discountId),
+        checkout(key, tender, received, state.cart, discountId, proofs),
       );
       show(key, result.state);
       void flush();
@@ -351,6 +372,36 @@ export function Workspace() {
     if (!navigator.onLine) throw Error("Connect to add photos.");
     return uploadImage(key, photo);
   }
+  /** Open another business on this phone. Each keeps its own till and sync queue. */
+  async function switchBusiness(businessId: string) {
+    if (!key || key === DEMO || state?.business?.id === businessId) return;
+    const { userId } = parseKey(key);
+    if (navigator.onLine) await flush();
+    const first = await loadRegister(userId);
+    buzz.tick();
+    setSettingsPage(null);
+    await connect(first.business?.id === businessId ? userId : registerKey(userId, businessId));
+  }
+  async function addBusiness(input: OwnerAction) {
+    if (!key || key === DEMO) throw Error("Sign in to add a business.");
+    if (input.action !== "setup") return;
+    if (!navigator.onLine) throw Error("Connect to the internet to add a business.");
+    const id = crypto.randomUUID();
+    const next = registerKey(parseKey(key).userId, id);
+    await locked("write-" + next, async () => {
+      const data = await api(next, { ...input, id });
+      await mergeServer(next, data);
+    });
+    setAdding(false);
+    await connect(next);
+    setTab("settings");
+    setSettingsPage("menu");
+    setToast("Added " + input.name);
+  }
+  const loadProof = useCallback(
+    (url: string) => (!key || key === DEMO || url.startsWith("data:") ? Promise.resolve(url) : proofBlob(key, url)),
+    [key],
+  );
   const reverse = (saleId: string, reason: string, pin: string) =>
     owner({ action: "reverse", saleId, reason, pin });
 
@@ -369,6 +420,8 @@ export function Workspace() {
         </button>
       </div>
     );
+  else if (adding)
+    screen = <Setup adding onSave={addBusiness} onSignOut={() => setAdding(false)} />;
   else if (!state) screen = <div className="loading" role="status">Opening register…</div>;
   else if (!business)
     screen = <Setup onSave={owner} onSignOut={() => void signOut()} />;
@@ -402,6 +455,7 @@ export function Workspace() {
         onAction={owner}
         onSignIn={() => setAccount(true)}
         onSignOut={() => void signOut()}
+        onBusinesses={() => setSwitching(true)}
       />
     );
   else if (tab === "sales")
@@ -457,6 +511,7 @@ export function Workspace() {
           onReverse={reverse}
           onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
           onSaved={setToast}
+          onBusinesses={() => setSwitching(true)}
         />
       </div>
     );
@@ -464,6 +519,7 @@ export function Workspace() {
   return (
     <CelebrateProvider>
     <PhotoProvider value={upload}>
+    <ProofProvider value={loadProof}>
     <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
       {(notice || (syncErr && !bootError)) && (
         <div className="page narrow" style={{ paddingBottom: 0, marginBottom: -14 }}>
@@ -512,10 +568,26 @@ export function Workspace() {
         </nav>
       )}
       {toast && <Toast text={toast} onDone={() => setToast("")} />}
+      {switching && state?.business && (
+        <BusinessSwitcher
+          state={state}
+          demo={demo}
+          online={online}
+          onClose={() => setSwitching(false)}
+          onAdd={() => {
+            setSwitching(false);
+            setAdding(true);
+          }}
+          onSwitch={(id) => {
+            setSwitching(false);
+            void switchBusiness(id).catch((e) => setNotice(message(e)));
+          }}
+        />
+      )}
       {account && (
         <Account
           onDismiss={() => setAccount(false)}
-          requiredUser={key && key !== DEMO ? key : undefined}
+          requiredUser={key && key !== DEMO ? parseKey(key).userId : undefined}
           onSignedIn={async (id) => {
             setAccount(false);
             await connect(id);
@@ -523,6 +595,7 @@ export function Workspace() {
         />
       )}
     </PinProvider>
+    </ProofProvider>
     </PhotoProvider>
     </CelebrateProvider>
   );

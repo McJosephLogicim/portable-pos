@@ -118,6 +118,7 @@ export async function applyEvents(
         received: sale.received,
         createdAt: sale.createdAt,
         stock: left,
+        proofs: sale.proofs,
       });
     } catch (error) {
       throw new RegisterError(

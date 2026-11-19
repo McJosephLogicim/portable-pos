@@ -2184,3 +2184,179 @@ button.list-row:active:not(:disabled),
 .between > .rank-score {
   flex: none;
 }
+
+/* ---------- businesses and branding ---------- */
+.mark {
+  overflow: hidden;
+}
+.mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pick-check {
+  color: var(--ink);
+  flex: none;
+}
+.sell-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+.sell-brand .chev-down {
+  color: var(--ink-tertiary);
+  flex: none;
+}
+.receipt-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  object-fit: cover;
+  margin-bottom: 4px;
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.swatches button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.swatches button[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink);
+}
+.swatches button:active {
+  transform: scale(0.9);
+}
+.brand-preview {
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-card);
+}
+.brand-preview .mark {
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.4);
+}
+
+/* ---------- proof photos ---------- */
+.proofs {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.proof {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 0;
+}
+.proof-slot {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 12px;
+  border: 1.5px dashed var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--ink-secondary);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+}
+.proof.needed .proof-slot {
+  border-color: var(--ink);
+  color: var(--ink);
+  animation: proof-nudge 1.6s var(--ease-out) infinite;
+}
+.proof.has .proof-slot {
+  border: 0;
+}
+.proof-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.proof-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--ink);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+@keyframes proof-nudge {
+  0%, 70%, 100% { transform: scale(1); }
+  80% { transform: scale(1.08); }
+  90% { transform: scale(0.97); }
+}
+.proof-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.proof-thumb {
+  width: 84px;
+  height: 84px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  background: var(--surface-muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  text-align: center;
+}
+.proof-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (prefers-reduced-motion: reduce) {
+  .proof.needed .proof-slot {
+    animation: none;
+  }
+}
+
+/* ---------- brand tint ---------- */
+.branded .hero {
+  background: radial-gradient(130% 150% at 0% 0%, color-mix(in srgb, var(--brand) 88%, #000) 0%, color-mix(in srgb, var(--brand) 35%, #0b0b0b) 55%, #060606 100%);
+}
+.branded .tabbar button[aria-current="page"] {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, var(--canvas));
+}
+.branded .bar i,
+.branded .hour i.peak {
+  background: var(--brand);
+}
+.mini-receipt .receipt-logo {
+  display: block;
+  margin: 0 auto 8px;
+}
+@media (max-width: 359px) {
+  .sell-title {
+    font-size: 20px;
+  }
+}

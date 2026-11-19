@@ -30,15 +30,25 @@ Settings › Opening checklist holds the steps to tick before the till opens. Th
 
 Items and checklist steps can carry a photo, taken with the camera or picked from the gallery. The phone shrinks it to a JPEG of at most 640 pixels before upload. Photos are stored in Postgres (`portable_pos.images`, 400 KB each at most), served from `/api/images/<id>` with a long cache, and kept by the service worker for offline use. Only the owner adds photos.
 
+## Businesses and branding
+
+One account can run several businesses, and can be on other people's teams too. Tap the business name at the top of Sell, or **Switch business** in Settings, to switch or add one. Each business has its own menu, team, shifts, PIN and till. On a phone, each keeps its own offline register, and sales waiting to sync stay with their business until you switch back. The app sends the chosen business in an `X-Business-Id` header. Without it, the server uses the first business the person owns, or else the first one they joined.
+
+Settings › Business holds the logo and brand color. They show on receipts, the business switcher, the top of Sell, and they tint the dark summary cards and the active tab.
+
+## Proof photos
+
+Checkout can ask for a photo before a sale completes. For a discount, switch on **Require a proof photo** (new PHP registers start with it on for Senior / PWD). For a non-cash method, switch on **Require a payment photo**. Without that, non-cash sales still offer an optional photo of the payment screen. Photos are kept on the phone with the sale and upload as private images before the sale syncs, so checkout works offline. They're served from `/api/proofs/<id>` only to signed-in people on that business, and they show under the receipt.
+
 ## Team and schedule
 
 Only the owner invites people (Settings › Team). An invite is a name, an email and their usual pay. The person joins the first time they sign in with that address, once Supabase has confirmed it. Roles belong to each shift: a person joins a seat as cashier or server and can switch on that shift until it ends. The owner can change anyone's role. Anyone on the team can run the till.
 
-The Schedule tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
+The Shifts tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
 
 When the till opens, it asks which scheduled shift it's for. That shift's profit is the till's net sales minus rent, salaries and any incentives. Cost of goods isn't counted. Rent, other people's pay, and profit are visible only to the owner.
 
-Each shift shows its best sellers and sales by hour. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The Till tab ends with leaderboards for events, organizers, places and people, for this month or the last 60 days. The owner sees them ranked by sales with profit; everyone else sees them ranked by quotas hit, then shifts worked.
+A shift's sheet on the Shifts tab shows its best sellers. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The trophy button at the top of Shifts opens leaderboards for events, organizers, places and people, for this month or the last 60 days. The Sales tab charts sales by hour once there are a few. The owner sees them ranked by sales with profit; everyone else sees them ranked by quotas hit, then shifts worked.
 
 Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. Both need a connection. Without one, the typed name can still be saved as the location.
 

@@ -50,6 +50,8 @@ const sale = z.object({
   // Only the discount's id is trusted. Its amount is recomputed from the shift.
   discount: z.object({ id: key }).optional(),
   received: amount,
+  // Uploaded before the sale syncs, so only private image addresses arrive here.
+  proofs: z.array(z.string().regex(/^\/api\/proofs\/[0-9a-f-]{36}$/)).max(4).optional(),
 });
 const event = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale }),
@@ -72,6 +74,7 @@ const settings = z.object({
         name: z.string().trim().min(1).max(40),
         kind: z.enum(["cash", "wallet", "card", "bank", "other"]),
         on: z.boolean(),
+        proof: z.boolean().optional(),
       }),
     )
     .min(1)
@@ -84,6 +87,7 @@ const settings = z.object({
         type: z.enum(["percent", "fixed"]),
         value: z.number().int().min(1).max(2147483647),
         on: z.boolean(),
+        proof: z.boolean().optional(),
       }),
     )
     .max(24),
@@ -97,6 +101,8 @@ const settings = z.object({
     )
     .max(30)
     .optional(),
+  logo: z.string().max(512).regex(/^\/(?!\/)/).optional(),
+  brand: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
 });
 
 const counts = z.record(key, z.number().int().min(0).max(99999));
@@ -188,6 +194,8 @@ const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
   z.object({
     action: z.literal("setup"),
+    // Set when adding another business, so a retried request makes only one.
+    id: z.uuid().optional(),
     name,
     currency: z.string().regex(/^[A-Z]{3}$/),
     timeZone: z.string().min(1).max(100),

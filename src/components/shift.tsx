@@ -5,7 +5,6 @@ import { CalendarDays, Check, ChevronRight, Wallet } from "lucide-react";
 import type { Booking, Business, RegisterState, Shift } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
 import type { Opening } from "@/lib/demo";
-import { Leaderboards, ShiftSales } from "./insights";
 import type { SalesFocus } from "./sales";
 import { currencyDigits } from "@/lib/settings";
 import { shiftCurrency } from "./receipt";
@@ -430,14 +429,6 @@ function ShiftDetails({
           </div>
         )}
       </div>
-      <ShiftSales
-        state={state}
-        shiftIds={[shift.id]}
-        menu={[...shift.menu, ...state.menu]}
-        currency={currency}
-        label={`Shift ${shift.number}`}
-        onSales={onSales}
-      />
     </Sheet>
   );
 }
@@ -567,14 +558,6 @@ export function ShiftScreen({
               <ChevronRight size={18} className="chev" />
             </button>
           )}
-          <ShiftSales
-            state={state}
-            shiftIds={[shift.id]}
-            menu={shift.menu}
-            currency={currency}
-            label={`Shift ${shift.number}`}
-            onSales={onSales}
-          />
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
@@ -650,7 +633,6 @@ export function ShiftScreen({
           </div>
         </div>
       )}
-      <Leaderboards state={state} demo={demo} />
       {closing && shift && totals && (
         <CloseSheet
           shift={shift}

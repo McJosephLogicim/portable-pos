@@ -29,6 +29,13 @@
       "when": 1795088073065,
       "tag": "0003_images",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795090162596,
+      "tag": "0004_multi_business",
+      "breakpoints": true
     }
   ]
 }

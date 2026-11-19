@@ -35,7 +35,8 @@ const date = (name: string) =>
 export const businesses = register
   .table("businesses", {
     id: uuid().primaryKey().defaultRandom(),
-    ownerId: uuid("owner_id").unique().notNull(),
+    // One person can own several businesses.
+    ownerId: uuid("owner_id").notNull(),
     name: text().notNull(),
     currency: text().notNull(),
     timeZone: text("time_zone").notNull(),
@@ -46,7 +47,8 @@ export const businesses = register
     // Null until the owner saves settings; read as the defaults for the currency.
     settings: jsonb().$type<Settings>(),
     organizers: jsonb().$type<Organizer[]>().default([]).notNull(),
-  })
+    createdAt: date("created_at").defaultNow().notNull(),
+  }, (t) => [index().on(t.ownerId)])
   .enableRLS();
 
 export const shifts = register
@@ -99,6 +101,8 @@ export const sales = register
       change: money("change").notNull(),
       reversedAt: date("reversed_at"),
       reason: text(),
+      // Photos of the payment or the discount ID, stored as private images.
+      proofs: jsonb().$type<string[]>(),
     },
     (t) => [unique().on(t.shiftId, t.sequence)],
   )
@@ -134,9 +138,12 @@ export const members = register
       roles: jsonb().$type<Role[]>().notNull(),
       rate: money("rate").default(0).notNull(),
       owner: boolean().default(false).notNull(),
+      createdAt: date("created_at").defaultNow().notNull(),
     },
     (t) => [
-      uniqueIndex("members_user").on(t.userId),
+      // A person can be on several businesses, once each.
+      uniqueIndex("members_business_user").on(t.businessId, t.userId),
+      index("members_user_index").on(t.userId),
       uniqueIndex("members_email").on(t.businessId, sql`lower(${t.email})`),
     ],
   )
@@ -170,7 +177,7 @@ const bytes = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
 
-/** Photos of menu items and checklist steps. Served by id, which is never reused. */
+/** Photos of menu items, checklist steps, logos and sale proofs. Served by id, which is never reused. */
 export const images = register
   .table(
     "images",
@@ -181,6 +188,8 @@ export const images = register
         .notNull(),
       type: text().notNull(),
       data: bytes().notNull(),
+      // Proof photos are only served to people on the business.
+      private: boolean().default(false).notNull(),
       createdAt: date("created_at").notNull(),
     },
     (t) => [index().on(t.businessId)],

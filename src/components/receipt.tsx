@@ -1,8 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Business, Sale, Shift } from "@/lib/types";
-import { errorText, Money, Sheet, usePin } from "./ui";
+import { errorText, Money, Sheet, useProof, usePin } from "./ui";
+
+/** Proof photos kept with a sale. Only people on the business can load them. */
+function Proofs({ urls }: { urls: string[] }) {
+  const load = useProof();
+  const [shown, setShown] = useState<(string | null)[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const made: string[] = [];
+    void Promise.all(
+      urls.map((u) =>
+        load(u)
+          .then((src) => {
+            if (src.startsWith("blob:")) made.push(src);
+            return src;
+          })
+          .catch(() => null),
+      ),
+    ).then((list) => alive && setShown(list));
+    return () => {
+      alive = false;
+      made.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [urls, load]);
+  return (
+    <div className="stack gap-10">
+      <p className="group-title">Proof photos</p>
+      <div className="proof-row">
+        {urls.map((u, i) =>
+          shown[i] ? (
+            <button key={u} type="button" className="proof-thumb" onClick={() => setOpen(shown[i])}>
+              <img src={shown[i]!} alt={"Proof photo " + (i + 1)} />
+            </button>
+          ) : (
+            <span key={u} className="proof-thumb empty">
+              {shown.length ? "Not available" : "Loading…"}
+            </span>
+          ),
+        )}
+      </div>
+      {open && (
+        <Sheet title="Proof photo" onClose={() => setOpen(null)}>
+          <img src={open} alt="Proof photo" className="photo-full" />
+        </Sheet>
+      )}
+    </div>
+  );
+}
 
 export function receiptNumber(shiftNumber: number, sequence: number) {
   return "#" + shiftNumber + "-" + String(sequence).padStart(3, "0");
@@ -32,7 +80,8 @@ export function ReceiptBody({
   const note = shift.settings.receiptNote || business.settings.receiptNote;
   return (
     <div className="receipt">
-      <div className="stack gap-4" style={{ textAlign: "center" }}>
+      <div className="stack gap-4" style={{ textAlign: "center", alignItems: "center" }}>
+        {business.settings.logo && <img className="receipt-logo" src={business.settings.logo} alt="" />}
         <p className="strong">{business.name}</p>
         <p className="label">
           {receiptNumber(shift.number, sale.sequence)} · {created}
@@ -259,6 +308,7 @@ export function ReceiptSheet({
         business={business}
         pending={pending}
       />
+      {sale.proofs?.length ? <Proofs urls={sale.proofs} /> : null}
     </Sheet>
   );
 }

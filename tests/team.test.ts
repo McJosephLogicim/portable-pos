@@ -14,7 +14,7 @@ import {
   type Plan,
 } from "../src/lib/team";
 import type { Booking, Me, Member, Product, Shift } from "../src/lib/types";
-import { readImage, saveImage } from "../src/server/images";
+import { readImage, readProof, saveImage } from "../src/server/images";
 import { runCommand } from "../src/server/register";
 
 const owner: Member = { id: "o", name: "Owner", email: "o@x.co", roles: ["cashier", "server"], rate: 0, owner: true, joined: true };
@@ -199,5 +199,36 @@ test(
     await assert.rejects(saveImage(beaUser, "image/jpeg", photo), /owner/);
     await assert.rejects(saveImage(ownerUser, "image/svg+xml", photo), /JPEG/);
     assert.equal(await readImage("../etc"), null);
+
+    // Proof photos are private: anyone on the team adds them, only the team sees them.
+    const proofUrl = await saveImage(beaUser, "image/jpeg", photo, true);
+    assert.match(proofUrl, /^\/api\/proofs\//);
+    const proofId = proofUrl.split("/").pop()!;
+    assert.equal(await readImage(proofId), null);
+    assert.ok(await readProof(ownerUser, proofId));
+    assert.equal(await readProof({ id: randomUUID() }, proofId), null);
+
+    // A second business: its own menu and team, and the first stays the default.
+    const second = randomUUID();
+    snap = await o({ action: "setup", id: second, name: "Night stall", currency: "PHP", timeZone: "Asia/Manila", pin: "9999" });
+    assert.equal(snap.business!.id, second);
+    assert.deepEqual(snap.menu, []);
+    assert.deepEqual(snap.businesses!.map((b) => b.name), ["Pop-up", "Night stall"]);
+    // Retrying the same request doesn't make a third.
+    snap = await o({ action: "setup", id: second, name: "Night stall", currency: "PHP", timeZone: "Asia/Manila", pin: "9999" });
+    assert.equal(snap.businesses!.length, 2);
+    assert.equal((await o({ action: "bootstrap" })).business!.name, "Pop-up");
+    const night = (input: object) => runCommand({ ...ownerUser, businessId: second }, input);
+    assert.equal((await night({ action: "bootstrap" })).business!.name, "Night stall");
+    await assert.rejects(night({ action: "menu", menu: [bread], pin }), /PIN/);
+    await night({ action: "invite", name: "Bea", email: beaEmail, rate: 50000, pin: "9999" });
+    // Bea now works for both, and picks which one in the app.
+    const beaBoth = await bea({ action: "bootstrap" });
+    assert.deepEqual(beaBoth.businesses!.map((b) => b.name).sort(), ["Night stall", "Pop-up"]);
+    const beaNight = await runCommand({ ...beaUser, businessId: second }, { action: "bootstrap" });
+    assert.equal(beaNight.business!.name, "Night stall");
+    assert.equal(beaNight.me!.owner, false);
+    // Someone not on a business can't open it by id.
+    assert.equal((await runCommand({ ...paoloUser, businessId: second }, { action: "bootstrap" })).business, null);
   },
 );

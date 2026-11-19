@@ -1,6 +1,6 @@
-import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { applyPlan, bookingIds, PlanError, type PlanCommand } from "../lib/team";
-import type { Booking, Me, Member } from "../lib/types";
+import type { Booking, BusinessSummary, Me, Member } from "../lib/types";
 import type { Transaction } from "./db";
 import { RegisterError } from "./errors";
 import { bookings, businesses, members } from "./schema";
@@ -9,6 +9,8 @@ import { bookings, businesses, members } from "./schema";
 export interface Actor {
   id: string;
   email?: string | null;
+  /** The business picked in the app. Without it, the person's first business. */
+  businessId?: string;
 }
 
 type BusinessRow = typeof businesses.$inferSelect;
@@ -49,40 +51,95 @@ function ownerName(actor: Actor) {
   return local ? local.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 80) : "Owner";
 }
 
+/** Joins any invites sent to this person's confirmed email, on every business. */
+async function claimInvites(tx: Transaction, actor: Actor) {
+  if (!actor.email) return;
+  await tx
+    .update(members)
+    .set({ userId: actor.id })
+    .where(
+      and(
+        isNull(members.userId),
+        eq(sql`lower(${members.email})`, actor.email.trim().toLowerCase()),
+        sql`not exists (select 1 from portable_pos.members m where m.business_id = members.business_id and m.user_id = ${actor.id})`,
+      ),
+    );
+}
+
+/** Owners get a team row on each business they own, so they can work shifts. */
+async function ownerRows(tx: Transaction, actor: Actor) {
+  const owned = await tx
+    .select({ id: businesses.id })
+    .from(businesses)
+    .leftJoin(members, and(eq(members.businessId, businesses.id), eq(members.userId, actor.id)))
+    .where(and(eq(businesses.ownerId, actor.id), isNull(members.id)));
+  for (const b of owned)
+    await tx.insert(members).values({
+      id: crypto.randomUUID(),
+      businessId: b.id,
+      userId: actor.id,
+      email: actor.email ?? "",
+      name: ownerName(actor),
+      roles: ["cashier", "server"],
+      owner: true,
+    });
+}
+
+/** Every business this person is on, owned ones first, oldest first. */
+export async function listBusinesses(tx: Transaction, actor: Actor): Promise<BusinessSummary[]> {
+  const rows = await tx
+    .select({ business: businesses, member: members })
+    .from(members)
+    .innerJoin(businesses, eq(businesses.id, members.businessId))
+    .where(eq(members.userId, actor.id))
+    .orderBy(desc(members.owner), asc(businesses.createdAt), asc(businesses.id));
+  return rows.map(({ business, member }) => ({
+    id: business.id,
+    name: business.name,
+    owner: member.owner,
+    ...(business.settings?.logo ? { logo: business.settings.logo } : {}),
+    ...(business.settings?.brand ? { brand: business.settings.brand } : {}),
+  }));
+}
+
 /**
- * Find the business this person works for and lock it. Owners get a team row the
+ * Find the business this person is working in and lock it. Owners get a team row the
  * first time. An invited person joins the first time they sign in with that email.
+ * Without a business id, the first business they own, or else the first they joined.
  */
 export async function resolveAccess(
   tx: Transaction,
   actor: Actor,
   lock = true,
 ): Promise<{ business: BusinessRow; member: MemberRow } | null> {
-  const find = (where: ReturnType<typeof eq>) => {
-    const query = tx.select().from(businesses).where(where);
-    return lock ? query.for("update") : query;
-  };
-  const [owned] = await find(eq(businesses.ownerId, actor.id));
-  if (owned) {
-    let [member] = await tx
+  if (lock) {
+    await claimInvites(tx, actor);
+    await ownerRows(tx, actor);
+  }
+  const mine = actor.businessId
+    ? and(eq(members.userId, actor.id), eq(members.businessId, actor.businessId))
+    : eq(members.userId, actor.id);
+  let [member] = await tx
+    .select()
+    .from(members)
+    .innerJoin(businesses, eq(businesses.id, members.businessId))
+    .where(mine)
+    .orderBy(desc(members.owner), asc(businesses.createdAt), asc(businesses.id))
+    .limit(1)
+    .then((rows) => rows.map((r) => r.members));
+  if (!member && !lock) {
+    // A read before the owner row exists still sees the owner's business.
+    const [owned] = await tx
       .select()
-      .from(members)
-      .where(and(eq(members.businessId, owned.id), eq(members.userId, actor.id)));
-    if (!member && lock) {
-      [member] = await tx
-        .insert(members)
-        .values({
-          id: crypto.randomUUID(),
-          businessId: owned.id,
-          userId: actor.id,
-          email: actor.email ?? "",
-          name: ownerName(actor),
-          roles: ["cashier", "server"],
-          owner: true,
-        })
-        .returning();
-    }
-    if (!member)
+      .from(businesses)
+      .where(
+        actor.businessId
+          ? and(eq(businesses.ownerId, actor.id), eq(businesses.id, actor.businessId))
+          : eq(businesses.ownerId, actor.id),
+      )
+      .orderBy(asc(businesses.createdAt), asc(businesses.id))
+      .limit(1);
+    if (owned)
       member = {
         id: "owner",
         businessId: owned.id,
@@ -92,31 +149,12 @@ export async function resolveAccess(
         roles: ["cashier", "server"],
         rate: 0,
         owner: true,
+        createdAt: owned.createdAt,
       };
-    return { business: owned, member };
-  }
-  let [member] = await tx.select().from(members).where(eq(members.userId, actor.id));
-  if (!member && actor.email && lock) {
-    const [invite] = await tx
-      .select()
-      .from(members)
-      .where(
-        and(
-          isNull(members.userId),
-          eq(sql`lower(${members.email})`, actor.email.trim().toLowerCase()),
-        ),
-      )
-      .limit(1);
-    if (invite) {
-      [member] = await tx
-        .update(members)
-        .set({ userId: actor.id })
-        .where(and(eq(members.id, invite.id), isNull(members.userId)))
-        .returning();
-    }
   }
   if (!member) return null;
-  const [business] = await find(eq(businesses.id, member.businessId));
+  const query = tx.select().from(businesses).where(eq(businesses.id, member.businessId));
+  const [business] = await (lock ? query.for("update") : query);
   return business ? { business, member } : null;
 }
 
