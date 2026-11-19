@@ -1,7 +1,7 @@
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { round, stockModel, unitText } from "./stock";
-import { roleNames } from "./team";
+import { shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -144,7 +144,7 @@ export function shiftReport(
       (shift.closedAt ? time.format(new Date(shift.closedAt)) : "now"),
     place,
     people,
-    roles: Object.fromEntries((booking?.staff ?? []).map((s) => [nameOf(s), roleNames[s.role] ?? s.role])),
+    roles: Object.fromEntries((booking?.staff ?? []).map((s) => [nameOf(s), shiftRoleNames[s.role] ?? s.role])),
     faces: Object.fromEntries(
       [
         ...Object.entries(extra.names ?? {}).map(([id, name]) => [name, extra.faces?.[id]] as const),

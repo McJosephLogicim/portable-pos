@@ -173,6 +173,8 @@ export type RegisterEvent =
       soldOut: boolean;
     };
 export type Role = "cashier" | "server";
+/** What someone does on one shift. One person can run the till and serve. */
+export type ShiftRole = Role | "both";
 export interface Member {
   id: string;
   name: string;
@@ -209,7 +211,7 @@ export interface Organizer extends Tag {
 export interface StaffSlot {
   memberId: string;
   name: string;
-  role: Role;
+  role: ShiftRole;
   /** Hidden from teammates other than the owner. */
   salary?: number;
 }
