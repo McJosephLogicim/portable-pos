@@ -1,9 +1,19 @@
-import type { Product } from "./types";
+import type { Product, StockItem } from "./types";
+
+export const demoStockItems: StockItem[] = [
+  { id: "croissant", name: "Croissant", unit: "piece" },
+  { id: "roll", name: "Cinnamon roll", unit: "piece" },
+  { id: "cookie", name: "Cookie", unit: "piece" },
+  { id: "milk", name: "Fresh milk", unit: "L" },
+  { id: "ice", name: "Ice", unit: "kg" },
+];
+
 
 export const demoMenu: Product[] = [
   {
     id: "cd3dc117-a1c3-536b-be26-009d8d804f88",
     name: "Caffè Latte",
+    uses: [{ stockId: "milk", amount: 0.2 }],
     category: "Coffee",
     price: 16000,
     image: "/menu/caffe-latte.webp",
@@ -30,15 +40,16 @@ export const demoMenu: Product[] = [
   {
     id: "3931b833-6c55-5a5a-a1c1-12acc384865c",
     name: "Butter Croissant",
+    uses: [{ stockId: "croissant", amount: 1 }],
     category: "Bakery",
     price: 12000,
     image: "/menu/butter-croissant.webp",
     groups: [],
-    stock: true,
   },
   {
     id: "60e817b8-6fc4-5c17-931e-76285d156e47",
     name: "Iced Latte",
+    uses: [{ stockId: "milk", amount: 0.2 }, { stockId: "ice", amount: 0.15 }],
     category: "Cold drinks",
     price: 17000,
     image: "/menu/iced-latte.webp",
@@ -65,6 +76,7 @@ export const demoMenu: Product[] = [
   {
     id: "b36083df-9bc5-5fc5-aa06-4e3682f15856",
     name: "Cappuccino",
+    uses: [{ stockId: "milk", amount: 0.15 }],
     category: "Coffee",
     price: 15000,
     image: "/menu/cappuccino.webp",
@@ -91,15 +103,16 @@ export const demoMenu: Product[] = [
   {
     id: "53435ac0-aae0-5f64-b506-42f177bad2a5",
     name: "Cinnamon Roll",
+    uses: [{ stockId: "roll", amount: 1 }],
     category: "Bakery",
     price: 12500,
     image: "/menu/cinnamon-roll.webp",
     groups: [],
-    stock: true,
   },
   {
     id: "91d842b3-f2fb-5bb6-bb7a-613ff9152fab",
     name: "Cold Brew",
+    uses: [{ stockId: "ice", amount: 0.15 }],
     category: "Cold drinks",
     price: 16000,
     image: "/menu/cold-brew.webp",
@@ -116,15 +129,16 @@ export const demoMenu: Product[] = [
   {
     id: "35e31b1d-2d82-57ec-9955-121c787789c9",
     name: "Chocolate Chunk Cookie",
+    uses: [{ stockId: "cookie", amount: 1 }],
     category: "Bakery",
     price: 9500,
     image: "/menu/chocolate-chunk-cookie.webp",
     groups: [],
-    stock: true,
   },
   {
     id: "50bdf8f1-b035-5ae0-9744-62bca9cd7778",
     name: "Mint Lemonade",
+    uses: [{ stockId: "ice", amount: 0.2 }],
     category: "Cold drinks",
     price: 13000,
     image: "/menu/mint-lemonade.webp",

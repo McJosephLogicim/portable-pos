@@ -18,6 +18,10 @@ const product = z.object({
     .regex(/^\/(?!\/)/)
     .optional(),
   stock: z.boolean().optional(),
+  uses: z
+    .array(z.object({ stockId: key, amount: z.number().positive().max(100000) }))
+    .max(20)
+    .optional(),
   groups: z
     .array(
       z.object({
@@ -53,8 +57,19 @@ const sale = z.object({
   // Uploaded before the sale syncs, so only private image addresses arrive here.
   proofs: z.array(z.string().regex(/^\/api\/proofs\/[0-9a-f-]{36}$/)).max(4).optional(),
 });
+const expense = z.object({
+  id: z.uuid(),
+  shiftId: z.uuid(),
+  createdAt: z.iso.datetime({ offset: true }),
+  label: z.string().trim().min(1).max(80),
+  amount: amount.min(1),
+  source: z.enum(["till", "pocket"]),
+  by: z.string().trim().max(80).optional(),
+});
 const event = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale }),
+  z.object({ type: z.literal("expense"), id: z.uuid(), shiftId: z.uuid(), expense }),
+  z.object({ type: z.literal("unexpense"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid() }),
   z.object({
     type: z.literal("availability"),
     id: z.uuid(),
@@ -101,11 +116,34 @@ const settings = z.object({
     )
     .max(30)
     .optional(),
+  stockItems: z
+    .array(
+      z.object({
+        id: key,
+        name: z.string().trim().min(1).max(60),
+        unit: z.string().trim().min(1).max(16),
+      }),
+    )
+    .max(100)
+    .optional(),
   logo: z.string().max(512).regex(/^\/(?!\/)/).optional(),
   brand: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  font: z.string().regex(/^[a-z-]{1,24}$/).optional(),
+  radius: z.enum(["square", "soft", "round"]).optional(),
+  ink: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
 });
 
-const counts = z.record(key, z.number().int().min(0).max(99999));
+// Stock can be counted in fractions, like 1.5 kg.
+const counts = z.record(key, z.number().min(0).max(1000000));
+/** A shift started on the spot when a till opens without one scheduled. */
+const walkIn = z.object({
+  place: z.string().trim().max(120).optional(),
+  hours: z.number().int().min(1).max(24),
+});
+/** Coins and bills: denomination in minor units to how many. */
+const cashCount = z
+  .record(z.string().regex(/^[1-9]\d{0,8}$/, "Invalid coin or bill."), z.number().int().min(0).max(100000))
+  .refine((c) => Object.keys(c).length <= 40, "Too many kinds of coins and bills.")
 const role = z.enum(["cashier", "server"]);
 const tag = z.object({ id: key, name: z.string().trim().min(1).max(80) });
 const booking = z.object({
@@ -221,9 +259,16 @@ const command = z.discriminatedUnion("action", [
     action: z.literal("open"),
     deviceId: key,
     openingCash: amount,
+    openingCount: cashCount.optional(),
     stock: counts.default({}),
     checked: z.array(key).max(30).default([]),
     bookingId: z.uuid().optional(),
+    newShift: walkIn.optional(),
+  }),
+  z.object({
+    action: z.literal("link"),
+    deviceId: key,
+    newShift: walkIn,
   }),
   z.object({
     action: z.literal("sync"),
@@ -242,6 +287,8 @@ const command = z.discriminatedUnion("action", [
     deviceId: key,
     shiftId: z.uuid(),
     countedCash: amount,
+    closingCount: cashCount.optional(),
+    closingStock: counts.optional(),
     pin,
   }),
 ]);

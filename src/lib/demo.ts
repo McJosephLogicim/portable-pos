@@ -1,7 +1,9 @@
-import { demoMenu } from "./demo-menu";
-import { checkOpening, shiftTotals, withNewItems } from "./domain";
+import { demoMenu, demoStockItems } from "./demo-menu";
+import { checkCount, type CashCount } from "./cash";
+import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "./domain";
+import { round } from "./stock";
 import { demoPlan } from "./demo-plan";
-import { applyPlan, PlanError, type PlanCommand } from "./team";
+import { applyPlan, PlanError, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { defaultSettings, mergeShiftSettings } from "./settings";
 import type {
@@ -44,6 +46,7 @@ export function demoBootstrap(deviceId: string): Bootstrap {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     settings: defaultSettings(currency),
   };
+  business.settings.stockItems = demoStockItems;
   business.settings.checklist = [
     { id: "float", text: "Count the cash float" },
     { id: "gcash", text: "GCash QR is printed and on the counter" },
@@ -52,13 +55,13 @@ export function demoBootstrap(deviceId: string): Bootstrap {
   const plan = demoPlan({ business });
   const today = plan.bookings.find((b) => b.id.startsWith("demo-0-"));
   const shift = {
-    ...newShift(deviceId, business.id, 1, 200000, demoMenu, {
+    ...newShift(deviceId, business.id, 1, 250000, demoMenu, {
       ...business.settings,
       currency,
     }),
-    stock: Object.fromEntries(
-      demoMenu.filter((p) => p.stock).map((p, i) => [p.id, [18, 12, 24][i] ?? 12]),
-    ),
+    stock: { croissant: 18, roll: 12, cookie: 24, milk: 6, ice: 5 },
+    openingCount: { "2000": 20, "1000": 30, "500": 40, "100": 100, "5000": 10, "10000": 10 },
+    openedBy: "You",
     bookingId: today?.id,
     checklist: business.settings.checklist.map((c) => c.text),
   };
@@ -74,16 +77,31 @@ export function demoBootstrap(deviceId: string): Bootstrap {
 }
 export interface Opening {
   openingCash: number;
+  openingCount?: CashCount;
   stock: Record<string, number>;
   checked: string[];
   bookingId?: string;
+  /** Start a shift now when none is scheduled. */
+  newShift?: WalkIn;
+}
+export interface WalkIn {
+  place?: string;
+  hours: number;
+}
+export interface Closing {
+  action: "close";
+  countedCash: number;
+  closingCount?: CashCount;
+  closingStock?: Record<string, number>;
+  pin: string;
 }
 export type OwnerAction =
   | ({ action: "open" } & Opening)
+  | { action: "link"; newShift: WalkIn }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
-  | { action: "close"; countedCash: number; pin: string }
+  | Closing
   | {
       action: "settings";
       name: string;
@@ -110,9 +128,12 @@ export function demoAction(
       if (state.shift) throw Error("A shift is already open.");
       const business = state.business!;
       const checklist = business.settings.checklist ?? [];
-      const stock = checkOpening(state.menu, checklist, input.stock, input.checked);
+      const stock = checkOpening(state.menu, business.settings.stockItems, checklist, input.stock, input.checked);
+      const openingCount = checkCount(input.openingCount, input.openingCash);
       if (input.bookingId && !state.bookings?.some((b) => b.id === input.bookingId))
         throw Error("That scheduled shift was removed.");
+      const walkIn = input.bookingId ? undefined : walkInBooking(input.newShift ?? { hours: 8 }, state.me!);
+      const bookings = walkIn ? [...(state.bookings ?? []), walkIn] : state.bookings;
       const shift: Shift = {
         ...newShift(
           state.deviceId,
@@ -122,11 +143,26 @@ export function demoAction(
           state.menu,
           { ...business.settings, currency: business.currency },
         ),
-        stock,
-        bookingId: input.bookingId,
+        ...(Object.keys(stock).length ? { stock } : {}),
+        ...(openingCount ? { openingCount } : {}),
+        openedBy: state.me?.name,
+        bookingId: input.bookingId ?? walkIn!.id,
         checklist: checklist.map((c) => c.text),
       };
-      return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
+      return { ...state, bookings, shift, shifts: [shift, ...state.shifts], soldOut: [] };
+    }
+    case "link": {
+      const open = state.shift;
+      if (!open) throw Error("Open the till first.");
+      if (open.bookingId) return state;
+      const b = walkInBooking(input.newShift, state.me!, Date.parse(open.openedAt));
+      const shift = { ...open, bookingId: b.id };
+      return {
+        ...state,
+        bookings: [...(state.bookings ?? []), b],
+        shift,
+        shifts: state.shifts.map((s) => (s.id === shift.id ? shift : s)),
+      };
     }
     case "menu": {
       const shift = state.shift && withNewItems(state.shift, input.menu, input.stock);
@@ -182,13 +218,22 @@ export function demoAction(
     }
     case "close": {
       if (!state.shift) throw Error("This shift has already closed.");
-      const closed = {
-        ...state.shift,
+      const shift = state.shift;
+      const closingStock = checkClosing(shift, input.closingStock);
+      const closingCount = checkCount(input.closingCount, input.countedCash);
+      const left = stockLeft(shift, state.sales);
+      const closed: Shift = {
+        ...shift,
         countedCash: input.countedCash,
         difference:
           input.countedCash -
-          shiftTotals(state.shift, state.sales).expectedCash,
+          shiftTotals(shift, state.sales, state.expenses).expectedCash,
         closedAt: new Date().toISOString(),
+        ...(closingStock ? { closingStock } : {}),
+        ...(closingCount ? { closingCount } : {}),
+        ...(shift.stock
+          ? { usedStock: Object.fromEntries(Object.entries(shift.stock).map(([id, n]) => [id, round(n - left[id])])) }
+          : {}),
       };
       return {
         ...state,

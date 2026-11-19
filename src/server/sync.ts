@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { makeSale, stockLeft } from "../lib/domain";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
-import { sales, shifts, syncedEvents } from "./schema";
+import { expenses, sales, shifts, syncedEvents } from "./schema";
 import { presentSale, presentShift } from "./snapshot";
 
 export async function applyEvents(
@@ -92,6 +92,31 @@ export async function applyEvents(
       if (event.soldOut) unavailable.add(event.targetId);
       else unavailable.delete(event.targetId);
       availabilityChanged = true;
+      continue;
+    }
+
+    if (event.type === "expense") {
+      const e = event.expense;
+      ensure(event.id === e.id && e.shiftId === shift.id, "The expense and sync identifiers do not match.");
+      await tx
+        .insert(expenses)
+        .values({
+          id: e.id,
+          shiftId: shift.id,
+          createdAt: e.createdAt,
+          label: e.label,
+          amount: e.amount,
+          source: e.source,
+          by: e.by ?? null,
+        })
+        .onConflictDoNothing();
+      continue;
+    }
+    if (event.type === "unexpense") {
+      await tx
+        .update(expenses)
+        .set({ voidedAt: new Date().toISOString() })
+        .where(and(eq(expenses.id, event.targetId), eq(expenses.shiftId, shift.id), isNull(expenses.voidedAt)));
       continue;
     }
 

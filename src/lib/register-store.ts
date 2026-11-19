@@ -8,6 +8,7 @@ import type {
   Sale,
   Shift,
   Tender,
+  Expense,
 } from "./types";
 
 /** Fill fields that registers saved by an earlier version of the app don't have. */
@@ -242,9 +243,16 @@ export function mergeServer(
       );
     }
     let soldOut = data.soldOut;
+    const expenses = new Map<string, Expense>();
+    for (const e of sameBusiness ? current.expenses ?? [] : []) expenses.set(e.id, e);
+    for (const e of data.expenses ?? []) expenses.set(e.id, e);
     for (const event of pending) {
       if (event.type === "sale") sales.set(event.sale.id, event.sale);
-      else soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
+      else if (event.type === "expense") expenses.set(event.expense.id, event.expense);
+      else if (event.type === "unexpense") {
+        const e = expenses.get(event.targetId);
+        if (e) expenses.set(e.id, { ...e, voidedAt: e.voidedAt ?? new Date().toISOString() });
+      } else soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
     }
     const shifts = new Map(
       (sameBusiness ? current.shifts : []).map((shift) => [shift.id, shift]),
@@ -268,6 +276,7 @@ export function mergeServer(
       shifts: [...shifts.values()].sort((a, b) =>
         b.openedAt.localeCompare(a.openedAt),
       ),
+      expenses: [...expenses.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     };
   });
 }
@@ -340,7 +349,7 @@ export function saveCart(
     const grew = cart.some(
       (l) => cart.filter((x) => x.productId === l.productId).reduce((s, x) => s + x.quantity, 0) > (before.get(l.productId) ?? 0),
     );
-    if (grew) checkStock(shift.menu, cart, stockLeft(shift, current.sales));
+    if (grew) checkStock(shift, cart, stockLeft(shift, current.sales));
     return { ...current, cart };
   });
 }
@@ -455,4 +464,49 @@ export async function uploadProofs(
       };
     });
   }
+}
+
+/** Log money spent during the shift. It syncs like a sale. */
+export function logExpense(
+  key: string,
+  input: { label: string; amount: number; source: Expense["source"]; by?: string },
+) {
+  return updateRegister(key, (current) => {
+    const shift = writableShift(current);
+    const label = input.label.trim().slice(0, 80);
+    if (!label) throw new Error("Say what the money was for.");
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > 2_147_483_647)
+      throw new Error("Enter how much was spent.");
+    const expense: Expense = {
+      id: crypto.randomUUID(),
+      shiftId: shift.id,
+      createdAt: new Date().toISOString(),
+      label,
+      amount: input.amount,
+      source: input.source,
+      ...(input.by ? { by: input.by.slice(0, 80) } : {}),
+    };
+    return {
+      ...current,
+      expenses: [expense, ...(current.expenses ?? [])],
+      pending: [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
+    };
+  });
+}
+
+/** Take back an expense logged by mistake. It stays on record as removed. */
+export function removeExpense(key: string, expenseId: string) {
+  return updateRegister(key, (current) => {
+    const shift = writableShift(current);
+    const found = current.expenses?.find((e) => e.id === expenseId && e.shiftId === shift.id);
+    if (!found || found.voidedAt) return current;
+    const id = crypto.randomUUID();
+    return {
+      ...current,
+      expenses: (current.expenses ?? []).map((e) =>
+        e.id === expenseId ? { ...e, voidedAt: new Date().toISOString() } : e,
+      ),
+      pending: [...current.pending, { id, shiftId: shift.id, type: "unexpense", targetId: expenseId }],
+    };
+  });
 }

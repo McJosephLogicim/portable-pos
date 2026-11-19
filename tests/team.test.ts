@@ -94,11 +94,11 @@ test("bulk days and times follow the business time zone", () => {
 test("counted items sell down to zero and come back on reversal", () => {
   const bread: Product = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
   const tea: Product = { id: "tea", name: "Tea", category: "", price: 500, groups: [] };
-  assert.throws(() => checkOpening([bread, tea], [{ id: "c" }], {}, ["c"]), /Count the Pandesal/);
-  assert.throws(() => checkOpening([bread], [{ id: "c" }], { bread: 2 }, []), /checklist/);
+  assert.throws(() => checkOpening([bread, tea], undefined, [{ id: "c" }], {}, ["c"]), /Count the Pandesal/);
+  assert.throws(() => checkOpening([bread], undefined, [{ id: "c" }], { bread: 2 }, []), /checklist/);
   const shift: Shift = {
     id: randomUUID(), number: 1, businessId: "b", deviceId: "d", openedAt: "", closedAt: null, openingCash: 0,
-    menu: [bread, tea], stock: checkOpening([bread, tea], [], { bread: 2, tea: 9 }, []),
+    menu: [bread, tea], stock: checkOpening([bread, tea], undefined, [], { bread: 2, tea: 9 }, []),
     settings: { currency: "PHP", receiptNote: "", discounts: [], payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }] },
   };
   assert.deepEqual(shift.stock, { bread: 2 });

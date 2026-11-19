@@ -13,6 +13,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#f6f6f4",
   viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+  // Tapping a field or button never zooms the page.
+  maximumScale: 1,
+  userScalable: false,
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

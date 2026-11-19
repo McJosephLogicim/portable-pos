@@ -1,23 +1,46 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { checkOpening, shiftTotals, withNewItems } from "../lib/domain";
+import { checkCount } from "../lib/cash";
+import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
-import { ownerPlanActions, planActions, type PlanCommand } from "../lib/team";
-import { getDb } from "./db";
+import { ownerPlanActions, planActions, walkInBooking, type PlanCommand } from "../lib/team";
+import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
 import { hashPin, verifyPin } from "./pin";
-import { bookings, businesses, members, sales, shifts } from "./schema";
-import { presentSale, presentShift, snapshot as baseSnapshot } from "./snapshot";
+import { bookings, businesses, expenses, members, sales, shifts } from "./schema";
+import { presentExpense, presentSale, presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents } from "./sync";
 import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
 const ownerActions = ["menu", "settings", ...ownerPlanActions];
+
+async function addWalkIn(
+  tx: Transaction,
+  businessId: string,
+  me: ReturnType<typeof presentMe>,
+  input: { place?: string; hours: number },
+  at?: number,
+) {
+  const b = walkInBooking(input, me, at);
+  await tx.insert(bookings).values({
+    id: b.id,
+    businessId,
+    startsAt: b.startsAt,
+    endsAt: b.endsAt,
+    place: b.place,
+    organizer: null,
+    event: null,
+    seats: b.seats,
+    staff: b.staff,
+  });
+  return b.id;
+}
 
 export async function runCommand(who: string | Actor, input: unknown) {
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
@@ -168,22 +191,29 @@ export async function runCommand(who: string | Actor, input: unknown) {
         );
         const settings = business.settings ?? defaultSettings(business.currency);
         const checklist = settings.checklist ?? [];
-        let stock;
+        let stock, openingCount;
         try {
-          stock = checkOpening(business.menu, checklist, cmd.stock, cmd.checked);
+          stock = checkOpening(business.menu, settings.stockItems, checklist, cmd.stock, cmd.checked);
+          openingCount = checkCount(cmd.openingCount, cmd.openingCash);
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        if (cmd.bookingId) {
+        let bookingId = cmd.bookingId;
+        if (bookingId) {
           const [booking] = await tx
             .select({ id: bookings.id })
             .from(bookings)
-            .where(and(eq(bookings.id, cmd.bookingId), eq(bookings.businessId, business.id)));
+            .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
           ensure(booking, "That scheduled shift was removed.", 404);
+        } else {
+          // Every till runs for a shift. Without one scheduled, start one now.
+          bookingId = await addWalkIn(tx, business.id, me, cmd.newShift ?? { hours: 8 });
         }
         await tx.insert(shifts).values({
-          stock,
-          bookingId: cmd.bookingId ?? null,
+          stock: Object.keys(stock).length ? stock : null,
+          openingCount: openingCount ?? null,
+          openedBy: me.name || null,
+          bookingId,
           checklist: checklist.map((c) => c.text),
           businessId: business.id,
           deviceId: cmd.deviceId,
@@ -196,6 +226,16 @@ export async function runCommand(who: string | Actor, input: unknown) {
             currency: business.currency,
           },
         });
+      }
+    } else if (cmd.action === "link") {
+      const [open] = await tx
+        .select()
+        .from(shifts)
+        .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
+      ensure(open?.deviceId === cmd.deviceId, "Open the till on this phone first.", 409);
+      if (!open.bookingId) {
+        const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt));
+        await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "reverse") {
       const [open] = await tx
@@ -237,16 +277,30 @@ export async function runCommand(who: string | Actor, input: unknown) {
           .select()
           .from(sales)
           .where(eq(sales.shiftId, shift.id));
-        const { expectedCash } = shiftTotals(
-          presentShift(shift, business.currency),
-          receipts.map(presentSale),
-        );
+        const spent = await tx.select().from(expenses).where(eq(expenses.shiftId, shift.id));
+        const present = presentShift(shift, business.currency);
+        const sold = receipts.map(presentSale);
+        const { expectedCash } = shiftTotals(present, sold, spent.map(presentExpense));
+        let closingStock, closingCount;
+        try {
+          closingStock = checkClosing(present, cmd.closingStock);
+          closingCount = checkCount(cmd.closingCount, cmd.countedCash);
+        } catch (error) {
+          ensure(false, (error as Error).message);
+        }
+        const left = stockLeft(present, sold);
+        const usedStock = present.stock
+          ? Object.fromEntries(Object.entries(present.stock).map(([id, n]) => [id, Math.round((n - left[id]) * 1000) / 1000]))
+          : null;
         await tx
           .update(shifts)
           .set({
             closedAt: new Date().toISOString(),
             countedCash: cmd.countedCash,
             difference: cmd.countedCash - expectedCash,
+            closingStock: closingStock ?? null,
+            closingCount: closingCount ?? null,
+            usedStock,
           })
           .where(eq(shifts.id, shift.id));
       }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Ban, Camera, Check, ChevronDown, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, Trash2, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -10,6 +10,8 @@ import type {
   Sale,
   Tender,
 } from "@/lib/types";
+import { canMake, shiftStock } from "@/lib/stock";
+import { bookingTitle } from "./shift";
 import {
   amountText,
   parseMoney,
@@ -739,6 +741,38 @@ export interface SellProps {
   onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
   onSaved: (text: string) => void;
   onBusinesses: () => void;
+  /** Opens the Till, where the shift is run and closed. */
+  onTill: () => void;
+}
+
+/** Which shift this till is selling for. Tapping it opens the Till. */
+function ShiftStrip({ state, onTill }: { state: RegisterState; onTill: () => void }) {
+  const shift = state.shift!;
+  const zone = state.business!.timeZone;
+  const booking = state.bookings?.find((b) => b.id === shift.bookingId);
+  const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
+  if (!booking)
+    return (
+      <button type="button" className="shift-strip warn" onClick={onTill}>
+        <CalendarDays size={16} strokeWidth={1.9} />
+        <span className="grow ellipsis">Not on a shift yet. Add it on the Till.</span>
+        <ChevronRight size={16} className="chev" />
+      </button>
+    );
+  const people = booking.staff.map((s) => s.name.split(" ")[0]).join(", ");
+  return (
+    <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${bookingTitle(booking)}. Open the Till.`}>
+      <CalendarDays size={16} strokeWidth={1.9} />
+      <span className="grow ellipsis">
+        <span className="strong">{bookingTitle(booking)}</span>
+        <span className="g">
+          {" · "}until {time.format(new Date(booking.endsAt))}
+          {people ? " · " + people : ""}
+        </span>
+      </span>
+      <ChevronRight size={16} className="chev" />
+    </button>
+  );
 }
 
 export function SellScreen({
@@ -753,6 +787,7 @@ export function SellScreen({
   onMenu,
   onSaved,
   onBusinesses,
+  onTill,
 }: SellProps) {
   const [adding, setAdding] = useState(false);
   const withPin = usePin();
@@ -840,8 +875,14 @@ export function SellScreen({
     if (!next.length) setCharging(false);
   }
   const left = stockLeft(shift, state.sales);
+  const model = shiftStock(shift);
+  // What the cart already takes, so a tile shows how many more can be made.
+  const afterCart = { ...left };
+  for (const line of state.cart)
+    for (const use of model.uses.get(line.productId) ?? [])
+      if (use.stockId in afterCart) afterCart[use.stockId] -= line.quantity * use.amount;
   const isOut = (p: Product) =>
-    (p.id in left && left[p.id] <= 0) ||
+    canMake(model, left, p.id) === 0 ||
     state.soldOut.includes(p.id) ||
     p.groups.some(
       (g) => g.required && g.options.every((o) => state.soldOut.includes(o.id)),
@@ -930,6 +971,7 @@ export function SellScreen({
             <Ban size={19} />
           </button>
         </div>
+        <ShiftStrip state={state} onTill={onTill} />
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1027,9 +1069,9 @@ export function SellScreen({
                   <span className="name">{product.name}</span>
                   <span className="price">{formatMoney(product.price, currency)}</span>
                   {out && <span className="out-tag">Sold out</span>}
-                  {!out && product.id in left && (
-                    <span className={"stock-tag" + (left[product.id] - qty <= 3 ? " low" : "")}>
-                      {Math.max(0, left[product.id] - qty)} left
+                  {!out && canMake(model, afterCart, product.id) !== undefined && (
+                    <span className={"stock-tag" + (canMake(model, afterCart, product.id)! <= 3 ? " low" : "")}>
+                      {Math.max(0, canMake(model, afterCart, product.id)!)} left
                     </span>
                   )}
                   {qty > 0 && !marking && <span className="badge qty">{qty}</span>}
@@ -1147,6 +1189,7 @@ export function SellScreen({
           currency={currency}
           menu={state.menu}
           liveShift
+          stockItems={shift.settings.stockItems}
           onClose={() => setAdding(false)}
           onSave={async (item, count) => {
             const done = await withPin((pin) =>

@@ -147,5 +147,7 @@ export function mergeShiftSettings(
     receiptNote: next.receiptNote,
     payments: keep(current.payments, next.payments),
     discounts: keep(current.discounts, next.discounts),
+    // The till counts what it opened with; new stock items start next shift.
+    ...(current.stockItems ? { stockItems: current.stockItems } : {}),
   };
 }

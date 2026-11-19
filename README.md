@@ -20,9 +20,21 @@ Open the shift while connected and use the same device throughout. Once the regi
 
 One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Settings saved on the till's own phone apply to the open shift at once; menu edits apply from the next shift. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
 
+## Opening, running and closing a shift
+
+Every till runs for a shift on the Shifts page. When the till opens, the seller picks a scheduled shift starting within three hours, or starts one on the spot with a place and a length. A till already open without a shift shows a prompt on the Till page to add it. The top of Sell shows which shift the till is selling for.
+
+Opening asks for the cash float, counted by coin and bill (for example ₱5 × 15) or typed as a total, a count of every stock item, and the opening checklist. During the shift, anyone on the till logs expenses from the Till page: paid with cash from the till, which lowers the cash expected in the drawer, or out of their own pocket, which the report lists as owed back to them. Closing asks for the cash on hand, again by coin and bill or as a total, and what is left of each stock item. The server checks that coin counts add up to the amount sent.
+
+After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Send image** shares a PNG made on the phone (or saves it where sharing files is not available), and **Copy text** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
+
+The Shifts page's share button copies the schedule grouped by place, one line per day with who works it, plus a link (`/?shifts=<business id>`) that opens that team's open seats. Teammates still need an invite to join.
+
 ## Menu and stock
 
-The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. A new item goes on sale on the till open on that phone right away. Edits to items already on the till apply from the next shift. Switch on **Track stock** for a set supply, like bread or pastries. The opening screen asks for a count of each one. Each sale takes the count down, a reversal puts it back, and the item sells out at zero, offline too.
+The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. A new item goes on sale on the till open on that phone right away. Edits to items already on the till apply from the next shift.
+
+Settings › Stock items lists what is counted at opening and closing, like a strawberry pack, a kilo of ice or a litre of milk, each with a unit (piece, pack, box, bottle, cup, tray, kg, g, L or mL). A menu item's **Uses stock** section picks the stock items one sale uses and how much, like 1 pack and 0.2 kg. Each sale takes that off what is left, a reversal puts it back, the Sell tile shows how many more can be made, and an item sells out when any stock it uses runs out, offline too. Menu items set up before stock items existed with **Count this item itself** still work as a stock item of their own.
 
 When adding an item, categories, pick-one choices, add-ons and options already on the menu are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
 
@@ -34,7 +46,7 @@ Items and checklist steps can carry a photo, taken with the camera or picked fro
 
 One account can run several businesses, and can be on other people's teams too. Tap the business name at the top of Sell, or **Switch business** in Settings, to switch or add one. Each business has its own menu, team, shifts, PIN and till. On a phone, each keeps its own offline register, and sales waiting to sync stay with their business until you switch back. The app sends the chosen business in an `X-Business-Id` header. Without it, the server uses the first business the person owns, or else the first one they joined.
 
-Settings › Business holds the logo and brand color. They show on receipts, the business switcher, the top of Sell, and they tint the dark summary cards and the active tab.
+Settings › Business holds the logo and the theme: brand color (from the swatches or any color), font, corner roundness and text color. The theme applies across the whole app, including buttons and highlights, and previews live before it is saved. The logo and color also show on receipts, the business switcher and shift reports. Fonts other than Geist load from Google Fonts.
 
 ## Proof photos
 

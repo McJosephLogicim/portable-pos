@@ -1,5 +1,6 @@
 import { and, between, desc, eq, gte, inArray, isNull, lt, or, sum } from "drizzle-orm";
-import type { Bootstrap, Sale, Shift } from "../lib/types";
+import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
+import { stockModel } from "../lib/stock";
 import type { Transaction } from "./db";
 import { z } from "zod";
 import { ensure } from "./errors";
@@ -8,7 +9,7 @@ import {
   legacyPayment,
   legacyShiftSettings,
 } from "../lib/settings";
-import { bookings, businesses, members, sales, shifts } from "./schema";
+import { bookings, businesses, expenses, members, sales, shifts } from "./schema";
 import { redactBooking } from "../lib/team";
 import { presentBooking, presentMe, presentMember } from "./team";
 
@@ -31,7 +32,33 @@ export function presentShift(
     ...(row.stock ? { stock: row.stock } : {}),
     ...(row.bookingId ? { bookingId: row.bookingId } : {}),
     ...(row.checklist ? { checklist: row.checklist } : {}),
+    ...(row.closingStock ? { closingStock: row.closingStock } : {}),
+    ...(row.openingCount ? { openingCount: row.openingCount } : {}),
+    ...(row.closingCount ? { closingCount: row.closingCount } : {}),
+    ...(row.usedStock ? { usedStock: row.usedStock } : {}),
+    ...(row.openedBy ? { openedBy: row.openedBy } : {}),
   };
+}
+
+export function presentExpense(row: typeof expenses.$inferSelect): Expense {
+  return {
+    id: row.id,
+    shiftId: row.shiftId,
+    createdAt: new Date(row.createdAt).toISOString(),
+    label: row.label,
+    amount: row.amount,
+    source: row.source as Expense["source"],
+    ...(row.by ? { by: row.by } : {}),
+    ...(row.voidedAt ? { voidedAt: new Date(row.voidedAt).toISOString() } : {}),
+  };
+}
+
+/** A closed shift without its menu, but with the stock items its report names. */
+function closedShift(row: typeof shifts.$inferSelect, currency: string) {
+  const shift = presentShift(row, currency);
+  if (!row.stock) return { ...shift, menu: [] };
+  const { items } = stockModel(shift.settings.stockItems, row.menu);
+  return { ...shift, menu: [], settings: { ...shift.settings, stockItems: items } };
 }
 
 export function presentSale(row: typeof sales.$inferSelect): Sale {
@@ -236,8 +263,17 @@ export async function snapshot(
     shift: active ? presentShift(active, currency) : null,
     soldOut: active?.soldOut ?? [],
     shifts: recent.map((row) =>
-      presentShift(row.closedAt ? { ...row, menu: [] } : row, currency),
+      row.closedAt ? closedShift(row, currency) : presentShift(row, currency),
     ),
+    expenses: recent.length
+      ? (
+          await tx
+            .select()
+            .from(expenses)
+            .where(inArray(expenses.shiftId, recent.map((r) => r.id)))
+            .orderBy(expenses.createdAt)
+        ).map(presentExpense)
+      : [],
     ...history,
   };
 }
