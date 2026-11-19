@@ -9,9 +9,10 @@ Use Node 22.12 or later and install packages with `npm ci`. Run `npm run dev` fo
 ## Configure live registers
 
 1. Create a Supabase project. Enable email/password sign-in, set the Auth Site URL and allowed redirect URLs to the app origin, and configure confirmation email delivery for public signups.
-2. Set the variables in `.env.example` in the shell or deployment environment. The client uses the project URL and publishable key. The Node.js API uses `DATABASE_URL` with the Supabase transaction pooler. Keep it server-only. For migrations, `DATABASE_MIGRATION_URL` can point to a direct or session connection.
-3. Apply the checked-in Drizzle migrations with `npm run db:migrate` using an exported migration connection. Use a server role that can access the private `portable_pos` schema. Keep that schema outside the Supabase Data API.
-4. Set the same production variables in Vercel and redeploy. Next.js embeds public client configuration at build time. Open the production URL, create an account, add an item, and open a shift.
+2. Set the variables in `.env.example` in the shell or deployment environment. Use a server-only `DATABASE_URL` for the register API and a separate, server-only `DATABASE_MIGRATION_URL` for schema changes. The migration role needs ownership of the application's schema objects and the Drizzle migration journal. Keep the `portable_pos` schema outside the Supabase Data API.
+3. For a local database, run `npm run db:migrate`. For live registers, set the migration URL in the Vercel production environment. Vercel builds the app, applies pending Drizzle migrations, and releases the deployment only if both succeed. Git pushes to `main` trigger production deployments. Preview deployments without a database use the demo. If you configure live data in Preview, give it its own database and migration URL.
+
+The migration command checks the existing journal against the checkout and runs pending SQL in one transaction. Use additive migrations that let the previous release continue serving traffic until Vercel switches over.
 
 ## At the counter
 
