@@ -25,7 +25,11 @@ export interface ChecklistItem {
   /** A photo of how it should look. */
   image?: string;
 }
+export type RegisterMode = "simple" | "advanced";
+
 export interface Settings {
+  /** Business-wide display mode. Registers without a saved mode use Advanced. */
+  mode?: RegisterMode;
   receiptNote: string;
   payments: PaymentMethod[];
   discounts: Discount[];
@@ -45,7 +49,7 @@ export interface Settings {
   ink?: string;
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
-export interface ShiftSettings extends Settings {
+export interface ShiftSettings extends Omit<Settings, "mode"> {
   currency: string;
 }
 export interface Option {

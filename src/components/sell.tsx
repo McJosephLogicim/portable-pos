@@ -25,7 +25,7 @@ import {
 import { ItemSheet } from "./menu-settings";
 import { BusinessMark } from "./businesses";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
-import { currencyDigits } from "@/lib/settings";
+import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
   buzz,
@@ -803,6 +803,7 @@ export function SellScreen({
   const lock = useRef(false);
   const shift = state.shift!;
   const business = state.business!;
+  const simple = isSimpleMode(business.settings);
   const canEdit = !state.me || state.me.owner;
   const currency = shift.settings.currency;
   const menu = shift.menu;
@@ -978,7 +979,7 @@ export function SellScreen({
             <Ban size={19} />
           </button>
         </div>
-        <ShiftStrip state={state} onTill={onTill} />
+        {!simple && <ShiftStrip state={state} onTill={onTill} />}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1194,6 +1195,8 @@ export function SellScreen({
       )}
       {adding && (
         <ItemSheet
+          key={simple ? "simple" : "advanced"}
+          simple={simple}
           currency={currency}
           menu={state.menu}
           liveShift

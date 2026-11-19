@@ -21,9 +21,11 @@ Open the shift while connected and use the same device throughout. Once the regi
 
 One payment method applies to each sale. A new register starts with cash, card and e-wallets (GCash and Maya for PHP), plus a Senior / PWD 20% discount for PHP. Owners can rename, add, switch off or remove methods and discounts in Settings, with the owner PIN. For anything other than cash, verify the payment in the seller's wallet or terminal before confirming. One discount applies per order. Checkout settings saved on the till's own phone apply to the open shift at once. Reversal records the correction in the open shift. The seller returns funds separately. Opening and closing cash use the business currency and the amounts in the drawer.
 
+In **Settings › Mode**, the owner can choose **Simple** or **Advanced** for the business. Simple keeps checkout, receipts, menu items and choices, and till operations. Open the till directly using a cash total while completing any configured stock counts and checklist. Advanced adds shift scheduling, ingredient and prep setup, recipe costing, and sales charts. Switching modes preserves the menu, costing, schedules and sales history. Registers without a saved mode use Advanced.
+
 ## Opening, running and closing a shift
 
-Every till runs for a shift on the Shifts page. When the till opens, the seller picks a scheduled shift starting within three hours, or starts one on the spot with a place and a length. A till already open without a shift shows a prompt on the Till page to add it. The top of Sell shows which shift the till is selling for.
+In Advanced mode, the seller picks a scheduled shift to open the till, starting up to 30 minutes before the scheduled time. A till opened in Simple mode can be linked to the schedule from Till after switching to Advanced. The top of Sell in Advanced shows which shift the till is selling for.
 
 Opening asks for the cash float, counted by coin and bill (for example ₱5 × 15) or typed as a total, a count of every stock item, and the opening checklist. During the shift, anyone on the till logs expenses from the Till page: paid with cash from the till, which lowers the cash expected in the drawer, or out of their own pocket, which the report lists as owed back to them. Closing asks for the cash on hand, again by coin and bill or as a total, and what is left of each stock item. The server checks that coin counts add up to the amount sent.
 

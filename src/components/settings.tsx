@@ -6,6 +6,7 @@ import {
   Check,
   Repeat,
   ChevronRight,
+  SlidersHorizontal,
   ListChecks,
   Users,
   Coins,
@@ -21,14 +22,15 @@ import type {
   PaymentMethod,
   Product,
   RegisterState,
+  RegisterMode,
   Settings,
 } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
 import { OrganizersPage } from "./organizer-settings";
-import { plural } from "./records";
-import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
+import { plural, useRecordSave } from "./records";
+import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
 import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import {
@@ -53,6 +55,7 @@ export type SettingsInput = {
 
 export type SettingsPage =
   | "business"
+  | "mode"
   | "payments"
   | "discounts"
   | "currency"
@@ -212,12 +215,64 @@ function applyNote(state: RegisterState) {
       : "Applies when you open the next shift.";
 }
 
+const modes = [
+  { id: "simple", name: "Simple", detail: "Sell, manage the menu, review receipts and run the till." },
+  { id: "advanced", name: "Advanced", detail: "Adds recipe costing, ingredient setup, shift scheduling and more." },
+] as const;
+
+function ModePage(props: SettingsProps) {
+  const current = props.state.business!.settings.mode ?? "advanced";
+  const [mode, setMode] = useState<RegisterMode>(current);
+  const back = () => props.onPage(null);
+  const commit = useCommit(props);
+  const { busy, error, run } = useRecordSave(back);
+  const selected = modes.find((option) => option.id === mode)!;
+  const save = () => run(() => commit.run(
+    (pin) => props.onAction({ action: "mode", mode, pin }),
+    `${selected.name} mode enabled`,
+  ));
+  return (
+    <SubPage title="Mode" onBack={back}>
+      <div className="card card-pad stack gap-14">
+        <div className="segmented" role="group" aria-label="Register mode">
+          {modes.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={mode === option.id}
+              disabled={busy}
+              onClick={() => setMode(option.id)}
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+        <p className="label">{selected.detail}</p>
+        <p className="label">Applies to everyone using this business. You can switch modes anytime.</p>
+      </div>
+      {(mode !== current || error) && (
+        <div className="save-bar stack gap-8">
+          {error && <p className="notice alert" role="alert">{error}</p>}
+          <button
+            className="btn"
+            disabled={busy || !props.online || mode === current}
+            onClick={() => void save()}
+          >
+            {busy ? "Saving…" : props.online ? "Save mode" : "Connect to save"}
+          </button>
+        </div>
+      )}
+    </SubPage>
+  );
+}
+
 /* ---------- business ---------- */
 
 const brands = ["#0a0a0a", "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8", "#6d28d9", "#be185d"];
 
 function BusinessPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
+  const simple = isSimpleMode(props.state.business!.settings);
   const setBrand = (patch: Partial<Settings>) => {
     const settings = { ...draft.settings, ...patch };
     if (!settings.logo) delete settings.logo;
@@ -227,6 +282,14 @@ function BusinessPage(props: SettingsProps) {
     if (!settings.ink || settings.ink === inks[0]) delete settings.ink;
     setDraft({ ...draft, settings });
   };
+  const logoPicker = (
+    <PhotoPicker
+      value={draft.settings.logo}
+      onChange={(logo) => setDraft((current) => ({ ...current, settings: { ...current.settings, logo } }))}
+      label="logo"
+      disabled={!props.online && !props.demo}
+    />
+  );
   const brand = draft.settings.brand ?? brands[0];
   const saved = props.state.business!.settings;
   // Preview the theme on the whole app while editing; go back to the saved one on leaving.
@@ -240,6 +303,7 @@ function BusinessPage(props: SettingsProps) {
   useEffect(() => () => applyTheme(savedRef.current), []);
   useEffect(() => {
     // Load every font once so the picker shows each in its own face.
+    if (simple) return;
     const id = "brand-font-all";
     if (document.getElementById(id)) return;
     const link = document.createElement("link");
@@ -247,7 +311,7 @@ function BusinessPage(props: SettingsProps) {
     link.rel = "stylesheet";
     link.href = "https://fonts.googleapis.com/css2?" + fonts.filter((f) => f.google).map((f) => "family=" + f.google).join("&") + "&display=swap";
     document.head.appendChild(link);
-  }, []);
+  }, [simple]);
   return (
     <SubPage
       title="Business"
@@ -258,22 +322,17 @@ function BusinessPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      <div className="brand-preview" style={{ background: brand }}>
+      {!simple && <div className="brand-preview" style={{ background: brand }}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="strong ellipsis" style={{ color: onColor(brand) }}>{draft.name || "Your stall"}</span>
           <span className="label" style={{ color: onColor(brand), opacity: 0.72 }}>Buttons, highlights and cards take this look</span>
         </span>
-      </div>
-      <div className="stack gap-10">
+      </div>}
+      {!simple && <div className="stack gap-10">
         <p className="group-title">Branding</p>
         <div className="card card-pad stack gap-16">
-          <PhotoPicker
-            value={draft.settings.logo}
-            onChange={(logo) => setBrand({ logo })}
-            label="logo"
-            disabled={!props.online && !props.demo}
-          />
+          {logoPicker}
           <div className="field">
             <span>Brand color</span>
             <div className="swatches" role="group" aria-label="Brand color">
@@ -370,8 +429,9 @@ function BusinessPage(props: SettingsProps) {
             before you save.
           </p>
         </div>
-      </div>
+      </div>}
       <div className="card card-pad stack gap-14">
+        {simple && logoPicker}
         <label className="field">
           <span>Business name</span>
           <input
@@ -1026,6 +1086,7 @@ export function SettingsScreen(props: SettingsProps) {
   const { state, page, onPage, demo } = props;
   const business = state.business!;
   const s = business.settings;
+  const simple = isSimpleMode(s);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [page]);
@@ -1033,8 +1094,8 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "payments") return <PaymentsPage {...props} />;
   if (page === "discounts") return <DiscountsPage {...props} />;
   if (page === "currency") return <CurrencyPage {...props} />;
-  if (page === "organizers") return <OrganizersPage {...props} />;
-  if (page === "checklist") return <ChecklistPage {...props} />;
+  if (!simple && page === "organizers") return <OrganizersPage {...props} />;
+  if (!simple && page === "checklist") return <ChecklistPage {...props} />;
   if (page === "team") return <TeamPage {...props} />;
   const me = state.me;
   if (me && !me.owner)
@@ -1061,6 +1122,7 @@ export function SettingsScreen(props: SettingsProps) {
         </div>
       </div>
     );
+  if (page === "mode") return <ModePage {...props} />;
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;
@@ -1101,7 +1163,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("discounts")}
         />
       </div>
-      <p className="group-title">Shifts</p>
+      <p className="group-title">{simple ? "People" : "Shifts"}</p>
       <div className="card card-list">
         <Row
           icon={<Users size={18} strokeWidth={1.8} />}
@@ -1109,21 +1171,31 @@ export function SettingsScreen(props: SettingsProps) {
           detail={plural(state.team?.length ?? 1, "person", "people")}
           onClick={() => onPage("team")}
         />
-        <Row
-          icon={<ListChecks size={18} strokeWidth={1.8} />}
-          title="Opening checklist"
-          detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
-          onClick={() => onPage("checklist")}
-        />
-        <Row
-          icon={<Ticket size={18} strokeWidth={1.8} />}
-          title="Organizers"
-          detail={countText(state.organizers?.length ?? 0)}
-          onClick={() => onPage("organizers")}
-        />
+        {!simple && (
+          <>
+            <Row
+              icon={<ListChecks size={18} strokeWidth={1.8} />}
+              title="Opening checklist"
+              detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
+              onClick={() => onPage("checklist")}
+            />
+            <Row
+              icon={<Ticket size={18} strokeWidth={1.8} />}
+              title="Organizers"
+              detail={countText(state.organizers?.length ?? 0)}
+              onClick={() => onPage("organizers")}
+            />
+          </>
+        )}
       </div>
       <p className="group-title">Register</p>
       <div className="card card-list">
+        <Row
+          icon={<SlidersHorizontal size={18} strokeWidth={1.8} />}
+          title="Mode"
+          detail={simple ? "Simple" : "Advanced"}
+          onClick={() => onPage("mode")}
+        />
         <Row
           icon={<Store size={18} strokeWidth={1.8} />}
           title="Currency and time"

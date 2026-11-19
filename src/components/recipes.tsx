@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { CookingPot, LayoutGrid, ListPlus, Package, Tag } from "lucide-react";
+import { isSimpleMode } from "@/lib/settings";
 import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
 import { Row, type EditorProps } from "./settings";
 import { StockPage } from "./stock-settings";
@@ -15,14 +16,17 @@ export interface RecipesProps extends EditorProps {
 
 export function RecipesScreen(props: RecipesProps) {
   const { page, onPage, state } = props;
+  const simple = isSimpleMode(state.business?.settings);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [page]);
 
-  if (page === "menu") return <MenuPage {...props} />;
+  if (page === "menu") return <MenuPage key={page} {...props} />;
   if (page === "categories") return <CategoriesPage {...props} />;
   if (page === "choices") return <ChoicesPage {...props} />;
-  if (page === "stock" || page === "prep") return <StockPage key={page} {...props} prepOnly={page === "prep"} />;
+  if (!simple) {
+    if (page === "stock" || page === "prep") return <StockPage key={page} {...props} prepOnly={page === "prep"} />;
+  }
 
   const stock = state.business?.settings.stockItems ?? [];
   const count = (n: number) => n || "None";
@@ -34,10 +38,12 @@ export function RecipesScreen(props: RecipesProps) {
         <Row icon={<Tag size={18} />} title="Categories" detail={count(categoriesOf(state.menu).length)} onClick={() => onPage("categories")} />
         <Row icon={<ListPlus size={18} />} title="Choices" detail={count(choicesOf(state.menu).length)} onClick={() => onPage("choices")} />
       </div>
-      <div className="card card-list">
-        <Row icon={<Package size={18} />} title="Stock items" detail={count(stock.length)} onClick={() => onPage("stock")} />
-        <Row icon={<CookingPot size={18} />} title="Prep recipes" detail={count(stock.filter((item) => item.prep).length)} onClick={() => onPage("prep")} />
-      </div>
+      {!simple && (
+        <div className="card card-list">
+          <Row icon={<Package size={18} />} title="Stock items" detail={count(stock.length)} onClick={() => onPage("stock")} />
+          <Row icon={<CookingPot size={18} />} title="Prep recipes" detail={count(stock.filter((item) => item.prep).length)} onClick={() => onPage("prep")} />
+        </div>
+      )}
     </div>
   );
 }

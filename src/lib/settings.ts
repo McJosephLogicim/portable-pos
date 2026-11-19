@@ -6,6 +6,10 @@ import type {
   ShiftSettings,
 } from "./types";
 
+export function isSimpleMode(settings: Pick<Settings, "mode"> | undefined) {
+  return settings?.mode === "simple";
+}
+
 export const paymentKinds: { kind: PaymentKind; name: string }[] = [
   { kind: "cash", name: "Cash" },
   { kind: "wallet", name: "E-wallet" },

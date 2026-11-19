@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
 import type { OptionGroup, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
+import { isSimpleMode } from "@/lib/settings";
 import { maxBatchServings, menuRecipeCost } from "@/lib/stock";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
@@ -159,6 +160,7 @@ export function ItemSheet({
   product,
   currency,
   menu,
+  simple = false,
   liveShift = false,
   stockItems = [],
   costItems,
@@ -168,6 +170,7 @@ export function ItemSheet({
   onClose,
 }: {
   product?: Product;
+  simple?: boolean;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
   /** Current cost sources when the till limits selection to its opening stock. */
@@ -228,11 +231,11 @@ export function ItemSheet({
     JSON.stringify(mode === "uses"
       ? uses.filter((u) => u.name.trim()).map((u) => [stockForUse(u, stockItems)?.id ?? u.name.trim(), u.amount])
       : []);
-  const costRows = batchEnabled
+  const costRows = simple ? [] : batchEnabled
     ? stockUseRows(batchUses, batchItems)
     : mode === "uses" ? stockUseRows(uses, stockItems, costItems) : [];
   const recipeCosts = costRows.filter(({ draft }) => draft.name.trim()).map(({ cost }) => cost);
-  const showCostPreview = batchEnabled || recipeCosts.length > 0 || Boolean(labor || other);
+  const showCostPreview = !simple && (batchEnabled || recipeCosts.length > 0 || Boolean(labor || other));
   const optionalMoney = (value: string) => value === "" ? undefined : parseMoney(value, currency);
   let totalCost: ReturnType<typeof menuRecipeCost>;
   if (showCostPreview) {
@@ -272,11 +275,14 @@ export function ItemSheet({
         if (!g.name.trim()) throw Error("Name each choice, like Size or Extras.");
         return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
       });
-      const { uses: picked, created } = mode === "uses" ? resolveUses(uses, stockItems) : { uses: [], created: [] };
-      if (mode === "uses" && !picked.length) throw Error("Type the stock items it uses, or set Stock to Not counted.");
+      const editUses = !simple && mode === "uses";
+      const { uses: picked, created } = editUses
+        ? resolveUses(uses, stockItems)
+        : { uses: simple ? product?.uses ?? [] : [], created: [] };
+      if (editUses && !picked.length) throw Error("Type the stock items it uses, or set Stock to Not counted.");
       if (created.length && !canCreateStock)
         throw Error("Add " + created.map((c) => c.name).join(", ") + " in Recipes › Stock items first, or pick one from the list.");
-      const costing = readCosting();
+      const costing = simple ? product?.costing : readCosting();
       const { stock: _, image: _image, uses: _uses, costing: _costing, ...rest } = product ?? ({} as Partial<Product>);
       return onSave(
         {
@@ -342,7 +348,7 @@ export function ItemSheet({
         </div>
       </div>
 
-      <div className="card card-pad stack gap-12">
+      {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
         <span className="strong">Stock</span>
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
@@ -351,7 +357,7 @@ export function ItemSheet({
               ["count", "Count it"],
               ["uses", "Uses stock"],
             ] as const
-          ).map(([id, text]) => (
+          ).filter(([id]) => !simple || id !== "uses").map(([id, text]) => (
             <button
               key={id}
               type="button"
@@ -390,9 +396,9 @@ export function ItemSheet({
         {product && liveShift && (usesChanged || Boolean(product.stock) !== (mode === "count")) && (
           <p className="label">Stock changes apply from the next shift.</p>
         )}
-      </div>
+      </div>}
 
-      <section className="card card-pad stack gap-14" aria-label="Recipe costing">
+      {!simple && <section className="card card-pad stack gap-14" aria-label="Recipe costing">
         <h3 className="strong">Recipe costing</h3>
         <div className="between gap-8">
           <span>Cost a batch</span>
@@ -417,7 +423,7 @@ export function ItemSheet({
         <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
         <MoneyField label="Other variable cost per serving" value={other} onChange={setOther} currency={currency} />
         {showCostPreview && <CostPreview currency={currency} total={totalCost} batch={batchEnabled} />}
-      </section>
+      </section>}
 
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
@@ -479,6 +485,7 @@ export function ItemSheet({
 
 export function MenuPage(props: RecipesProps) {
   const business = props.state.business!;
+  const simple = isSimpleMode(business.settings);
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
@@ -517,7 +524,7 @@ export function MenuPage(props: RecipesProps) {
                 title={p.name}
                 detail={
                   [
-                    p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
+                    !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
                     ...p.groups.map((x) => x.name),
                   ]
                     .filter(Boolean)
@@ -539,6 +546,8 @@ export function MenuPage(props: RecipesProps) {
       </p>
       {editing && (
         <ItemSheet
+          key={simple ? "simple" : "advanced"}
+          simple={simple}
           product={editing === "new" ? undefined : editing}
           currency={business.currency}
           menu={menu}

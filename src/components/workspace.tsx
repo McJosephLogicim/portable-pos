@@ -29,6 +29,7 @@ import {
   uploadProofs,
 } from "@/lib/register-store";
 import { applyTheme } from "@/lib/theme";
+import { isSimpleMode } from "@/lib/settings";
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
@@ -412,6 +413,7 @@ export function Workspace() {
   const demo = key === DEMO;
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
+  const simple = isSimpleMode(business?.settings);
   const status = state?.pending.length
     ? `${state.pending.length} waiting to sync`
     : syncErr
@@ -420,8 +422,10 @@ export function Workspace() {
         ? "Online"
         : "Offline";
   const canManageRecipes = !state?.me || state.me.owner;
-  const shown = canManageRecipes ? tabs : tabs.filter((item) => item.id !== "recipes");
-  const view: Tab = tab === "recipes" && !canManageRecipes ? "sell" : tab;
+  const shown = tabs.filter((item) =>
+    !(item.id === "recipes" && !canManageRecipes) && !(item.id === "schedule" && simple),
+  );
+  const view: Tab = shown.some((item) => item.id === tab) ? tab : "sell";
   const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
   const go = (t: Tab) => {
     if (t !== tab) buzz.tap();
@@ -471,12 +475,16 @@ export function Workspace() {
       return;
     }
     done();
+    if (simple) {
+      if (target.bookingId) setNotice("Scheduled shifts are available in Advanced mode.");
+      return;
+    }
     const bookingId = state.bookings?.find((b) => b.id === target.bookingId)?.id ?? null;
     if (target.bookingId && !bookingId) setNotice("This shift is no longer available.");
     setSharedSchedule({ bookingId });
     setTab("schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.business?.id, state?.businesses, key, online, syncErr]);
+  }, [state?.business?.id, state?.businesses, key, online, syncErr, simple]);
   /** Open another business on this phone. Each keeps its own till and sync queue. */
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;

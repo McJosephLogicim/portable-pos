@@ -17,6 +17,49 @@ test("the register API requires an authenticated Supabase bearer", async () => {
 });
 
 test(
+  "a business can switch modes and open a Simple till without a scheduled shift",
+  { skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database." },
+  async () => {
+    process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+    const owner = randomUUID();
+    const deviceId = randomUUID();
+    const pin = "1742";
+    const setup = { action: "setup", name: "Mode test", currency: "USD", timeZone: "UTC", pin };
+    const cmd = (input: object) => runCommand(owner, input);
+    const initial = await cmd(setup);
+    const item = { id: "tea", name: "Tea", category: "Drinks", price: 250, groups: [], costing: { laborPerServing: 50 } };
+    await cmd({ action: "menu", menu: [item], pin });
+    const open = { action: "open", openingCash: 1000, deviceId };
+    await assert.rejects(cmd(open), /Pick a scheduled shift/);
+
+    const changeMode = { action: "mode", mode: "simple", pin };
+    await assert.rejects(cmd({ ...changeMode, pin: "2742" }), { status: 403 });
+    await cmd(changeMode);
+    const staleSettings = await cmd({
+      ...setup,
+      action: "settings",
+      deviceId,
+      settings: { ...initial.business!.settings, receiptNote: "Thank you" },
+    });
+    assert.equal(staleSettings.business!.settings.mode, "simple");
+
+    const [first, retry] = await Promise.all([cmd(open), cmd(open)]);
+    const shift = first.shift!;
+    assert.equal(shift.bookingId, undefined);
+    assert.equal(first.bookings?.length, 0);
+    assert.equal(retry.shift!.id, shift.id);
+    assert.equal(shift.settings.receiptNote, "Thank you");
+
+    const advanced = await cmd({ ...changeMode, mode: "advanced" });
+    assert.equal(advanced.business!.settings.mode, "advanced");
+    assert.deepEqual(advanced.menu[0].costing, item.costing);
+    assert.equal(advanced.shift!.id, shift.id);
+    await cmd({ action: "close", shiftId: shift.id, countedCash: 1000, deviceId, pin });
+    await assert.rejects(cmd(open), /Pick a scheduled shift/);
+  },
+);
+
+test(
   "a real Postgres register isolates shops, replays safely, and reconciles the drawer",
   {
     skip:

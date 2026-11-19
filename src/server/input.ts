@@ -280,6 +280,11 @@ const command = z.discriminatedUnion("action", [
     pin,
   }),
   z.object({
+    action: z.literal("mode"),
+    mode: z.enum(["simple", "advanced"]),
+    pin,
+  }),
+  z.object({
     action: z.literal("open"),
     deviceId: key,
     openingCash: amount,

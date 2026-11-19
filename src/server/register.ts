@@ -5,6 +5,7 @@ import { checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
+  isSimpleMode,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
@@ -21,8 +22,8 @@ import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
-const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
-const ownerActions = ["menu", "settings", ...ownerPlanActions];
+const ownerActions = ["menu", "settings", "mode", ...ownerPlanActions];
+const pinActions = ["reverse", "close", ...ownerActions];
 
 async function addWalkIn(
   tx: Transaction,
@@ -143,6 +144,11 @@ export async function runCommand(
             .where(eq(shifts.id, open.id));
         }
       }
+    } else if (cmd.action === "mode") {
+      await tx
+        .update(businesses)
+        .set({ settings: { ...(business.settings ?? defaultSettings(business.currency)), mode: cmd.mode } })
+        .where(eq(businesses.id, business.id));
     } else if (cmd.action === "settings") {
       const problem = batchIngredientProblem(business.menu, cmd.settings.stockItems);
       if (problem) ensure(false, problem);
@@ -173,7 +179,10 @@ export async function runCommand(
           name: cmd.name,
           currency: cmd.currency,
           timeZone: cmd.timeZone,
-          settings: cmd.settings,
+          settings: {
+            ...cmd.settings,
+            mode: business.settings?.mode,
+          },
         })
         .where(eq(businesses.id, business.id));
       // The till applies new checkout settings right away. The client syncs every pending
@@ -214,16 +223,18 @@ export async function runCommand(
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        // Shifts start on their schedule, one at a time.
-        const bookingId = cmd.bookingId;
-        ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
-        const [booking] = await tx
-          .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
-          .from(bookings)
-          .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
-        ensure(booking, "That scheduled shift was removed.", 404);
-        const problem = startProblem(booking, business.timeZone);
-        ensure(!problem, problem ?? "", 409);
+        const bookingId = cmd.bookingId ?? null;
+        ensure(bookingId || isSimpleMode(settings), "Pick a scheduled shift to start. Add one on Shifts first.");
+        if (bookingId) {
+          const [booking] = await tx
+            .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+            .from(bookings)
+            .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
+          ensure(booking, "That scheduled shift was removed.", 404);
+          const problem = startProblem(booking, business.timeZone);
+          ensure(!problem, problem ?? "", 409);
+        }
+        const { mode: _mode, ...checkoutSettings } = withoutStockCosts(settings);
         await tx.insert(shifts).values({
           stock: Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,
@@ -237,7 +248,7 @@ export async function runCommand(
           openedAt: new Date().toISOString(),
           menu: withoutMenuCosts(business.menu),
           settings: {
-            ...withoutStockCosts(business.settings ?? defaultSettings(business.currency)),
+            ...checkoutSettings,
             currency: business.currency,
           },
         });
