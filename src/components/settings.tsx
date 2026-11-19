@@ -953,12 +953,15 @@ function ProfileCard(props: SettingsProps) {
   const [name, setName] = useState(me?.name ?? "");
   const [saving, setSaving] = useState(false);
   if (!me) return null;
-  const changed = name.trim() && name.trim() !== me.name;
+  // Saves on its own when the field loses focus, or on the keyboard's Done or Enter.
   async function saveName() {
+    const next = name.trim();
+    if (!next) return setName(me!.name);
+    if (next === me!.name || saving) return;
     setError("");
     setSaving(true);
     try {
-      await props.onAction({ action: "profile", name: name.trim() });
+      await props.onAction({ action: "profile", name: next });
       props.onSaved("Name saved");
     } catch (e) {
       setError(errorText(e));
@@ -991,22 +994,28 @@ function ProfileCard(props: SettingsProps) {
             className="inline-input strong"
             aria-label="Your name"
             maxLength={80}
+            enterKeyHint="done"
+            autoComplete="name"
             value={name}
-            disabled={!props.online && !props.demo}
+            disabled={(!props.online && !props.demo) || saving}
             onChange={(e) => setName(e.target.value)}
+            onBlur={() => void saveName()}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && changed && !saving) void saveName();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+              else if (e.key === "Escape") {
+                setName(me.name);
+                setTimeout(() => (document.activeElement as HTMLElement | null)?.blur());
+              }
             }}
           />
           <span className="label">
-            {me.photo ? "Your name and photo show on shifts and reports." : "Add a photo so the team knows who's on shift."}
+            {saving
+              ? "Saving…"
+              : me.photo
+                ? "Your name and photo show on shifts and reports."
+                : "Add a photo so the team knows who's on shift."}
           </span>
         </span>
-        {changed && (
-          <button type="button" className="btn small" disabled={saving} onClick={() => void saveName()}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-        )}
       </div>
       {error && (
         <p className="alert" role="alert">
