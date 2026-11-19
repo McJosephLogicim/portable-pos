@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { checkOpening, makeSale, stockLeft, withNewItems } from "../src/lib/domain";
 import {
+  rolesOf,
+  shiftRole,
+  shiftRoleNames,
   applyPlan,
   bookingProfit,
   daysBetween,
@@ -54,6 +57,19 @@ test("only the owner plans; teammates join open seats in their role", () => {
   const switched = applyPlan(joined, asBea, { action: "role", bookingId: "k", memberId: "b", role: "server" }, later);
   assert.equal(switched.bookings[0].staff[0].role, "server");
   assert.throws(() => applyPlan(full, asBea, { action: "role", bookingId: "k", memberId: "p", role: "cashier" }, later), /owner/);
+});
+
+test("one person can be cashier and server on the same shift", () => {
+  const both = applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "both" }, later);
+  assert.equal(both.bookings[0].staff[0].role, "both");
+  assert.deepEqual(rolesOf("both"), ["cashier", "server"]);
+  assert.equal(shiftRole(["server", "cashier"]), "both");
+  assert.equal(shiftRole(["server"]), "server");
+  const owner = applyPlan(both, asOwner, { action: "role", bookingId: "k", memberId: "b", role: "server" }, later);
+  assert.equal(owner.bookings[0].staff[0].role, "server");
+  const assigned = applyPlan(plan, asOwner, { action: "assign", bookingId: "k", memberId: "p", role: "both" }, later);
+  assert.equal(assigned.bookings[0].staff[0].role, "both");
+  assert.equal(shiftRoleNames.both, "Cashier and server");
 });
 
 test("removing someone opens their future seats and keeps past names", () => {
@@ -162,6 +178,9 @@ test(
     assert.equal(snap.bookings![0].staff[0].name, "Bea");
     assert.equal(snap.bookings![0].rent, undefined);
     snap = await paolo({ action: "join", bookingId: id, role: "server" });
+    // Paolo serves and also runs the till.
+    snap = await paolo({ action: "role", bookingId: id, memberId: asPaolo.me!.memberId, role: "both" });
+    assert.equal(snap.bookings![0].staff.find((s) => s.memberId === asPaolo.me!.memberId)?.role, "both");
     await assert.rejects(o({ action: "join", bookingId: id, role: "cashier" }), /filled/);
     // Taking someone off a shift needs the owner PIN; leaving your own does not.
     await assert.rejects(o({ action: "leave", bookingId: id, memberId: snap.me!.memberId }), { status: 403 });

@@ -144,7 +144,7 @@ const walkIn = z.object({
 const cashCount = z
   .record(z.string().regex(/^[1-9]\d{0,8}$/, "Invalid coin or bill."), z.number().int().min(0).max(100000))
   .refine((c) => Object.keys(c).length <= 40, "Too many kinds of coins and bills.")
-const role = z.enum(["cashier", "server"]);
+const role = z.enum(["cashier", "server", "both"]);
 const tag = z.object({ id: key, name: z.string().trim().min(1).max(80) });
 const booking = z.object({
   id: z.uuid(),

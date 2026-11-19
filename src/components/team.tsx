@@ -53,12 +53,10 @@ export function RolePicker({
   value,
   onChange,
   allowed = ["cashier", "server"],
-  single = false,
 }: {
   value: Role[];
   onChange: (roles: Role[]) => void;
   allowed?: Role[];
-  single?: boolean;
 }) {
   return (
     <div className="methods" role="group" aria-label="Role">
@@ -73,7 +71,7 @@ export function RolePicker({
             aria-pressed={on}
             disabled={!allowed.includes(r)}
             onClick={() =>
-              onChange(single ? [r] : on ? value.filter((x) => x !== r) : [...value, r])
+              onChange(on ? value.filter((x) => x !== r) : [...value, r])
             }
           >
             <Icon size={20} strokeWidth={1.8} aria-hidden="true" />

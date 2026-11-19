@@ -22,8 +22,10 @@ import {
   bookingProfit,
   dayOf,
   daysBetween,
-  roleNames,
+  rolesOf,
   salesByBooking,
+  shiftRole,
+  shiftRoleNames,
   shiftTimes,
   timeOf,
   weekday,
@@ -36,6 +38,7 @@ import type {
   Place,
   RegisterState,
   Role,
+  ShiftRole,
   StaffSlot,
   Tag,
 } from "@/lib/types";
@@ -231,8 +234,8 @@ function PersonPicker({
   currency: string;
   title: string;
   exclude: string[];
-  roleHint?: Role;
-  onPick: (member: Member, role: Role) => void;
+  roleHint?: ShiftRole;
+  onPick: (member: Member, role: ShiftRole) => void;
   onClose: () => void;
 }) {
   const [member, setMember] = useState<Member | null>(null);
@@ -244,8 +247,8 @@ function PersonPicker({
       onClose={onClose}
       footer={
         member && (
-          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, role[0])}>
-            Add as {role.length ? roleNames[role[0]].toLowerCase() : "…"}
+          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, shiftRole(role))}>
+            {role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"}
           </button>
         )
       }
@@ -253,7 +256,8 @@ function PersonPicker({
       {member ? (
         <div className="field">
           <span>Working as</span>
-          <RolePicker value={role} onChange={setRole} single />
+          <RolePicker value={role} onChange={setRole} />
+          <p className="label">Pick both if they run the till and serve.</p>
         </div>
       ) : people.length ? (
         <div className="card card-list">
@@ -265,7 +269,7 @@ function PersonPicker({
               onClick={() => {
                 buzz.tap();
                 setMember(m);
-                setRole([roleHint ?? "cashier"]);
+                setRole(rolesOf(roleHint ?? "cashier"));
               }}
             >
               <Avatar id={m.id} name={m.name} dim={!m.joined} />
@@ -283,6 +287,47 @@ function PersonPicker({
       ) : (
         <p className="label">Everyone on the team is already on this shift. Invite more people in Settings › Team.</p>
       )}
+    </Sheet>
+  );
+}
+
+const roleNotes: Record<ShiftRole, string> = {
+  cashier: "Runs the till: sells, opens and closes it.",
+  server: "Serves and preps. Someone else runs the till.",
+  both: "Runs the till and serves.",
+};
+
+/** Pick what someone does on a shift: cashier, server or both. */
+function RoleSheet({
+  title,
+  start,
+  action,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  start: Role[];
+  action: (role: ShiftRole) => string;
+  onSave: (role: ShiftRole, from: Element) => void;
+  onClose: () => void;
+}) {
+  const [roles, setRoles] = useState<Role[]>(start);
+  const role = shiftRole(roles);
+  return (
+    <Sheet
+      title={title}
+      onClose={onClose}
+      footer={
+        <button className="btn block" disabled={!roles.length} onClick={(e) => onSave(role, e.currentTarget)}>
+          {roles.length ? action(role) : "Pick a role"}
+        </button>
+      }
+    >
+      <div className="field">
+        <span>Working as</span>
+        <RolePicker value={roles} onChange={setRoles} />
+      </div>
+      <p className="muted">{roles.length ? roleNotes[role] : "Pick cashier, server or both."}</p>
     </Sheet>
   );
 }
@@ -319,7 +364,9 @@ function BookingSheet({
   const over = Date.parse(b.endsAt) <= Date.now();
   const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0 }) : null;
   const team = state.team ?? [];
-  const joinable: Role[] = !mine && open > 0 && !over ? ["cashier", "server"] : [];
+  const joinable = !mine && open > 0 && !over;
+  const [joining, setJoining] = useState(false);
+  const [roleFor, setRoleFor] = useState<StaffSlot | null>(null);
   const celebrate = useCelebrate();
   const [switching, setSwitching] = useState(false);
   const tills = useMemo(
@@ -368,7 +415,7 @@ function BookingSheet({
             !over && (
               <div className="grid-2">
                 <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
-                  Switch to {mine.role === "cashier" ? "server" : "cashier"}
+                  Change role
                 </button>
                 <button
                   className="btn secondary block"
@@ -379,21 +426,10 @@ function BookingSheet({
                 </button>
               </div>
             )
-          ) : joinable.length ? (
-            <div className={joinable.length === 2 ? "grid-2" : "stack"}>
-              {joinable.map((r) => (
-                <button
-                  key={r}
-                  className={"btn block" + (joinable.length === 2 && r === "server" ? " secondary" : "")}
-                  disabled={!online || busy}
-                  onClick={(e) =>
-                    void run({ action: "join", bookingId: b.id, role: r }, "You're on the shift", false, e.currentTarget)
-                  }
-                >
-                  Join as {roleNames[r].toLowerCase()}
-                </button>
-              ))}
-            </div>
+          ) : joinable ? (
+            <button className="btn block" disabled={!online || busy} onClick={() => setJoining(true)}>
+              Join this shift
+            </button>
           ) : null)
         }
       >
@@ -439,7 +475,7 @@ function BookingSheet({
                     {s.memberId === me.memberId ? s.name + " (you)" : s.name}
                   </span>
                   <span className="label">
-                    {roleNames[s.role]}
+                    {shiftRoleNames[s.role]}
                     {s.salary !== undefined ? " · " + formatMoney(s.salary, currency) : ""}
                   </span>
                 </span>
@@ -611,13 +647,11 @@ function BookingSheet({
               <button
                 className="btn secondary block"
                 onClick={() => {
-                  const s = managing;
+                  setRoleFor(managing);
                   setManaging(null);
-                  const role = s.role === "cashier" ? "server" : "cashier";
-                  void run({ action: "role", bookingId: b.id, memberId: s.memberId, role }, `${s.name} is now ${role}`);
                 }}
               >
-                Make {managing.role === "cashier" ? "server" : "cashier"}
+                Change role
               </button>
               <button
                 className="btn secondary block"
@@ -642,7 +676,7 @@ function BookingSheet({
           }
         >
           <p className="label">
-            {roleNames[managing.role]}
+            {shiftRoleNames[managing.role]}
             {managing.salary !== undefined ? " · " + formatMoney(managing.salary, currency) + " for this shift" : ""}.{" "}
             {managing.memberId !== me.memberId
               ? "Taking over puts you in their seat, at your own pay."
@@ -651,29 +685,43 @@ function BookingSheet({
         </Sheet>
       )}
       {switching && mine && (
-        <Sheet
-          title={"Switch to " + (mine.role === "cashier" ? "server" : "cashier")}
+        <RoleSheet
+          title="Your role"
+          start={rolesOf(mine.role)}
           onClose={() => setSwitching(false)}
-          footer={
-            <button
-              className="btn block"
-              onClick={(e) => {
-                const role = mine.role === "cashier" ? "server" : "cashier";
-                const from = e.currentTarget;
-                setSwitching(false);
-                void run({ action: "role", bookingId: b.id, memberId: me.memberId, role }, "You're " + role + " on this shift", false, from);
-              }}
-            >
-              Switch
-            </button>
-          }
-        >
-          <p className="muted">
-            {mine.role === "cashier"
-              ? "You'll serve on this shift. Someone else runs the till."
-              : "You'll run the till on this shift: sell, open and close it."}
-          </p>
-        </Sheet>
+          action={(r) => (r === mine.role ? "Keep " + shiftRoleNames[r].toLowerCase() : "Switch to " + shiftRoleNames[r].toLowerCase())}
+          onSave={(role, from) => {
+            setSwitching(false);
+            if (role === mine.role) return;
+            void run({ action: "role", bookingId: b.id, memberId: me.memberId, role }, "You're " + shiftRoleNames[role].toLowerCase() + " on this shift", false, from);
+          }}
+        />
+      )}
+      {joining && (
+        <RoleSheet
+          title="Join this shift"
+          start={me.roles.length ? me.roles : ["cashier"]}
+          onClose={() => setJoining(false)}
+          action={(r) => "Join as " + shiftRoleNames[r].toLowerCase()}
+          onSave={(role, from) => {
+            setJoining(false);
+            void run({ action: "join", bookingId: b.id, role }, "You're on the shift", false, from);
+          }}
+        />
+      )}
+      {roleFor && (
+        <RoleSheet
+          title={roleFor.name}
+          start={rolesOf(roleFor.role)}
+          onClose={() => setRoleFor(null)}
+          action={(r) => "Make " + shiftRoleNames[r].toLowerCase()}
+          onSave={(role) => {
+            const s = roleFor;
+            setRoleFor(null);
+            if (role === s.role) return;
+            void run({ action: "role", bookingId: b.id, memberId: s.memberId, role }, `${s.name} is now ${shiftRoleNames[role].toLowerCase()}`);
+          }}
+        />
       )}
       {picking && (
         <PersonPicker
@@ -709,7 +757,7 @@ interface Draft {
   organizer: string;
   event: string;
   seats: number;
-  staff: { memberId: string; name: string; role: Role; salary: string }[];
+  staff: { memberId: string; name: string; role: ShiftRole; salary: string }[];
   rent: string;
   quota: string;
   incentive: string;
@@ -1036,7 +1084,7 @@ function BookingEditor({
                 <span className="grow stack">
                   <span className="ellipsis">{s.name}</span>
                   <span className="label ellipsis">
-                    {roleNames[s.role]} · {s.salary.trim() ? formatMoney(parse(s.salary), currency) : "No pay set"}
+                    {shiftRoleNames[s.role]} · {s.salary.trim() ? formatMoney(parse(s.salary), currency) : "No pay set"}
                   </span>
                 </span>
                 <ChevronRight size={18} className="chev" />
@@ -1104,7 +1152,10 @@ function BookingEditor({
         >
           <div className="field">
             <span>Working as</span>
-            <RolePicker value={[staffed.role]} onChange={(r) => setStaff(staffed.memberId, { role: r[0] })} single />
+            <RolePicker
+              value={rolesOf(staffed.role)}
+              onChange={(r) => r.length && setStaff(staffed.memberId, { role: shiftRole(r) })}
+            />
           </div>
           <MoneyField
             label="Pay for this shift"
