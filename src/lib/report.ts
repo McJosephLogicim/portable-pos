@@ -1,7 +1,8 @@
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
+import { isSimpleMode } from "./settings";
 import { round, stockModel, unitText } from "./stock";
-import { roleNames } from "./team";
+import { dayOf, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -70,6 +71,7 @@ export function shiftReport(
     .filter((e) => e.shiftId === shift.id && !e.voidedAt)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const totals = shiftTotals(shift, sales, expenses);
+  const showInsights = !isSimpleMode(business.settings);
   const zone = business.timeZone;
   const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -81,8 +83,10 @@ export function shiftReport(
   const hourOf = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", hourCycle: "h23" });
   for (const sale of sales) {
     if (sale.reversedAt) continue;
-    const h = Number(hourOf.format(new Date(sale.createdAt)));
-    hourly.set(h, (hourly.get(h) ?? 0) + sale.total);
+    if (showInsights) {
+      const h = Number(hourOf.format(new Date(sale.createdAt)));
+      hourly.set(h, (hourly.get(h) ?? 0) + sale.total);
+    }
     for (const line of sale.lines) {
       const row = sold.get(line.productId) ?? {
         productId: line.productId,
@@ -144,7 +148,7 @@ export function shiftReport(
       (shift.closedAt ? time.format(new Date(shift.closedAt)) : "now"),
     place,
     people,
-    roles: Object.fromEntries((booking?.staff ?? []).map((s) => [nameOf(s), roleNames[s.role] ?? s.role])),
+    roles: Object.fromEntries((booking?.staff ?? []).map((s) => [nameOf(s), shiftRoleNames[s.role] ?? s.role])),
     faces: Object.fromEntries(
       [
         ...Object.entries(extra.names ?? {}).map(([id, name]) => [name, extra.faces?.[id]] as const),
@@ -243,25 +247,38 @@ function num(n: number) {
   return round(n).toLocaleString("en", { maximumFractionDigits: 3 });
 }
 
-/** Group a schedule by place, one line per day with who works it, to paste in a chat. */
+/** Group a schedule by place and event, with a direct link for each shift. */
 export function scheduleText(
   bookings: Booking[],
   timeZone: string,
+  { origin, businessId }: { origin: string; businessId: string },
 ) {
   const day = new Intl.DateTimeFormat("en", { timeZone, month: "short", day: "numeric" });
-  const groups = new Map<string, Booking[]>();
+  const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+  const link = new URL("/", origin);
+  link.searchParams.set("shifts", businessId);
+  const groups = new Map<string, Map<string, Booking[]>>();
   for (const b of [...bookings].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
     const name = [b.place?.name, b.event?.name].filter(Boolean).join(" - ") || b.organizer?.name || "Shifts";
-    groups.set(name, [...(groups.get(name) ?? []), b]);
+    const days = groups.get(name) ?? new Map<string, Booking[]>();
+    const date = dayOf(b.startsAt, timeZone);
+    days.set(date, [...(days.get(date) ?? []), b]);
+    groups.set(name, days);
   }
   return [...groups]
-    .map(([name, list]) => {
-      const lines = new Map<string, string[]>();
-      for (const b of list) {
-        const d = day.format(new Date(b.startsAt));
-        lines.set(d, [...(lines.get(d) ?? []), ...b.staff.map((s) => s.name.split(" ")[0])]);
-      }
-      return [name, ...[...lines].map(([d, people]) => [d, [...new Set(people)].join(", ")].filter(Boolean).join(" "))].join("\n");
+    .map(([name, days]) => {
+      const lines = [...days.values()].flatMap((shifts) =>
+        shifts.map((b) => {
+          const starts = new Date(b.startsAt);
+          const people = [...new Set(b.staff.map((s) => s.name.split(" ")[0]))].join(", ");
+          const label = [day.format(starts), shifts.length > 1 ? time.format(starts) : "", people]
+            .filter(Boolean)
+            .join(" ");
+          link.searchParams.set("shift", b.id);
+          return `${label} - ${link.href}`;
+        }),
+      );
+      return [name, ...lines].join("\n");
     })
     .join("\n\n");
 }

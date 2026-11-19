@@ -1,6 +1,6 @@
 import { and, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
-import { stockModel } from "../lib/stock";
+import { stockModel, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
 import type { Transaction } from "./db";
 import { z } from "zod";
 import { ensure } from "./errors";
@@ -26,6 +26,7 @@ export function presentShift(
     closedAt: row.closedAt && new Date(row.closedAt).toISOString(),
     openingCash: row.openingCash,
     menu: row.menu,
+    menuVersion: row.menuHistory.at(-1)?.id,
     settings: row.settings ?? legacyShiftSettings(currency),
     countedCash: row.countedCash ?? undefined,
     difference: row.difference ?? undefined,
@@ -241,7 +242,8 @@ export async function snapshot(
     ),
   };
   const { id, name, currency, timeZone, menu } = business;
-  const settings = business.settings ?? defaultSettings(currency);
+  const currentSettings = business.settings ?? defaultSettings(currency);
+  const settings = me.owner ? currentSettings : withoutStockCosts(currentSettings);
   if (!till)
     return {
       ...empty,
@@ -268,7 +270,7 @@ export async function snapshot(
   return {
     ...plan,
     business: { id, name, currency, timeZone, settings },
-    menu,
+    menu: me.owner ? menu : withoutMenuCosts(menu),
     shift: active ? presentShift(active, currency) : null,
     soldOut: active?.soldOut ?? [],
     shifts: recent.map((row) =>

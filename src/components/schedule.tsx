@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Menu } from "@base-ui/react/menu";
 import {
+  CalendarPlus,
   CalendarRange,
   ChevronLeft,
   ChevronRight,
@@ -22,8 +24,10 @@ import {
   bookingProfit,
   dayOf,
   daysBetween,
-  roleNames,
+  rolesOf,
   salesByBooking,
+  shiftRole,
+  shiftRoleNames,
   shiftTimes,
   timeOf,
   weekday,
@@ -36,6 +40,7 @@ import type {
   Place,
   RegisterState,
   Role,
+  ShiftRole,
   StaffSlot,
   Tag,
 } from "@/lib/types";
@@ -46,7 +51,7 @@ import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
 import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, Sheet, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, progressStyle, Sheet, useCelebrate, usePin } from "./ui";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -54,6 +59,7 @@ export interface ScheduleProps {
   state: RegisterState;
   online: boolean;
   demo: boolean;
+  sharedSchedule?: { bookingId: string | null } | null;
   onAction: Act;
   onSaved: (text: string) => void;
   onSales: (focus: SalesFocus) => void;
@@ -231,8 +237,8 @@ function PersonPicker({
   currency: string;
   title: string;
   exclude: string[];
-  roleHint?: Role;
-  onPick: (member: Member, role: Role) => void;
+  roleHint?: ShiftRole;
+  onPick: (member: Member, role: ShiftRole) => void;
   onClose: () => void;
 }) {
   const [member, setMember] = useState<Member | null>(null);
@@ -244,8 +250,8 @@ function PersonPicker({
       onClose={onClose}
       footer={
         member && (
-          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, role[0])}>
-            Add as {role.length ? roleNames[role[0]].toLowerCase() : "…"}
+          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, shiftRole(role))}>
+            {role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"}
           </button>
         )
       }
@@ -253,7 +259,8 @@ function PersonPicker({
       {member ? (
         <div className="field">
           <span>Working as</span>
-          <RolePicker value={role} onChange={setRole} single />
+          <RolePicker value={role} onChange={setRole} />
+          <p className="label">Pick both if they run the till and serve.</p>
         </div>
       ) : people.length ? (
         <div className="card card-list">
@@ -265,7 +272,7 @@ function PersonPicker({
               onClick={() => {
                 buzz.tap();
                 setMember(m);
-                setRole([roleHint ?? "cashier"]);
+                setRole(rolesOf(roleHint ?? "cashier"));
               }}
             >
               <Avatar id={m.id} name={m.name} dim={!m.joined} />
@@ -283,6 +290,47 @@ function PersonPicker({
       ) : (
         <p className="label">Everyone on the team is already on this shift. Invite more people in Settings › Team.</p>
       )}
+    </Sheet>
+  );
+}
+
+const roleNotes: Record<ShiftRole, string> = {
+  cashier: "Runs the till: sells, opens and closes it.",
+  server: "Serves and preps. Someone else runs the till.",
+  both: "Runs the till and serves.",
+};
+
+/** Pick what someone does on a shift: cashier, server or both. */
+function RoleSheet({
+  title,
+  start,
+  action,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  start: Role[];
+  action: (role: ShiftRole) => string;
+  onSave: (role: ShiftRole, from: Element) => void;
+  onClose: () => void;
+}) {
+  const [roles, setRoles] = useState<Role[]>(start);
+  const role = shiftRole(roles);
+  return (
+    <Sheet
+      title={title}
+      onClose={onClose}
+      footer={
+        <button className="btn block" disabled={!roles.length} onClick={(e) => onSave(role, e.currentTarget)}>
+          {roles.length ? action(role) : "Pick a role"}
+        </button>
+      }
+    >
+      <div className="field">
+        <span>Working as</span>
+        <RolePicker value={roles} onChange={setRoles} />
+      </div>
+      <p className="muted">{roles.length ? roleNotes[role] : "Pick cashier, server or both."}</p>
     </Sheet>
   );
 }
@@ -319,7 +367,9 @@ function BookingSheet({
   const over = Date.parse(b.endsAt) <= Date.now();
   const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0 }) : null;
   const team = state.team ?? [];
-  const joinable: Role[] = !mine && open > 0 && !over ? ["cashier", "server"] : [];
+  const joinable = !mine && open > 0 && !over;
+  const [joining, setJoining] = useState(false);
+  const [roleFor, setRoleFor] = useState<StaffSlot | null>(null);
   const celebrate = useCelebrate();
   const [switching, setSwitching] = useState(false);
   const tills = useMemo(
@@ -368,7 +418,7 @@ function BookingSheet({
             !over && (
               <div className="grid-2">
                 <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
-                  Switch to {mine.role === "cashier" ? "server" : "cashier"}
+                  Change role
                 </button>
                 <button
                   className="btn secondary block"
@@ -379,21 +429,10 @@ function BookingSheet({
                 </button>
               </div>
             )
-          ) : joinable.length ? (
-            <div className={joinable.length === 2 ? "grid-2" : "stack"}>
-              {joinable.map((r) => (
-                <button
-                  key={r}
-                  className={"btn block" + (joinable.length === 2 && r === "server" ? " secondary" : "")}
-                  disabled={!online || busy}
-                  onClick={(e) =>
-                    void run({ action: "join", bookingId: b.id, role: r }, "You're on the shift", false, e.currentTarget)
-                  }
-                >
-                  Join as {roleNames[r].toLowerCase()}
-                </button>
-              ))}
-            </div>
+          ) : joinable ? (
+            <button className="btn block" disabled={!online || busy} onClick={() => setJoining(true)}>
+              Join this shift
+            </button>
           ) : null)
         }
       >
@@ -405,19 +444,19 @@ function BookingSheet({
           </p>
         </div>
         {b.place && (
-          <a className="card place-card" href={mapsLink(b.place)} target="_blank" rel="noreferrer">
+          <div className="card place-card">
             {b.place.lat !== undefined && b.place.lon !== undefined && (
               <MapPreview lat={b.place.lat} lon={b.place.lon} height={140} />
             )}
-            <span className="row gap-10 place-meta">
+            <a className="row gap-10 place-meta" href={mapsLink(b.place)} target="_blank" rel="noreferrer">
               <MapPin size={18} strokeWidth={1.8} />
               <span className="grow stack">
                 <span className="ellipsis">{b.place.name}</span>
                 {b.place.address && <span className="label ellipsis">{b.place.address}</span>}
               </span>
               <span className="label">Directions</span>
-            </span>
-          </a>
+            </a>
+          </div>
         )}
 
         <div className="stack gap-10">
@@ -439,7 +478,7 @@ function BookingSheet({
                     {s.memberId === me.memberId ? s.name + " (you)" : s.name}
                   </span>
                   <span className="label">
-                    {roleNames[s.role]}
+                    {shiftRoleNames[s.role]}
                     {s.salary !== undefined ? " · " + formatMoney(s.salary, currency) : ""}
                   </span>
                 </span>
@@ -488,7 +527,7 @@ function BookingSheet({
             </span>
             {p && (
               <span className="meter" aria-label={`${Math.min(100, Math.round((p.sales / b.quota) * 100))}% of quota`}>
-                <i style={{ width: `${Math.min(100, (p.sales / b.quota) * 100)}%` }} />
+                <i style={progressStyle(Math.min(100, (p.sales / b.quota) * 100))} />
               </span>
             )}
             <span className="micro">
@@ -611,13 +650,11 @@ function BookingSheet({
               <button
                 className="btn secondary block"
                 onClick={() => {
-                  const s = managing;
+                  setRoleFor(managing);
                   setManaging(null);
-                  const role = s.role === "cashier" ? "server" : "cashier";
-                  void run({ action: "role", bookingId: b.id, memberId: s.memberId, role }, `${s.name} is now ${role}`);
                 }}
               >
-                Make {managing.role === "cashier" ? "server" : "cashier"}
+                Change role
               </button>
               <button
                 className="btn secondary block"
@@ -642,7 +679,7 @@ function BookingSheet({
           }
         >
           <p className="label">
-            {roleNames[managing.role]}
+            {shiftRoleNames[managing.role]}
             {managing.salary !== undefined ? " · " + formatMoney(managing.salary, currency) + " for this shift" : ""}.{" "}
             {managing.memberId !== me.memberId
               ? "Taking over puts you in their seat, at your own pay."
@@ -651,29 +688,43 @@ function BookingSheet({
         </Sheet>
       )}
       {switching && mine && (
-        <Sheet
-          title={"Switch to " + (mine.role === "cashier" ? "server" : "cashier")}
+        <RoleSheet
+          title="Your role"
+          start={rolesOf(mine.role)}
           onClose={() => setSwitching(false)}
-          footer={
-            <button
-              className="btn block"
-              onClick={(e) => {
-                const role = mine.role === "cashier" ? "server" : "cashier";
-                const from = e.currentTarget;
-                setSwitching(false);
-                void run({ action: "role", bookingId: b.id, memberId: me.memberId, role }, "You're " + role + " on this shift", false, from);
-              }}
-            >
-              Switch
-            </button>
-          }
-        >
-          <p className="muted">
-            {mine.role === "cashier"
-              ? "You'll serve on this shift. Someone else runs the till."
-              : "You'll run the till on this shift: sell, open and close it."}
-          </p>
-        </Sheet>
+          action={(r) => (r === mine.role ? "Keep " + shiftRoleNames[r].toLowerCase() : "Switch to " + shiftRoleNames[r].toLowerCase())}
+          onSave={(role, from) => {
+            setSwitching(false);
+            if (role === mine.role) return;
+            void run({ action: "role", bookingId: b.id, memberId: me.memberId, role }, "You're " + shiftRoleNames[role].toLowerCase() + " on this shift", false, from);
+          }}
+        />
+      )}
+      {joining && (
+        <RoleSheet
+          title="Join this shift"
+          start={me.roles.length ? me.roles : ["cashier"]}
+          onClose={() => setJoining(false)}
+          action={(r) => "Join as " + shiftRoleNames[r].toLowerCase()}
+          onSave={(role, from) => {
+            setJoining(false);
+            void run({ action: "join", bookingId: b.id, role }, "You're on the shift", false, from);
+          }}
+        />
+      )}
+      {roleFor && (
+        <RoleSheet
+          title={roleFor.name}
+          start={rolesOf(roleFor.role)}
+          onClose={() => setRoleFor(null)}
+          action={(r) => "Make " + shiftRoleNames[r].toLowerCase()}
+          onSave={(role) => {
+            const s = roleFor;
+            setRoleFor(null);
+            if (role === s.role) return;
+            void run({ action: "role", bookingId: b.id, memberId: s.memberId, role }, `${s.name} is now ${shiftRoleNames[role].toLowerCase()}`);
+          }}
+        />
       )}
       {picking && (
         <PersonPicker
@@ -709,7 +760,7 @@ interface Draft {
   organizer: string;
   event: string;
   seats: number;
-  staff: { memberId: string; name: string; role: Role; salary: string }[];
+  staff: { memberId: string; name: string; role: ShiftRole; salary: string }[];
   rent: string;
   quota: string;
   incentive: string;
@@ -1036,7 +1087,7 @@ function BookingEditor({
                 <span className="grow stack">
                   <span className="ellipsis">{s.name}</span>
                   <span className="label ellipsis">
-                    {roleNames[s.role]} · {s.salary.trim() ? formatMoney(parse(s.salary), currency) : "No pay set"}
+                    {shiftRoleNames[s.role]} · {s.salary.trim() ? formatMoney(parse(s.salary), currency) : "No pay set"}
                   </span>
                 </span>
                 <ChevronRight size={18} className="chev" />
@@ -1104,7 +1155,10 @@ function BookingEditor({
         >
           <div className="field">
             <span>Working as</span>
-            <RolePicker value={[staffed.role]} onChange={(r) => setStaff(staffed.memberId, { role: r[0] })} single />
+            <RolePicker
+              value={rolesOf(staffed.role)}
+              onChange={(r) => r.length && setStaff(staffed.memberId, { role: shiftRole(r) })}
+            />
           </div>
           <MoneyField
             label="Pay for this shift"
@@ -1139,18 +1193,14 @@ function BookingEditor({
 function ShareSchedule({
   bookings,
   businessId,
-  businessName,
   zone,
   month,
-  owner,
   onClose,
 }: {
   bookings: Booking[];
   businessId: string;
-  businessName: string;
   zone: string;
   month: string;
-  owner: boolean;
   onClose: () => void;
 }) {
   const [range, setRange] = useState<"upcoming" | "month">("upcoming");
@@ -1160,22 +1210,28 @@ function ShareSchedule({
     range === "upcoming"
       ? bookings.filter((b) => Date.parse(b.endsAt) > Date.now())
       : bookings.filter((b) => dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7));
-  const text = scheduleText(shown, zone);
-  const link = typeof location === "undefined" ? "" : `${location.origin}/?shifts=${businessId}`;
-  const open = shown.filter((b) => seatsOpen(b) > 0).length;
-  async function copy(value: string, what: string) {
+  const text = scheduleText(shown, zone, { origin: location.origin, businessId });
+  async function copy() {
     setError("");
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(text);
       buzz.success();
-      setCopied(what);
+      setCopied(text);
       setTimeout(() => setCopied(""), 2000);
     } catch {
       setError("Couldn't copy here. Press and hold the text to copy it.");
     }
   }
   return (
-    <Sheet title="Share the schedule" onClose={onClose}>
+    <Sheet
+      title="Share the schedule"
+      onClose={onClose}
+      footer={
+        <button type="button" className="btn block" disabled={!shown.length} onClick={() => void copy()}>
+          <Copy size={17} /> {shown.length && copied === text ? "Copied" : "Copy schedule"}
+        </button>
+      }
+    >
       <div className="segmented" role="group" aria-label="Which shifts">
         <button aria-pressed={range === "upcoming"} onClick={() => setRange("upcoming")}>
           Upcoming
@@ -1192,29 +1248,6 @@ function ShareSchedule({
           <p className="label">Add shifts first, or pick the other range.</p>
         </div>
       )}
-      <button className="btn" disabled={!shown.length} onClick={() => void copy(text, "schedule")}>
-        <Copy size={17} /> {copied === "schedule" ? "Copied" : "Copy schedule"}
-      </button>
-      <div className="card card-pad stack gap-10">
-        <span className="strong">Link to join shifts</span>
-        <span className="label">
-          Opens the open seats{open ? ` (${open} now)` : ""} at {businessName}.{" "}
-          {owner ? "Teammates need an invite from Settings › Team first." : "You need to be on the team to join."}
-        </span>
-        <code className="share-link">{link}</code>
-        <div className="grid-2">
-          <button className="btn secondary" onClick={() => void copy(link, "link")}>
-            <Copy size={17} /> {copied === "link" ? "Copied" : "Copy link"}
-          </button>
-          <button
-            className="btn secondary"
-            disabled={!shown.length}
-            onClick={() => void copy(`${text}\n\nJoin a shift: ${link}`, "both")}
-          >
-            {copied === "both" ? "Copied" : "Copy both"}
-          </button>
-        </div>
-      </div>
       {error && (
         <p className="alert" role="alert">
           {error}
@@ -1224,31 +1257,55 @@ function ShareSchedule({
   );
 }
 
+function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "new" | "bulk") => void }) {
+  const [keyboard, setKeyboard] = useState(false);
+  return (
+    <Menu.Root
+      modal={false}
+      onOpenChange={(open, { event }) => {
+        if (!open) return;
+        buzz.tap();
+        setKeyboard(event instanceof KeyboardEvent || (event.type === "click" && "detail" in event && event.detail === 0));
+      }}
+    >
+      <Menu.Trigger className="btn add-shift" aria-label="Add" disabled={disabled}>
+        <Plus size={20} aria-hidden="true" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner className="add-shift-positioner" align="end" sideOffset={8}>
+          <Menu.Popup className="add-shift-menu" data-keyboard={keyboard || undefined}>
+            <Menu.Item onClick={() => onAdd("new")}>
+              <CalendarPlus size={18} aria-hidden="true" /> Add a shift
+            </Menu.Item>
+            <Menu.Item onClick={() => onAdd("bulk")}>
+              <CalendarRange size={18} aria-hidden="true" /> Add bulk
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 /* ---------- screen ---------- */
 
 type Filter = "day" | "open" | "mine";
 
 export function ScheduleScreen(props: ScheduleProps) {
-  const { state, demo } = props;
+  const { state, demo, sharedSchedule } = props;
   const business = state.business!;
   const zone = business.timeZone;
   const me = state.me;
   const f = useFormats(zone);
   const today = dayOf(Date.now(), zone);
-  const [selected, setSelected] = useState(today);
-  const [month, setMonth] = useState(today.slice(0, 8) + "01");
-  const [filter, setFilter] = useState<Filter>(() => {
-    // A join link opens on the open seats.
-    try {
-      if (sessionStorage.getItem("shifts-filter") === "open") {
-        sessionStorage.removeItem("shifts-filter");
-        return "open";
-      }
-    } catch {}
-    return "day";
+  const [selected, setSelected] = useState(() => {
+    const initial = state.bookings?.find((b) => b.id === sharedSchedule?.bookingId);
+    return initial ? dayOf(initial.startsAt, zone) : today;
   });
+  const [month, setMonth] = useState(selected.slice(0, 8) + "01");
+  const [filter, setFilter] = useState<Filter>(sharedSchedule && !sharedSchedule.bookingId ? "open" : "day");
   const [sharing, setSharing] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(sharedSchedule?.bookingId ?? null);
   const [editing, setEditing] = useState<Booking | "new" | "bulk" | null>(null);
   const bookings = useMemo(
     () => [...(state.bookings ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
@@ -1312,21 +1369,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && (
-          <>
-            <button
-              className="round"
-              aria-label="Add many shifts"
-              disabled={!props.online}
-              onClick={() => setEditing("bulk")}
-            >
-              <CalendarRange size={19} />
-            </button>
-            <button className="btn small add-shift" aria-label="Add a shift" disabled={!props.online} onClick={() => setEditing("new")}>
-              <Plus size={16} /> <span className="wide-only">Shift</span>
-            </button>
-          </>
-        )}
+        {me?.owner && <AddShiftMenu disabled={!props.online} onAdd={setEditing} />}
       </div>
 
       {me?.owner && monthDone.length > 0 ? (
@@ -1408,10 +1451,8 @@ export function ScheduleScreen(props: ScheduleProps) {
         <ShareSchedule
           bookings={bookings}
           businessId={business.id}
-          businessName={business.name}
           zone={zone}
           month={month}
-          owner={Boolean(me?.owner)}
           onClose={() => setSharing(false)}
         />
       )}

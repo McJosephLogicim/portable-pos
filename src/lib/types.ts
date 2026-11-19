@@ -25,7 +25,11 @@ export interface ChecklistItem {
   /** A photo of how it should look. */
   image?: string;
 }
+export type RegisterMode = "simple" | "advanced";
+
 export interface Settings {
+  /** Business-wide display mode. Registers without a saved mode use Advanced. */
+  mode?: RegisterMode;
   receiptNote: string;
   payments: PaymentMethod[];
   discounts: Discount[];
@@ -45,7 +49,7 @@ export interface Settings {
   ink?: string;
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
-export interface ShiftSettings extends Settings {
+export interface ShiftSettings extends Omit<Settings, "mode"> {
   currency: string;
 }
 export interface Option {
@@ -73,6 +77,14 @@ export interface Product {
   stock?: boolean;
   /** Stock items one of this uses up, like 1 pack of strawberries or 0.2 kg. */
   uses?: StockUse[];
+  costing?: ProductCosting;
+}
+export interface ProductCosting {
+  /** A costing recipe for the whole batch. The till uses Product.uses for stock deductions. */
+  batch?: { servings: number; uses: StockUse[] };
+  /** Minor currency units for one serving. */
+  laborPerServing?: number;
+  otherPerServing?: number;
 }
 /** Something counted at opening and closing, like a strawberry pack or a kilo of ice. */
 export interface StockItem {
@@ -80,6 +92,23 @@ export interface StockItem {
   name: string;
   /** piece, pack, kg… */
   unit: string;
+  purchase?: StockPurchase;
+  prep?: StockPrep;
+}
+export interface StockPurchase {
+  /** Cost of the whole pack, in minor currency units. */
+  price: number;
+  /** Quantity in the item's stock unit before losses. */
+  quantity: number;
+  /** Percentage of the pack that can be used. Defaults to 100. */
+  yieldPercent?: number;
+}
+export interface StockPrep {
+  /** Finished quantity in the stock item's unit. */
+  yieldQuantity: number;
+  uses: StockUse[];
+  /** Optional additional cost for the entire batch in minor currency units. */
+  extraBatchCost?: number;
 }
 export interface StockUse {
   stockId: string;
@@ -113,6 +142,8 @@ export interface Shift {
   closedAt: string | null;
   openingCash: number;
   menu: Product[];
+  /** Absent on shifts and device snapshots from before the first menu edit. */
+  menuVersion?: string;
   settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
@@ -162,7 +193,7 @@ export interface Sale {
   proofs?: string[];
 }
 export type RegisterEvent =
-  | { id: string; shiftId: string; type: "sale"; sale: Sale }
+  | { id: string; shiftId: string; type: "sale"; sale: Sale; menuVersion?: string }
   | { id: string; shiftId: string; type: "expense"; expense: Expense }
   | { id: string; shiftId: string; type: "unexpense"; targetId: string }
   | {
@@ -173,6 +204,8 @@ export type RegisterEvent =
       soldOut: boolean;
     };
 export type Role = "cashier" | "server";
+/** What someone does on one shift. One person can run the till and serve. */
+export type ShiftRole = Role | "both";
 export interface Member {
   id: string;
   name: string;
@@ -209,7 +242,7 @@ export interface Organizer extends Tag {
 export interface StaffSlot {
   memberId: string;
   name: string;
-  role: Role;
+  role: ShiftRole;
   /** Hidden from teammates other than the owner. */
   salary?: number;
 }
@@ -260,6 +293,10 @@ export interface Bootstrap {
   /** Profile photos of everyone on the team, by member id. */
   faces?: Record<string, string>;
 }
+export type RegisterResponse = Bootstrap & {
+  inviteDelivery?: "sent" | "failed" | "unavailable";
+};
+
 export interface RegisterState extends Bootstrap {
   closingShiftId?: string;
   cart: CartLine[];

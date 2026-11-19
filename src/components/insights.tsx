@@ -7,7 +7,7 @@ import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
 import type { SalesFocus } from "./sales";
 import { Avatar } from "./team";
-import { buzz, formatMoney, Money } from "./ui";
+import { buzz, formatMoney, Money, progressStyle } from "./ui";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
 
@@ -102,7 +102,7 @@ export function ShiftSales({
                 <span className="num">{s.quantity} sold</span>
               </span>
               <span className="bar" aria-hidden="true">
-                <i style={{ width: `${(s.quantity / top) * 100}%` }} />
+                <i style={progressStyle((s.quantity / top) * 100)} />
               </span>
               <span className="label">{formatMoney(s.revenue, currency)}</span>
             </span>
@@ -199,7 +199,7 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
                 )}
               </span>
               <span className="bar" aria-hidden="true">
-                <i style={{ width: `${Math.max(3, (r.score / best) * 100)}%` }} />
+                <i style={progressStyle(Math.max(3, (r.score / best) * 100))} />
               </span>
               <span className="label">
                 {r.shifts} {r.shifts === 1 ? "shift" : "shifts"}

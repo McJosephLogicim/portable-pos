@@ -1,24 +1,29 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
-import { checkClosing, checkOpening, withNewItems } from "../lib/domain";
+import { checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
+  isSimpleMode,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
-import { ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import { batchIngredientProblem, hasStockCostAmounts, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
+import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
+import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, members, sales, shifts } from "./schema";
 import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
-const pinActions = ["reverse", "close", "menu", "settings", ...ownerPlanActions];
-const ownerActions = ["menu", "settings", ...ownerPlanActions];
+const ownerActions = ["menu", "settings", "mode", ...ownerPlanActions];
+const pinActions = ["reverse", "close", ...ownerActions];
 
 async function addWalkIn(
   tx: Transaction,
@@ -42,7 +47,10 @@ async function addWalkIn(
   return b.id;
 }
 
-export async function runCommand(who: string | Actor, input: unknown) {
+export async function runCommand(
+  who: string | Actor,
+  input: unknown,
+): Promise<RegisterResponse & { nextSales?: string }> {
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
   const cmd = parseCommand(input);
   const selfAction = cmd.action === "leave" || cmd.action === "role" || cmd.action === "profile";
@@ -59,7 +67,7 @@ export async function runCommand(who: string | Actor, input: unknown) {
     }
   }
 
-  return getDb().transaction(async (tx) => {
+  const data = await getDb().transaction(async (tx) => {
     const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => ({
       ...(await baseSnapshot(tx, access)),
       businesses: await listBusinesses(tx, actor),
@@ -109,23 +117,41 @@ export async function runCommand(who: string | Actor, input: unknown) {
     }
 
     if (cmd.action === "menu") {
+      const problem = batchIngredientProblem(cmd.menu, business.settings?.stockItems);
+      if (problem) ensure(false, problem);
       await tx
         .update(businesses)
         .set({ menu: cmd.menu })
         .where(eq(businesses.id, business.id));
-      // New items reach the open till straight away, on every phone selling on it.
       const [open] = await tx
         .select()
         .from(shifts)
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
       if (open) {
-        const next = withNewItems(presentShift(open, business.currency), cmd.menu, cmd.stock);
-        await tx
-          .update(shifts)
-          .set({ menu: next.menu, stock: next.stock ?? null })
-          .where(eq(shifts.id, open.id));
+        const next = updateShiftMenu(presentShift(open, business.currency), cmd.menu, cmd.stock);
+        if (!isDeepStrictEqual(next.menu, open.menu)) {
+          await tx
+            .update(shifts)
+            .set({
+              menu: next.menu,
+              stock: next.stock ?? null,
+              menuHistory: [...open.menuHistory, {
+                id: crypto.randomUUID(),
+                appliedAt: new Date().toISOString(),
+                previousMenu: open.menu,
+              }],
+            })
+            .where(eq(shifts.id, open.id));
+        }
       }
+    } else if (cmd.action === "mode") {
+      await tx
+        .update(businesses)
+        .set({ settings: { ...(business.settings ?? defaultSettings(business.currency)), mode: cmd.mode } })
+        .where(eq(businesses.id, business.id));
     } else if (cmd.action === "settings") {
+      const problem = batchIngredientProblem(business.menu, cmd.settings.stockItems);
+      if (problem) ensure(false, problem);
       const [open] = await tx
         .select()
         .from(shifts)
@@ -140,6 +166,12 @@ export async function runCommand(who: string | Actor, input: unknown) {
           `${cmd.currency} uses different decimals. Clear the menu first or keep ${business.currency}.`,
           409,
         );
+        ensure(
+          !hasStockCostAmounts(cmd.settings) ||
+            currencyDigits(cmd.currency) === currencyDigits(business.currency),
+          `${cmd.currency} uses different decimals. Clear the stock and batch costs first or keep ${business.currency}.`,
+          409,
+        );
       }
       await tx
         .update(businesses)
@@ -147,7 +179,10 @@ export async function runCommand(who: string | Actor, input: unknown) {
           name: cmd.name,
           currency: cmd.currency,
           timeZone: cmd.timeZone,
-          settings: cmd.settings,
+          settings: {
+            ...cmd.settings,
+            mode: business.settings?.mode,
+          },
         })
         .where(eq(businesses.id, business.id));
       // The till applies new checkout settings right away. The client syncs every pending
@@ -188,16 +223,18 @@ export async function runCommand(who: string | Actor, input: unknown) {
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        // Shifts start on their schedule, one at a time.
-        const bookingId = cmd.bookingId;
-        ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
-        const [booking] = await tx
-          .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
-          .from(bookings)
-          .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
-        ensure(booking, "That scheduled shift was removed.", 404);
-        const problem = startProblem(booking, business.timeZone);
-        ensure(!problem, problem ?? "", 409);
+        const bookingId = cmd.bookingId ?? null;
+        ensure(bookingId || isSimpleMode(settings), "Pick a scheduled shift to start. Add one on Shifts first.");
+        if (bookingId) {
+          const [booking] = await tx
+            .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+            .from(bookings)
+            .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
+          ensure(booking, "That scheduled shift was removed.", 404);
+          const problem = startProblem(booking, business.timeZone);
+          ensure(!problem, problem ?? "", 409);
+        }
+        const { mode: _mode, ...checkoutSettings } = withoutStockCosts(settings);
         await tx.insert(shifts).values({
           stock: Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,
@@ -209,9 +246,9 @@ export async function runCommand(who: string | Actor, input: unknown) {
           openingCash: cmd.openingCash,
           number: (last?.number ?? 0) + 1,
           openedAt: new Date().toISOString(),
-          menu: business.menu,
+          menu: withoutMenuCosts(business.menu),
           settings: {
-            ...(business.settings ?? defaultSettings(business.currency)),
+            ...checkoutSettings,
             currency: business.currency,
           },
         });
@@ -285,4 +322,9 @@ export async function runCommand(who: string | Actor, input: unknown) {
     }
     return snapshot(access);
   });
+  if (cmd.action === "invite" && data.business) {
+    const email = normalEmail(cmd.email);
+    return { ...data, inviteDelivery: await sendInvitationEmail(data.business, email) };
+  }
+  return data;
 }

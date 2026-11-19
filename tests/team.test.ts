@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { checkOpening, makeSale, stockLeft, withNewItems } from "../src/lib/domain";
+import { checkOpening, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import {
+  rolesOf,
+  shiftRole,
+  shiftRoleNames,
   applyPlan,
   bookingProfit,
   daysBetween,
@@ -54,6 +57,19 @@ test("only the owner plans; teammates join open seats in their role", () => {
   const switched = applyPlan(joined, asBea, { action: "role", bookingId: "k", memberId: "b", role: "server" }, later);
   assert.equal(switched.bookings[0].staff[0].role, "server");
   assert.throws(() => applyPlan(full, asBea, { action: "role", bookingId: "k", memberId: "p", role: "cashier" }, later), /owner/);
+});
+
+test("one person can be cashier and server on the same shift", () => {
+  const both = applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "both" }, later);
+  assert.equal(both.bookings[0].staff[0].role, "both");
+  assert.deepEqual(rolesOf("both"), ["cashier", "server"]);
+  assert.equal(shiftRole(["server", "cashier"]), "both");
+  assert.equal(shiftRole(["server"]), "server");
+  const owner = applyPlan(both, asOwner, { action: "role", bookingId: "k", memberId: "b", role: "server" }, later);
+  assert.equal(owner.bookings[0].staff[0].role, "server");
+  const assigned = applyPlan(plan, asOwner, { action: "assign", bookingId: "k", memberId: "p", role: "both" }, later);
+  assert.equal(assigned.bookings[0].staff[0].role, "both");
+  assert.equal(shiftRoleNames.both, "Cashier and server");
 });
 
 test("removing someone opens their future seats and keeps past names", () => {
@@ -108,7 +124,7 @@ test("counted items sell down to zero and come back on reversal", () => {
   const first = sell(2, []);
   assert.throws(() => sell(1, [first]), /sold out/);
   assert.doesNotThrow(() => sell(1, [{ ...first, reversedAt: "now" }]));
-  const added = withNewItems(shift, [bread, tea, { ...bread, id: "ube", name: "Ube roll" }], { ube: 6 });
+  const added = updateShiftMenu(shift, [bread, tea, { ...bread, id: "ube", name: "Ube roll" }], { ube: 6 });
   assert.equal(added.menu.length, 3);
   assert.equal(added.stock!.ube, 6);
 });
@@ -120,8 +136,28 @@ test(
       !process.env.POS_TEST_DATABASE_URL &&
       "Set POS_TEST_DATABASE_URL to a migrated local test database.",
   },
-  async () => {
+  async (t) => {
     process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+    for (const [name, value] of Object.entries({
+      RESEND_API_KEY: "test-mail-key",
+      POS_INVITE_FROM: "Portable POS <team@example.com>",
+      POS_APP_URL: "https://pos.example.com",
+    })) {
+      const previous = process.env[name];
+      process.env[name] = value;
+      t.after(() => {
+        if (previous === undefined) delete process.env[name];
+        else process.env[name] = previous;
+      });
+    }
+    const mail: { to: string[]; text: string }[] = [];
+    let mailStatus = 200;
+    t.mock.method(globalThis, "fetch", async (url: string, options: RequestInit) => {
+      assert.equal(url, "https://api.resend.com/emails");
+      assert.equal(new Headers(options.headers).get("Authorization"), "Bearer test-mail-key");
+      mail.push(JSON.parse(String(options.body)));
+      return new Response("{}", { status: mailStatus });
+    });
     const ownerUser = { id: randomUUID(), email: `owner-${randomUUID()}@example.com` };
     const beaEmail = `bea-${randomUUID()}@example.com`;
     const beaUser = { id: randomUUID(), email: beaEmail };
@@ -134,17 +170,27 @@ test(
     await o({ action: "setup", name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin });
     const bread = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
     await o({ action: "menu", menu: [bread], pin });
-    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }] } });
+    const stockItem = { id: bread.id, name: bread.name, unit: "piece" };
+    const purchase = { price: 500, quantity: 1 };
+    const garnish = { id: "crumbs", name: "Bread crumbs", unit: "g" };
+    const prep = { yieldQuantity: 50, uses: [{ stockId: stockItem.id, amount: 1 }] };
+    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }], stockItems: [{ ...stockItem, purchase }, { ...garnish, prep }] } });
+    const costing = { laborPerServing: 200, batch: { servings: 12, uses: [{ stockId: garnish.id, amount: 50 }] } };
+    await o({ action: "menu", menu: [{ ...bread, costing }], pin });
     let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), rate: 70000, pin });
     snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, rate: 60000, pin });
     assert.equal(snap.team!.length, 3);
     assert.equal(snap.me!.owner, true);
+    assert.deepEqual(snap.business!.settings.stockItems, [{ ...stockItem, purchase }, { ...garnish, prep }]);
+    assert.deepEqual(snap.menu[0].costing, costing);
     // An unconfirmed address can't claim the invite.
     assert.equal((await runCommand({ id: beaUser.id, email: null }, { action: "bootstrap" })).business, null);
     const bea = as(beaUser);
     const asBea = await bea({ action: "bootstrap" });
     assert.equal(asBea.business!.name, "Pop-up");
     assert.equal(asBea.me!.owner, false);
+    assert.deepEqual(asBea.business!.settings.stockItems, [stockItem, garnish]);
+    assert.equal(asBea.menu[0].costing, undefined);
     assert.deepEqual(asBea.team, []);
     await assert.rejects(bea({ action: "menu", menu: [], pin }), /owner/);
     await assert.rejects(bea({ action: "setup", name: "Mine", currency: "PHP", timeZone: "UTC", pin }), { status: 409 });
@@ -162,6 +208,9 @@ test(
     assert.equal(snap.bookings![0].staff[0].name, "Bea");
     assert.equal(snap.bookings![0].rent, undefined);
     snap = await paolo({ action: "join", bookingId: id, role: "server" });
+    // Paolo serves and also runs the till.
+    snap = await paolo({ action: "role", bookingId: id, memberId: asPaolo.me!.memberId, role: "both" });
+    assert.equal(snap.bookings![0].staff.find((s) => s.memberId === asPaolo.me!.memberId)?.role, "both");
     await assert.rejects(o({ action: "join", bookingId: id, role: "cashier" }), /filled/);
     // Taking someone off a shift needs the owner PIN; leaving your own does not.
     await assert.rejects(o({ action: "leave", bookingId: id, memberId: snap.me!.memberId }), { status: 403 });
@@ -169,12 +218,18 @@ test(
     snap = await o({ action: "assign", bookingId: id, memberId: ownerMe.memberId, role: "cashier", replace: asBea.me!.memberId, pin });
     assert.deepEqual(snap.bookings![0].staff.map((s) => s.name).sort(), ["Owner " + ownerUser.email.split("@")[0].slice(6).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), "Paolo"].sort());
 
-    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: [] }), /checklist/);
+    const openingStock = { bread: 2, crumbs: 50 };
+    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: [] }), /checklist/);
     await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: {}, checked: ["float"] }), /Count/);
-    const opened = await o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: ["float"], bookingId: id });
+    const opened = await o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: ["float"], bookingId: id });
     const shift = opened.shift!;
-    assert.deepEqual(shift.stock, { bread: 2 });
+    assert.equal(shift.menu[0].costing, undefined);
+    assert.deepEqual(shift.settings.stockItems, [stockItem, garnish]);
+    assert.deepEqual(shift.stock, openingStock);
     assert.equal(shift.bookingId, id);
+    const recosted = await o({ action: "menu", menu: [{ ...bread, costing: { ...costing, laborPerServing: 250 } }], pin });
+    assert.equal(recosted.menu[0].costing?.laborPerServing, 250);
+    assert.equal(recosted.shift!.menuVersion, shift.menuVersion);
     const sale = (n: number, quantity: number) => {
       const s = makeSale({ id: randomUUID(), shift, sequence: n, cart: [{ productId: "bread", optionIds: [], quantity }], soldOut: [], tender: "cash", received: 5000, createdAt: new Date().toISOString() });
       return { type: "sale" as const, id: s.id, shiftId: shift.id, sale: s };
@@ -189,6 +244,41 @@ test(
     assert.equal(added.shift!.stock!.ube, 4);
     snap = await o({ action: "bootstrap" });
     assert.equal(snap.bookings![0].sales, 3000);
+
+    const editedMenu = [
+      { ...bread, name: "Fresh Pandesal", stock: false },
+      {
+        ...bread,
+        id: "ube",
+        name: "Ube roll",
+        groups: [{
+          id: "size", name: "Size", required: true,
+          options: [{ id: "large", name: "Large", price: 500 }],
+        }],
+      },
+    ];
+    await o({ action: "menu", menu: editedMenu, deviceId, pin });
+    const refreshed = await o({ action: "bootstrap" });
+    assert.equal(refreshed.shift!.id, shift.id);
+    assert.deepEqual(refreshed.shift!.stock, { ...openingStock, ube: 4 });
+    assert.equal(stockLeft(refreshed.shift!, refreshed.sales).bread, -1);
+    assert.equal(refreshed.sales[0].lines[0].name, "Pandesal");
+    assert.equal(refreshed.shift!.menu[0].name, "Fresh Pandesal");
+    const cart = { productId: "ube", optionIds: [], quantity: 1 };
+    const checkout = (optionIds: string[]) => makeSale({
+      id: randomUUID(), shift: refreshed.shift!, sequence: 2, cart: [{ ...cart, optionIds }],
+      soldOut: [], tender: "cash", received: 1500, createdAt: new Date().toISOString(),
+    });
+    assert.throws(() => checkout([]), /Choose one option for Size/);
+    const ubeSale = checkout(["large"]);
+    const synced = await o({
+      action: "sync", deviceId,
+      events: [{ type: "sale", id: ubeSale.id, shiftId: shift.id, sale: ubeSale, menuVersion: refreshed.shift!.menuVersion }],
+    });
+    assert.deepEqual(synced.sales.find((s) => s.id === ubeSale.id)?.lines, [{
+      productId: "ube", quantity: 1, optionIds: ["large"],
+      name: "Ube roll", options: ["Large"], unitPrice: 1500,
+    }]);
     snap = await o({ action: "removeMember", memberId: asPaolo.me!.memberId, pin });
     assert.equal(snap.bookings![0].staff.length, 1);
     assert.equal((await paolo({ action: "bootstrap" })).business, null);
@@ -238,13 +328,30 @@ test(
     const night = (input: object) => runCommand({ ...ownerUser, businessId: second }, input);
     assert.equal((await night({ action: "bootstrap" })).business!.name, "Night stall");
     await assert.rejects(night({ action: "menu", menu: [bread], pin }), /PIN/);
-    await night({ action: "invite", name: "Bea", email: beaEmail, rate: 50000, pin: "9999" });
-    // Bea now works for both, and picks which one in the app.
+    const ownBusiness = randomUUID();
+    await bea({ action: "setup", id: ownBusiness, name: "Bea's stall", currency: "PHP", timeZone: "UTC", pin });
+    const invite = { action: "invite", name: "Bea", email: beaEmail, rate: 50000, pin: "9999" };
+    mailStatus = 503;
+    const failed = await night(invite);
+    assert.equal(failed.inviteDelivery, "failed");
+    assert.equal(failed.team!.filter((m) => m.email === beaEmail && !m.joined).length, 1);
+    mailStatus = 200;
+    const resent = await night(invite);
+    assert.equal(resent.inviteDelivery, "sent");
+    assert.equal(resent.team!.length, failed.team!.length);
+    assert.deepEqual(mail.at(-1)?.to, [beaEmail]);
+    assert.ok(mail.at(-1)?.text.includes(`https://pos.example.com/?shifts=${second}`));
+    assert.equal(mail.length, 4);
+    // The same confirmed account can open the new team and still owns its business.
     const beaBoth = await bea({ action: "bootstrap" });
-    assert.deepEqual(beaBoth.businesses!.map((b) => b.name).sort(), ["Night stall", "Pop-up"]);
+    assert.equal(beaBoth.business?.id, ownBusiness);
+    assert.equal(beaBoth.me?.owner, true);
+    assert.deepEqual(beaBoth.businesses!.map((b) => b.name).sort(), ["Bea's stall", "Night stall", "Pop-up"]);
     const beaNight = await runCommand({ ...beaUser, businessId: second }, { action: "bootstrap" });
     assert.equal(beaNight.business!.name, "Night stall");
     assert.equal(beaNight.me!.owner, false);
+    await assert.rejects(night(invite), { status: 409 });
+    assert.equal(mail.length, 4);
     // Someone not on a business can't open it by id.
     assert.equal((await runCommand({ ...paoloUser, businessId: second }, { action: "bootstrap" })).business, null);
   },

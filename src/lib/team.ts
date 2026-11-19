@@ -5,6 +5,7 @@ import type {
   Organizer,
   Role,
   Sale,
+  ShiftRole,
   Shift,
   StaffSlot,
 } from "./types";
@@ -30,13 +31,13 @@ export type PlanCommand =
       action: "assign";
       bookingId: string;
       memberId: string;
-      role: Role;
+      role: ShiftRole;
       /** Put them in this person's place. Taking over a shift replaces someone with yourself. */
       replace?: string;
     }
   | { action: "leave"; bookingId: string; memberId: string }
-  | { action: "role"; bookingId: string; memberId: string; role: Role }
-  | { action: "join"; bookingId: string; role: Role };
+  | { action: "role"; bookingId: string; memberId: string; role: ShiftRole }
+  | { action: "join"; bookingId: string; role: ShiftRole };
 
 export const planActions = [
   "invite",
@@ -74,6 +75,15 @@ export const roleNames: Record<Role, string> = {
 };
 export function rolesText(roles: Role[]) {
   return roles.length === 2 ? "Cashier and server" : roles.map((r) => roleNames[r]).join("");
+}
+export const shiftRoleNames: Record<ShiftRole, string> = { ...roleNames, both: "Cashier and server" };
+/** The roles someone covers on a shift. */
+export function rolesOf(role: ShiftRole): Role[] {
+  return role === "both" ? ["cashier", "server"] : [role];
+}
+/** One shift role from the roles picked for it. Picking none means cashier. */
+export function shiftRole(roles: Role[]): ShiftRole {
+  return roles.includes("cashier") && roles.includes("server") ? "both" : (roles[0] ?? "cashier");
 }
 
 export function normalEmail(email: string) {
@@ -136,11 +146,9 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "invite": {
       const email = normalEmail(cmd.email);
       check(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Enter their email address.");
-      check(
-        !members.some((m) => normalEmail(m.email) === email),
-        "Someone on the team already uses that email.",
-        409,
-      );
+      const existing = members.find((m) => normalEmail(m.email) === email);
+      check(!existing?.joined, "Someone on the team already uses that email.", 409);
+      if (existing) return plan;
       check(members.length < 100, "A team can have up to 100 people.");
       return {
         ...plan,
@@ -416,7 +424,7 @@ export function walkInBooking(
     organizer: null,
     event: null,
     seats: 1,
-    staff: [{ memberId: me.memberId, name: me.name, role: me.roles.includes("cashier") || !me.roles.length ? "cashier" : me.roles[0] }],
+    staff: [{ memberId: me.memberId, name: me.name, role: shiftRole(me.roles) }],
     quota: 0,
     incentive: 0,
     rent: 0,

@@ -5,6 +5,7 @@ import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
 import type { RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { salesByHour } from "@/lib/insights";
+import { isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { formatMoney, Money } from "./ui";
 
@@ -121,7 +122,7 @@ export function SalesScreen({
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
-      {!searching && live.length >= 3 && (
+      {!isSimpleMode(business.settings) && !searching && live.length >= 3 && (
         <HourChart
           hours={salesByHour(live, [...new Set(live.map((x) => x.shiftId))], business.timeZone)}
           currency={currency}

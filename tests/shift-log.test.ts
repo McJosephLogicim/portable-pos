@@ -117,22 +117,33 @@ test("menu items use stock items, sales draw them down, and closing reports the 
   assert.ok(!text.includes("Oops"));
 });
 
-test("the schedule copies grouped by place with one line per day", () => {
-  const booking = (place: string, day: string, names: string[]): Booking => ({
-    id: randomUUID(), startsAt: `${day}T02:00:00.000Z`, endsAt: `${day}T10:00:00.000Z`,
-    place: { name: place }, organizer: null, event: null, seats: 1, quota: 0, incentive: 0,
+test("the schedule copies grouped by place and event with a distinct link for each shift", () => {
+  const booking = (id: string, day: string, hour: string, names: string[]): Booking => ({
+    id, startsAt: `${day}T${hour}:00:00.000Z`, endsAt: `${day}T12:00:00.000Z`,
+    place: { name: "SM City Grand Central" }, organizer: null,
+    event: { id: "ube", name: "Ube Matcha takeover" }, seats: 2, quota: 0, incentive: 0,
     staff: names.map((name) => ({ memberId: name, name, role: "cashier" as const })),
   });
+  const market = booking("market", "2026-11-28", "02", ["Brian Santos", "Aye"]);
   const text = scheduleText(
     [
-      booking("SM Fairview - Atrium", "2026-11-20", ["Brian Santos"]),
-      booking("SM Fairview - Atrium", "2026-11-19", ["Brian Santos"]),
-      booking("SM Fairview - Atrium", "2026-11-21", []),
-      booking("SM Manila", "2026-11-28", ["Brian Santos", "Aye"]),
+      booking("nov21-pm", "2026-11-21", "07", ["Aye"]),
+      booking("nov20", "2026-11-20", "02", ["Bettercup"]),
+      booking("nov21-am", "2026-11-21", "02", []),
+      { ...market, place: { name: "SM Manila" }, event: null },
     ],
     "Asia/Manila",
+    { origin: "https://pos.example.com", businessId: "team" },
   );
-  assert.equal(text, "SM Fairview - Atrium\nNov 19 Brian\nNov 20 Brian\nNov 21\n\nSM Manila\nNov 28 Brian, Aye");
+  assert.equal(text, [
+    "SM City Grand Central - Ube Matcha takeover",
+    "Nov 20 Bettercup - https://pos.example.com/?shifts=team&shift=nov20",
+    "Nov 21 10:00 AM - https://pos.example.com/?shifts=team&shift=nov21-am",
+    "Nov 21 3:00 PM Aye - https://pos.example.com/?shifts=team&shift=nov21-pm",
+    "",
+    "SM Manila",
+    "Nov 28 Brian, Aye - https://pos.example.com/?shifts=team&shift=market",
+  ].join("\n"));
 });
 
 test(

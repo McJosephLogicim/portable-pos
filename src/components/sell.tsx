@@ -25,7 +25,7 @@ import {
 import { ItemSheet } from "./menu-settings";
 import { BusinessMark } from "./businesses";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
-import { currencyDigits } from "@/lib/settings";
+import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
   buzz,
@@ -232,7 +232,7 @@ function ItemOptions({
                 <button
                   key={option.id}
                   type="button"
-                  className="list-row"
+                  className="list-row sell-option"
                   role={group.required ? "radio" : "checkbox"}
                   aria-checked={on}
                   disabled={out || busy}
@@ -803,6 +803,7 @@ export function SellScreen({
   const lock = useRef(false);
   const shift = state.shift!;
   const business = state.business!;
+  const simple = isSimpleMode(business.settings);
   const canEdit = !state.me || state.me.owner;
   const currency = shift.settings.currency;
   const menu = shift.menu;
@@ -811,10 +812,15 @@ export function SellScreen({
     [menu],
   );
   const busy = working || pending;
-  const lines: ReceiptLine[] = state.cart.length
-    ? priceLines(menu, state.cart)
-    : [];
-  const total = totalLines(lines);
+  let lines: ReceiptLine[] = [];
+  let total = 0;
+  let cartMenuError = false;
+  try {
+    lines = priceLines(menu, state.cart);
+    total = totalLines(lines);
+  } catch {
+    cartMenuError = true;
+  }
   const count = state.cart.reduce((s, l) => s + l.quantity, 0);
   const inCart = (id: string) =>
     state.cart
@@ -903,7 +909,9 @@ export function SellScreen({
         )}
       </div>
       <div className="order-scroll">
-        {lines.length ? (
+        {cartMenuError ? (
+          <p className="notice" role="alert">The menu changed. Clear the order and add its items again.</p>
+        ) : lines.length ? (
           <OrderLines
             lines={lines}
             currency={currency}
@@ -918,10 +926,10 @@ export function SellScreen({
       </div>
       <button
         className="btn block"
-        disabled={!count || busy || blocked}
+        disabled={!count || busy || blocked || cartMenuError}
         onClick={() => setCharging(true)}
       >
-        Charge {count > 0 && <Money value={total} currency={currency} />}
+        Charge {count > 0 && !cartMenuError && <Money value={total} currency={currency} />}
       </button>
     </>
   );
@@ -971,7 +979,7 @@ export function SellScreen({
             <Ban size={19} />
           </button>
         </div>
-        <ShiftStrip state={state} onTill={onTill} />
+        {!simple && <ShiftStrip state={state} onTill={onTill} />}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1153,8 +1161,9 @@ export function SellScreen({
             onClose={() => setPicked(null)}
           />
         ))}
-      {charging && (
+      {charging && !cartMenuError && count > 0 && (
         <Checkout
+          key={shift.menuVersion ?? "opening"}
           state={state}
           lines={lines}
           busy={busy}
@@ -1186,10 +1195,13 @@ export function SellScreen({
       )}
       {adding && (
         <ItemSheet
+          key={simple ? "simple" : "advanced"}
+          simple={simple}
           currency={currency}
           menu={state.menu}
           liveShift
           stockItems={shift.settings.stockItems}
+          costItems={business.settings.stockItems}
           onClose={() => setAdding(false)}
           onSave={async (item, count) => {
             const done = await withPin((pin) =>

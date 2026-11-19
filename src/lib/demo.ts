@@ -1,14 +1,15 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
-import { checkClosing, checkOpening, shiftTotals, stockLeft, withNewItems } from "./domain";
-import { round } from "./stock";
+import { checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu } from "./domain";
+import { batchIngredientProblem, checkPrepRecipes, hasStockCostAmounts, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
-import { defaultSettings, mergeShiftSettings } from "./settings";
+import { currencyDigits, defaultSettings, isSimpleMode, mergeShiftSettings } from "./settings";
 import type {
   Bootstrap,
   Product,
+  RegisterMode,
   RegisterState,
   Settings,
   Shift,
@@ -33,8 +34,8 @@ export function newShift(
     openedAt: new Date().toISOString(),
     closedAt: null,
     openingCash,
-    menu: structuredClone(menu),
-    settings: structuredClone(settings),
+    menu: structuredClone(withoutMenuCosts(menu)),
+    settings: structuredClone(withoutStockCosts(settings)),
   };
 }
 export function demoBootstrap(deviceId: string): Bootstrap {
@@ -103,6 +104,7 @@ export type OwnerAction =
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
   | Closing
+  | { action: "mode"; mode: RegisterMode; pin: string }
   | {
       action: "settings";
       name: string;
@@ -128,14 +130,19 @@ export function demoAction(
     case "open": {
       if (state.shift) throw Error("A shift is already open.");
       const business = state.business!;
+      if (!state.menu.length) throw Error("Add a menu item before opening the till.");
       const checklist = business.settings.checklist ?? [];
       const stock = checkOpening(state.menu, business.settings.stockItems, checklist, input.stock, input.checked);
       const openingCount = checkCount(input.openingCount, input.openingCash);
-      const booking = state.bookings?.find((b) => b.id === input.bookingId);
-      if (!input.bookingId) throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
-      if (!booking) throw Error("That scheduled shift was removed.");
-      const problem = startProblem(booking, business.timeZone);
-      if (problem) throw Error(problem);
+      if (input.bookingId) {
+        const booking = state.bookings?.find((b) => b.id === input.bookingId);
+        if (!booking) throw Error("That scheduled shift was removed.");
+        const problem = startProblem(booking, business.timeZone);
+        if (problem) throw Error(problem);
+      } else if (!isSimpleMode(business.settings)) {
+        throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
+      }
+      const { mode: _mode, ...checkoutSettings } = business.settings;
       const shift: Shift = {
         ...newShift(
           state.deviceId,
@@ -143,12 +150,12 @@ export function demoAction(
           Math.max(0, ...state.shifts.map((s) => s.number)) + 1,
           input.openingCash,
           state.menu,
-          { ...business.settings, currency: business.currency },
+          { ...checkoutSettings, currency: business.currency },
         ),
         ...(Object.keys(stock).length ? { stock } : {}),
         ...(openingCount ? { openingCount } : {}),
         openedBy: state.me?.name,
-        bookingId: booking.id,
+        ...(input.bookingId ? { bookingId: input.bookingId } : {}),
         checklist: checklist.map((c) => c.text),
       };
       return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
@@ -185,7 +192,9 @@ export function demoAction(
       };
     }
     case "menu": {
-      const shift = state.shift && withNewItems(state.shift, input.menu, input.stock);
+      const problem = batchIngredientProblem(input.menu, state.business?.settings.stockItems);
+      if (problem) throw Error(problem);
+      const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock);
       return {
         ...state,
         menu: input.menu,
@@ -193,10 +202,19 @@ export function demoAction(
         shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),
       };
     }
+    case "mode": {
+      const business = state.business!;
+      return { ...state, business: { ...business, settings: { ...business.settings, mode: input.mode } } };
+    }
     case "settings": {
       const business = state.business!;
       if (input.currency !== business.currency && state.shift)
         throw Error("Close the shift before changing currency.");
+      if (hasStockCostAmounts(input.settings) && currencyDigits(input.currency) !== currencyDigits(business.currency))
+        throw Error(`${input.currency} uses different decimals. Clear the stock and batch costs first or keep ${business.currency}.`);
+      checkPrepRecipes(input.settings.stockItems);
+      const problem = batchIngredientProblem(state.menu, input.settings.stockItems);
+      if (problem) throw Error(problem);
       const shift = state.shift && {
         ...state.shift,
         settings: mergeShiftSettings(state.shift.settings, input.settings),
@@ -208,7 +226,10 @@ export function demoAction(
           name: input.name,
           currency: input.currency,
           timeZone: input.timeZone,
-          settings: input.settings,
+          settings: {
+            ...input.settings,
+            mode: business.settings.mode,
+          },
         },
         shift,
         shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),

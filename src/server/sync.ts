@@ -1,12 +1,44 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { makeSale, shiftTotals, stockLeft } from "../lib/domain";
+import { makeSale, priceLines, shiftTotals, stockLeft, totalLines } from "../lib/domain";
 import type { Shift } from "../lib/types";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
 import { expenses, sales, shifts, syncedEvents } from "./schema";
 import { presentExpense, presentSale, presentShift } from "./snapshot";
+
+/** Price offline receipts using the menu the device had when it checked out. */
+function receiptMenu(shift: typeof shifts.$inferSelect, event: Extract<InputEvent, { type: "sale" }>) {
+  const { menuHistory, menu } = shift;
+  if (event.menuVersion === "opening") return menuHistory[0]?.previousMenu ?? menu;
+  if (event.menuVersion) {
+    const index = menuHistory.findIndex((revision) => revision.id === event.menuVersion);
+    ensure(index >= 0, "That receipt's menu version could not be found. The receipt is still on this phone.", 409);
+    return menuHistory[index + 1]?.previousMenu ?? menu;
+  }
+  // Older app versions and sales already queued on this device have a timestamp only.
+  const soldAt = Date.parse(event.sale.createdAt);
+  const byTime = menuHistory.find((revision) => Date.parse(revision.appliedAt) > soldAt)?.previousMenu ?? menu;
+  const { subtotal, lines } = event.sale;
+  if (subtotal === undefined || !menuHistory.length) return byTime;
+  // An older offline device can still use its cached menu after another phone edits it.
+  // Match its subtotal only against server-owned prices and option sets.
+  return [byTime, menu, ...menuHistory.map((revision) => revision.previousMenu).reverse()].find((candidate) => {
+    try {
+      return totalLines(priceLines(candidate, lines)) === subtotal;
+    } catch {
+      return false;
+    }
+  }) ?? byTime;
+}
+
+function eventForFingerprint(event: InputEvent) {
+  if (event.type !== "sale") return event;
+  // This field was previously stripped by validation. Keep old retries idempotent.
+  const { subtotal, ...sale } = event.sale;
+  return { ...event, sale };
+}
 
 /** The drawer difference and stock used, from everything recorded on a closed shift. */
 export async function closingFigures(tx: Transaction, shift: Shift, countedCash: number) {
@@ -64,7 +96,7 @@ export async function applyEvents(
 
   for (const event of events) {
     const fingerprint = createHash("sha256")
-      .update(JSON.stringify(event))
+      .update(JSON.stringify(eventForFingerprint(event)))
       .digest("hex");
     const inserted = await tx
       .insert(syncedEvents)
@@ -130,11 +162,12 @@ export async function applyEvents(
       event.id === sale.id && sale.shiftId === shift.id,
       "This receipt couldn't be saved. It's still on this phone.",
     );
+    const menu = receiptMenu(shift, event);
     let priced;
     try {
       priced = makeSale({
         id: sale.id,
-        shift: current,
+        shift: { ...current, menu },
         sequence: nextSequence,
         cart: sale.lines,
         soldOut: [],

@@ -36,7 +36,7 @@ export function SuggestInput({
   maxLength?: number;
   autoFocus?: boolean;
   className?: string;
-  newText?: string;
+  newText?: string | false;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -118,7 +118,7 @@ export function SuggestInput({
               </span>
             </button>
           ))}
-          {q && !suggestions.some((s) => s.name.toLocaleLowerCase() === q) && (
+          {newText && q && !suggestions.some((s) => s.name.toLocaleLowerCase() === q) && (
             <p className="combo-foot label">
               <Plus size={14} /> {newText} “{value.trim()}”. Keep typing to add it.
             </p>

@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
-import type { OptionGroup, Product, StockItem } from "@/lib/types";
+import type { OptionGroup, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
-import { SubPage, useCommit, type SettingsProps } from "./settings";
-import { resolveUses, UsesEditor, useDrafts, usesText } from "./stock-settings";
+import { isSimpleMode } from "@/lib/settings";
+import { maxBatchServings, menuRecipeCost } from "@/lib/stock";
+import { SubPage, useCommit } from "./settings";
+import type { RecipesProps } from "./recipes";
+import { blankUseDraft, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
-import { buzz, formatMoney, Money, MoneyField, PhotoPicker } from "./ui";
+import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
   namesText,
   PickChips,
@@ -157,16 +160,21 @@ export function ItemSheet({
   product,
   currency,
   menu,
+  simple = false,
   liveShift = false,
   stockItems = [],
+  costItems,
   canCreateStock = false,
   onSave,
   onRemove,
   onClose,
 }: {
   product?: Product;
+  simple?: boolean;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
+  /** Current cost sources when the till limits selection to its opening stock. */
+  costItems?: StockItem[];
   /** New stock item names typed here can be added to Settings when the item saves. */
   canCreateStock?: boolean;
   currency: string;
@@ -184,11 +192,28 @@ export function ItemSheet({
   const [mode, setMode] = useState<StockMode>(product?.uses?.length ? "uses" : product?.stock ? "count" : "off");
   const [uses, setUses] = useState(() => {
     const drafts = useDrafts(product?.uses, stockItems);
-    return drafts.length ? drafts : [{ key: crypto.randomUUID(), name: "", amount: "1", unit: "pack" }];
+    return drafts.length ? drafts : [blankUseDraft()];
   });
+  const batchItems = costItems ?? stockItems;
+  const [batchEnabled, setBatchEnabled] = useState(Boolean(product?.costing?.batch));
+  const [batchServings, setBatchServings] = useState(String(product?.costing?.batch?.servings ?? 1));
+  const [batchUses, setBatchUses] = useState(() => {
+    const drafts = useDrafts(product?.costing?.batch?.uses, batchItems);
+    return drafts.length ? drafts : [blankUseDraft()];
+  });
+  const [labor, setLabor] = useState(priceText(product?.costing?.laborPerServing ?? 0, currency));
+  const [other, setOther] = useState(priceText(product?.costing?.otherPerServing ?? 0, currency));
   const [count, setCount] = useState("");
   const askCount = mode === "count" && liveShift && !product;
-  const [price, setPrice] = useState(product ? priceText(product.price, currency) : "");
+  const [price, setPrice] = useState(product ? priceText(product.price, currency) || "0" : "");
+  let sellingPrice: number | undefined;
+  if (price) {
+    try {
+      sellingPrice = parseMoney(price, currency);
+    } catch {
+      // Wait for a complete selling price before previewing margins.
+    }
+  }
   const [category, setCategory] = useState(product?.category ?? "");
   const [image, setImage] = useState(product?.image);
   const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
@@ -202,8 +227,47 @@ export function ItemSheet({
   const setGroup = (id: string, fn: (g: GroupDraft) => GroupDraft) =>
     setGroups((all) => all.map((g) => (g.id === id ? fn(g) : g)));
   const usesChanged =
-    JSON.stringify(useDrafts(product?.uses, stockItems).map((u) => [u.name, u.amount])) !==
-    JSON.stringify(mode === "uses" ? uses.filter((u) => u.name.trim()).map((u) => [u.name.trim(), u.amount]) : []);
+    JSON.stringify(useDrafts(product?.uses, stockItems).map((u) => [u.stockId, u.amount])) !==
+    JSON.stringify(mode === "uses"
+      ? uses.filter((u) => u.name.trim()).map((u) => [stockForUse(u, stockItems)?.id ?? u.name.trim(), u.amount])
+      : []);
+  const costRows = simple ? [] : batchEnabled
+    ? stockUseRows(batchUses, batchItems)
+    : mode === "uses" ? stockUseRows(uses, stockItems, costItems) : [];
+  const recipeCosts = costRows.filter(({ draft }) => draft.name.trim()).map(({ cost }) => cost);
+  const showCostPreview = !simple && (batchEnabled || recipeCosts.length > 0 || Boolean(labor || other));
+  const optionalMoney = (value: string) => value === "" ? undefined : parseMoney(value, currency);
+  let totalCost: ReturnType<typeof menuRecipeCost>;
+  if (showCostPreview) {
+    try {
+      totalCost = menuRecipeCost(
+        recipeCosts, batchEnabled ? Number(batchServings) : 1,
+        optionalMoney(labor) ?? 0, optionalMoney(other) ?? 0, sellingPrice,
+      );
+    } catch {
+      // Recalculate when a serving cost is valid.
+    }
+  }
+
+  function readCosting(): ProductCosting | undefined {
+    const laborPerServing = optionalMoney(labor);
+    const otherPerServing = optionalMoney(other);
+    let batch: ProductCosting["batch"];
+    if (batchEnabled) {
+      const servings = Number(batchServings);
+      if (!Number.isInteger(servings) || servings < 1 || servings > maxBatchServings)
+        throw Error("Enter a whole number of servings per batch, from 1 to 100,000.");
+      const { uses } = resolveUses(batchUses, batchItems, false);
+      if (!uses.length) throw Error("Add at least one ingredient to the batch recipe.");
+      batch = { servings, uses };
+    }
+    if (!batch && laborPerServing === undefined && otherPerServing === undefined) return undefined;
+    return {
+      ...(batch ? { batch } : {}),
+      ...(laborPerServing !== undefined ? { laborPerServing } : {}),
+      ...(otherPerServing !== undefined ? { otherPerServing } : {}),
+    };
+  }
 
   function save() {
     void run(async () => {
@@ -211,11 +275,15 @@ export function ItemSheet({
         if (!g.name.trim()) throw Error("Name each choice, like Size or Extras.");
         return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
       });
-      const { uses: picked, created } = mode === "uses" ? resolveUses(uses, stockItems) : { uses: [], created: [] };
-      if (mode === "uses" && !picked.length) throw Error("Type the stock items it uses, or set Stock to Off.");
+      const editUses = !simple && mode === "uses";
+      const { uses: picked, created } = editUses
+        ? resolveUses(uses, stockItems)
+        : { uses: simple ? product?.uses ?? [] : [], created: [] };
+      if (editUses && !picked.length) throw Error("Type the stock items it uses, or set Stock to Off.");
       if (created.length && !canCreateStock)
-        throw Error("Add " + created.map((c) => c.name).join(", ") + " in Settings › Stock items first, or pick one from the list.");
-      const { stock: _, image: _image, uses: _uses, ...rest } = product ?? ({} as Partial<Product>);
+        throw Error("Add " + created.map((c) => c.name).join(", ") + " in Recipes › Stock items first, or pick one from the list.");
+      const costing = simple ? product?.costing : readCosting();
+      const { stock: _, image: _image, uses: _uses, costing: _costing, ...rest } = product ?? ({} as Partial<Product>);
       return onSave(
         {
           ...rest,
@@ -226,6 +294,7 @@ export function ItemSheet({
           groups: saved,
           ...(image ? { image } : {}),
           ...(picked.length ? { uses: picked } : mode === "count" ? { stock: true } : {}),
+          ...(costing ? { costing } : {}),
         },
         askCount ? Number(count) : undefined,
         created,
@@ -279,7 +348,7 @@ export function ItemSheet({
         </div>
       </div>
 
-      <div className="card card-pad stack gap-12">
+      {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
         <span className="strong">Stock</span>
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
@@ -288,7 +357,7 @@ export function ItemSheet({
               ["count", "Count it"],
               ["uses", "Uses stock"],
             ] as const
-          ).map(([id, text]) => (
+          ).filter(([id]) => !simple || id !== "uses").map(([id, text]) => (
             <button
               key={id}
               type="button"
@@ -310,9 +379,7 @@ export function ItemSheet({
               : "Each sale takes this much off a stock item, like 1 strawberry pack or 0.2 kg of ice."}
         </p>
         {mode === "uses" && (
-          <>
-            <UsesEditor stockItems={stockItems} uses={uses} onChange={setUses} />
-          </>
+          <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} showCosts={!batchEnabled} onChange={setUses} />
         )}
         {askCount && (
           <label className="field">
@@ -329,7 +396,34 @@ export function ItemSheet({
         {product && liveShift && (usesChanged || Boolean(product.stock) !== (mode === "count")) && (
           <p className="label">Stock changes apply from the next shift.</p>
         )}
-      </div>
+      </div>}
+
+      {!simple && <section className="card card-pad stack gap-14" aria-label="Recipe costing">
+        <h3 className="strong">Recipe costing</h3>
+        <div className="between gap-8">
+          <span>Cost a batch</span>
+          <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Cost a batch" />
+        </div>
+        {batchEnabled && (
+          <>
+            <label className="field">
+              <span>Servings per batch</span>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={batchServings}
+                maxLength={9}
+                onChange={(e) => setBatchServings(e.target.value)}
+              />
+            </label>
+            <p className="label">Enter ingredients for the whole batch. The Stock section controls what the till deducts per sale.</p>
+            <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
+          </>
+        )}
+        <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
+        <MoneyField label="Other variable cost per serving" value={other} onChange={setOther} currency={currency} />
+        {showCostPreview && <CostPreview currency={currency} total={totalCost} batch={batchEnabled} />}
+      </section>}
 
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
@@ -389,8 +483,9 @@ export function ItemSheet({
   );
 }
 
-export function MenuPage(props: SettingsProps) {
+export function MenuPage(props: RecipesProps) {
   const business = props.state.business!;
+  const simple = isSimpleMode(business.settings);
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
@@ -400,6 +495,7 @@ export function MenuPage(props: SettingsProps) {
   return (
     <SubPage
       title="Menu items"
+      backLabel="Back to recipes"
       sentence={
         <>
           {plural(menu.length, "item")} <span className="g">for sale.</span>
@@ -428,7 +524,7 @@ export function MenuPage(props: SettingsProps) {
                 title={p.name}
                 detail={
                   [
-                    p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
+                    !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
                     ...p.groups.map((x) => x.name),
                   ]
                     .filter(Boolean)
@@ -443,13 +539,15 @@ export function MenuPage(props: SettingsProps) {
         {props.online
           ? props.state.shift
             ? live
-              ? "New items go on sale right away. Edits to existing items apply from the next shift. To pause an item now, mark it sold out on Sell."
+              ? "New items and edits to names, prices and options go live on Sell. Removals and stock use changes take effect next shift. To pause an item now, mark it sold out on Sell."
               : "Changes reach the register when the next shift opens."
             : "Changes reach the register when you open the next shift."
           : "Connect to edit the menu."}
       </p>
       {editing && (
         <ItemSheet
+          key={simple ? "simple" : "advanced"}
+          simple={simple}
           product={editing === "new" ? undefined : editing}
           currency={business.currency}
           menu={menu}
@@ -543,7 +641,7 @@ function CategorySheet({
   );
 }
 
-export function CategoriesPage(props: SettingsProps) {
+export function CategoriesPage(props: RecipesProps) {
   const menu = props.state.menu;
   const commit = useCommit(props);
   const list = categoriesOf(menu);
@@ -552,6 +650,7 @@ export function CategoriesPage(props: SettingsProps) {
   return (
     <SubPage
       title="Categories"
+      backLabel="Back to recipes"
       sentence={
         list.length ? (
           <>
@@ -593,7 +692,7 @@ export function CategoriesPage(props: SettingsProps) {
       )}
       <p className="label">
         {loose ? plural(loose, "item") + " with no category show last. " : ""}
-        {props.online ? "Changes reach the register when the next shift opens." : "Connect to edit categories."}
+        {props.online ? "Category changes go live on Sell." : "Connect to edit categories."}
       </p>
       {editing && (
         <CategorySheet
@@ -732,7 +831,7 @@ function ChoiceSheet({
   );
 }
 
-export function ChoicesPage(props: SettingsProps) {
+export function ChoicesPage(props: RecipesProps) {
   const business = props.state.business!;
   const menu = props.state.menu;
   const commit = useCommit(props);
@@ -766,6 +865,7 @@ export function ChoicesPage(props: SettingsProps) {
   return (
     <SubPage
       title="Choices"
+      backLabel="Back to recipes"
       sentence={
         list.length ? (
           <>
@@ -811,7 +911,7 @@ export function ChoicesPage(props: SettingsProps) {
         />
       )}
       <p className="label">
-        {props.online ? "Changes reach the register when the next shift opens." : "Connect to edit choices."}
+        {props.online ? "Choice changes go live on Sell." : "Connect to edit choices."}
       </p>
       {editing && (
         <ChoiceSheet

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkSettings } from "../lib/settings";
+import { checkPrepRecipes, maxBatchServings } from "../lib/stock";
 import { planActions } from "../lib/team";
 import { ensure } from "./errors";
 
@@ -7,6 +8,7 @@ const key = z.string().trim().min(1).max(128);
 const name = z.string().trim().min(1).max(120);
 const pin = z.string().regex(/^\d{4,8}$/, "Use a 4 to 8 digit owner PIN.");
 const amount = z.number().int().min(0).max(2147483647);
+const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000) });
 const product = z.object({
   id: key,
   name,
@@ -19,9 +21,19 @@ const product = z.object({
     .optional(),
   stock: z.boolean().optional(),
   uses: z
-    .array(z.object({ stockId: key, amount: z.number().positive().max(100000) }))
+    .array(stockUse)
     .max(20)
     .optional(),
+  costing: z.object({
+    batch: z.object({
+      servings: z.number().int().min(1).max(maxBatchServings),
+      uses: z.array(stockUse).min(1).max(20).refine(
+        (uses) => new Set(uses.map((use) => use.stockId)).size === uses.length,
+      ),
+    }).optional(),
+    laborPerServing: amount.optional(),
+    otherPerServing: amount.optional(),
+  }).optional(),
   groups: z
     .array(
       z.object({
@@ -43,13 +55,15 @@ const line = z.object({
 });
 
 // Only accept a cart and tender as sale inputs. Descriptive fields and prices are
-// always taken from the immutable shift snapshot, including after an offline sync.
+// always taken from the shift's menu, including during offline sync.
 const sale = z.object({
   id: z.uuid(),
   shiftId: z.uuid(),
   sequence: z.number().int().positive().max(2147483647),
   createdAt: z.iso.datetime({ offset: true }),
   lines: z.array(line).min(1).max(500),
+  // A hint for pre-versioned clients to find an existing menu revision.
+  subtotal: amount.optional(),
   tender: key,
   // Only the discount's id is trusted. Its amount is recomputed from the shift.
   discount: z.object({ id: key }).optional(),
@@ -67,7 +81,7 @@ const expense = z.object({
   by: z.string().trim().max(80).optional(),
 });
 const event = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale }),
+  z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale, menuVersion: z.union([z.literal("opening"), z.uuid()]).optional() }),
   z.object({ type: z.literal("expense"), id: z.uuid(), shiftId: z.uuid(), expense }),
   z.object({ type: z.literal("unexpense"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid() }),
   z.object({
@@ -122,6 +136,16 @@ const settings = z.object({
         id: key,
         name: z.string().trim().min(1).max(60),
         unit: z.string().trim().min(1).max(16),
+        purchase: z.object({
+          price: amount,
+          quantity: z.number().min(0.001).max(1_000_000),
+          yieldPercent: z.number().min(0.01).max(100).optional(),
+        }).optional(),
+        prep: z.object({
+          yieldQuantity: z.number().min(0.001).max(1_000_000),
+          uses: z.array(stockUse).min(1).max(20),
+          extraBatchCost: amount.optional(),
+        }).optional(),
       }),
     )
     .max(100)
@@ -144,7 +168,7 @@ const walkIn = z.object({
 const cashCount = z
   .record(z.string().regex(/^[1-9]\d{0,8}$/, "Invalid coin or bill."), z.number().int().min(0).max(100000))
   .refine((c) => Object.keys(c).length <= 40, "Too many kinds of coins and bills.")
-const role = z.enum(["cashier", "server"]);
+const role = z.enum(["cashier", "server", "both"]);
 const tag = z.object({ id: key, name: z.string().trim().min(1).max(80) });
 const booking = z.object({
   id: z.uuid(),
@@ -256,6 +280,11 @@ const command = z.discriminatedUnion("action", [
     pin,
   }),
   z.object({
+    action: z.literal("mode"),
+    mode: z.enum(["simple", "advanced"]),
+    pin,
+  }),
+  z.object({
     action: z.literal("open"),
     deviceId: key,
     openingCash: amount,
@@ -316,6 +345,7 @@ export function parseCommand(input: unknown) {
   if (value.action === "settings") {
     try {
       checkSettings(value.settings);
+      checkPrepRecipes(value.settings.stockItems);
     } catch (error) {
       ensure(false, (error as Error).message);
     }
