@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Menu } from "@base-ui/react/menu";
 import {
+  CalendarPlus,
   CalendarRange,
   ChevronLeft,
   ChevronRight,
@@ -49,7 +51,7 @@ import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
 import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, Sheet, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, progressStyle, Sheet, useCelebrate, usePin } from "./ui";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -57,6 +59,7 @@ export interface ScheduleProps {
   state: RegisterState;
   online: boolean;
   demo: boolean;
+  sharedSchedule?: { bookingId: string | null } | null;
   onAction: Act;
   onSaved: (text: string) => void;
   onSales: (focus: SalesFocus) => void;
@@ -441,19 +444,19 @@ function BookingSheet({
           </p>
         </div>
         {b.place && (
-          <a className="card place-card" href={mapsLink(b.place)} target="_blank" rel="noreferrer">
+          <div className="card place-card">
             {b.place.lat !== undefined && b.place.lon !== undefined && (
               <MapPreview lat={b.place.lat} lon={b.place.lon} height={140} />
             )}
-            <span className="row gap-10 place-meta">
+            <a className="row gap-10 place-meta" href={mapsLink(b.place)} target="_blank" rel="noreferrer">
               <MapPin size={18} strokeWidth={1.8} />
               <span className="grow stack">
                 <span className="ellipsis">{b.place.name}</span>
                 {b.place.address && <span className="label ellipsis">{b.place.address}</span>}
               </span>
               <span className="label">Directions</span>
-            </span>
-          </a>
+            </a>
+          </div>
         )}
 
         <div className="stack gap-10">
@@ -524,7 +527,7 @@ function BookingSheet({
             </span>
             {p && (
               <span className="meter" aria-label={`${Math.min(100, Math.round((p.sales / b.quota) * 100))}% of quota`}>
-                <i style={{ width: `${Math.min(100, (p.sales / b.quota) * 100)}%` }} />
+                <i style={progressStyle(Math.min(100, (p.sales / b.quota) * 100))} />
               </span>
             )}
             <span className="micro">
@@ -1190,18 +1193,14 @@ function BookingEditor({
 function ShareSchedule({
   bookings,
   businessId,
-  businessName,
   zone,
   month,
-  owner,
   onClose,
 }: {
   bookings: Booking[];
   businessId: string;
-  businessName: string;
   zone: string;
   month: string;
-  owner: boolean;
   onClose: () => void;
 }) {
   const [range, setRange] = useState<"upcoming" | "month">("upcoming");
@@ -1211,22 +1210,28 @@ function ShareSchedule({
     range === "upcoming"
       ? bookings.filter((b) => Date.parse(b.endsAt) > Date.now())
       : bookings.filter((b) => dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7));
-  const text = scheduleText(shown, zone);
-  const link = typeof location === "undefined" ? "" : `${location.origin}/?shifts=${businessId}`;
-  const open = shown.filter((b) => seatsOpen(b) > 0).length;
-  async function copy(value: string, what: string) {
+  const text = scheduleText(shown, zone, { origin: location.origin, businessId });
+  async function copy() {
     setError("");
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(text);
       buzz.success();
-      setCopied(what);
+      setCopied(text);
       setTimeout(() => setCopied(""), 2000);
     } catch {
       setError("Couldn't copy here. Press and hold the text to copy it.");
     }
   }
   return (
-    <Sheet title="Share the schedule" onClose={onClose}>
+    <Sheet
+      title="Share the schedule"
+      onClose={onClose}
+      footer={
+        <button type="button" className="btn block" disabled={!shown.length} onClick={() => void copy()}>
+          <Copy size={17} /> {shown.length && copied === text ? "Copied" : "Copy schedule"}
+        </button>
+      }
+    >
       <div className="segmented" role="group" aria-label="Which shifts">
         <button aria-pressed={range === "upcoming"} onClick={() => setRange("upcoming")}>
           Upcoming
@@ -1243,29 +1248,6 @@ function ShareSchedule({
           <p className="label">Add shifts first, or pick the other range.</p>
         </div>
       )}
-      <button className="btn" disabled={!shown.length} onClick={() => void copy(text, "schedule")}>
-        <Copy size={17} /> {copied === "schedule" ? "Copied" : "Copy schedule"}
-      </button>
-      <div className="card card-pad stack gap-10">
-        <span className="strong">Link to join shifts</span>
-        <span className="label">
-          Opens the open seats{open ? ` (${open} now)` : ""} at {businessName}.{" "}
-          {owner ? "Teammates need an invite from Settings › Team first." : "You need to be on the team to join."}
-        </span>
-        <code className="share-link">{link}</code>
-        <div className="grid-2">
-          <button className="btn secondary" onClick={() => void copy(link, "link")}>
-            <Copy size={17} /> {copied === "link" ? "Copied" : "Copy link"}
-          </button>
-          <button
-            className="btn secondary"
-            disabled={!shown.length}
-            onClick={() => void copy(`${text}\n\nJoin a shift: ${link}`, "both")}
-          >
-            {copied === "both" ? "Copied" : "Copy both"}
-          </button>
-        </div>
-      </div>
       {error && (
         <p className="alert" role="alert">
           {error}
@@ -1275,31 +1257,55 @@ function ShareSchedule({
   );
 }
 
+function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "new" | "bulk") => void }) {
+  const [keyboard, setKeyboard] = useState(false);
+  return (
+    <Menu.Root
+      modal={false}
+      onOpenChange={(open, { event }) => {
+        if (!open) return;
+        buzz.tap();
+        setKeyboard(event instanceof KeyboardEvent || (event.type === "click" && "detail" in event && event.detail === 0));
+      }}
+    >
+      <Menu.Trigger className="btn add-shift" aria-label="Add" disabled={disabled}>
+        <Plus size={20} aria-hidden="true" />
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner className="add-shift-positioner" align="end" sideOffset={8}>
+          <Menu.Popup className="add-shift-menu" data-keyboard={keyboard || undefined}>
+            <Menu.Item onClick={() => onAdd("new")}>
+              <CalendarPlus size={18} aria-hidden="true" /> Add a shift
+            </Menu.Item>
+            <Menu.Item onClick={() => onAdd("bulk")}>
+              <CalendarRange size={18} aria-hidden="true" /> Add bulk
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
+
 /* ---------- screen ---------- */
 
 type Filter = "day" | "open" | "mine";
 
 export function ScheduleScreen(props: ScheduleProps) {
-  const { state, demo } = props;
+  const { state, demo, sharedSchedule } = props;
   const business = state.business!;
   const zone = business.timeZone;
   const me = state.me;
   const f = useFormats(zone);
   const today = dayOf(Date.now(), zone);
-  const [selected, setSelected] = useState(today);
-  const [month, setMonth] = useState(today.slice(0, 8) + "01");
-  const [filter, setFilter] = useState<Filter>(() => {
-    // A join link opens on the open seats.
-    try {
-      if (sessionStorage.getItem("shifts-filter") === "open") {
-        sessionStorage.removeItem("shifts-filter");
-        return "open";
-      }
-    } catch {}
-    return "day";
+  const [selected, setSelected] = useState(() => {
+    const initial = state.bookings?.find((b) => b.id === sharedSchedule?.bookingId);
+    return initial ? dayOf(initial.startsAt, zone) : today;
   });
+  const [month, setMonth] = useState(selected.slice(0, 8) + "01");
+  const [filter, setFilter] = useState<Filter>(sharedSchedule && !sharedSchedule.bookingId ? "open" : "day");
   const [sharing, setSharing] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(sharedSchedule?.bookingId ?? null);
   const [editing, setEditing] = useState<Booking | "new" | "bulk" | null>(null);
   const bookings = useMemo(
     () => [...(state.bookings ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
@@ -1363,21 +1369,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && (
-          <>
-            <button
-              className="round"
-              aria-label="Add many shifts"
-              disabled={!props.online}
-              onClick={() => setEditing("bulk")}
-            >
-              <CalendarRange size={19} />
-            </button>
-            <button className="btn small add-shift" aria-label="Add a shift" disabled={!props.online} onClick={() => setEditing("new")}>
-              <Plus size={16} /> <span className="wide-only">Shift</span>
-            </button>
-          </>
-        )}
+        {me?.owner && <AddShiftMenu disabled={!props.online} onAdd={setEditing} />}
       </div>
 
       {me?.owner && monthDone.length > 0 ? (
@@ -1459,10 +1451,8 @@ export function ScheduleScreen(props: ScheduleProps) {
         <ShareSchedule
           bookings={bookings}
           businessId={business.id}
-          businessName={business.name}
           zone={zone}
           month={month}
-          owner={Boolean(me?.owner)}
           onClose={() => setSharing(false)}
         />
       )}

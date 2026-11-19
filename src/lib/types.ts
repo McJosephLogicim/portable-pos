@@ -73,6 +73,14 @@ export interface Product {
   stock?: boolean;
   /** Stock items one of this uses up, like 1 pack of strawberries or 0.2 kg. */
   uses?: StockUse[];
+  costing?: ProductCosting;
+}
+export interface ProductCosting {
+  /** A costing recipe for the whole batch. The till uses Product.uses for stock deductions. */
+  batch?: { servings: number; uses: StockUse[] };
+  /** Minor currency units for one serving. */
+  laborPerServing?: number;
+  otherPerServing?: number;
 }
 /** Something counted at opening and closing, like a strawberry pack or a kilo of ice. */
 export interface StockItem {
@@ -80,6 +88,23 @@ export interface StockItem {
   name: string;
   /** piece, pack, kg… */
   unit: string;
+  purchase?: StockPurchase;
+  prep?: StockPrep;
+}
+export interface StockPurchase {
+  /** Cost of the whole pack, in minor currency units. */
+  price: number;
+  /** Quantity in the item's stock unit before losses. */
+  quantity: number;
+  /** Percentage of the pack that can be used. Defaults to 100. */
+  yieldPercent?: number;
+}
+export interface StockPrep {
+  /** Finished quantity in the stock item's unit. */
+  yieldQuantity: number;
+  uses: StockUse[];
+  /** Optional additional cost for the entire batch in minor currency units. */
+  extraBatchCost?: number;
 }
 export interface StockUse {
   stockId: string;

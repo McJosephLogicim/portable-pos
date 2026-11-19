@@ -9,6 +9,7 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import {
@@ -155,6 +156,10 @@ export function centerOf(el: Element | null | undefined) {
   if (!el) return undefined;
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+export function progressStyle(percent: number): CSSProperties {
+  return { "--progress": `${percent}%` } as CSSProperties;
 }
 
 /** Counts up to a number when it changes, like a scoreboard. */

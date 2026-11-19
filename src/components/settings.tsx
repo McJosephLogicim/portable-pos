@@ -9,13 +9,9 @@ import {
   ListChecks,
   Users,
   Coins,
-  LayoutGrid,
-  ListPlus,
   Percent,
-  Package,
   Plus,
   Store,
-  Tag,
   Ticket,
   Trash2,
 } from "lucide-react";
@@ -30,8 +26,6 @@ import type {
 import { amountText, parseMoney } from "@/lib/domain";
 import type { OwnerAction } from "@/lib/demo";
 import { ChecklistPage, TeamPage } from "./team";
-import { StockPage } from "./stock-settings";
-import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
 import { OrganizersPage } from "./organizer-settings";
 import { plural } from "./records";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
@@ -62,29 +56,27 @@ export type SettingsPage =
   | "payments"
   | "discounts"
   | "currency"
-  | "menu"
-  | "categories"
-  | "choices"
   | "organizers"
   | "checklist"
-  | "stock"
   | "team";
-type Page = SettingsPage;
 
-export interface SettingsProps {
+export interface EditorProps {
   state: RegisterState;
   online: boolean;
+  onSave: (input: SettingsInput, pin: string) => Promise<void>;
+  onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
+  onSaved: (text: string) => void;
+}
+
+export interface SettingsProps extends EditorProps {
   demo: boolean;
   status: string;
   offlineReady: boolean;
-  onSave: (input: SettingsInput, pin: string) => Promise<void>;
-  onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
   onAction: (input: OwnerAction) => Promise<void>;
   onSignIn: () => void;
   onSignOut: () => void;
-  onSaved: (text: string) => void;
-  page: Page | null;
-  onPage: (page: Page | null) => void;
+  page: SettingsPage | null;
+  onPage: (page: SettingsPage | null) => void;
   /** Opens the list of businesses to switch to or add. */
   onBusinesses: () => void;
 }
@@ -116,17 +108,19 @@ export function SubPage({
   title,
   sentence,
   onBack,
+  backLabel = "Back to settings",
   children,
 }: {
   title: string;
   sentence?: ReactNode;
   onBack: () => void;
+  backLabel?: string;
   children: ReactNode;
 }) {
   return (
     <div className="page narrow">
       <div className="page-top">
-        <button className="round" aria-label="Back to settings" onClick={onBack}>
+        <button className="round" aria-label={backLabel} onClick={onBack}>
           <ArrowLeft size={19} />
         </button>
         <span className="strong grow">{title}</span>
@@ -187,7 +181,7 @@ export function useDraft(
 }
 
 /** Saves one change from a settings sheet behind the owner PIN, then says what was saved. */
-export function useCommit(props: SettingsProps) {
+export function useCommit(props: EditorProps) {
   const withPin = usePin();
   const business = props.state.business!;
   const input = (patch: Partial<Settings>): SettingsInput => ({
@@ -1039,12 +1033,8 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "payments") return <PaymentsPage {...props} />;
   if (page === "discounts") return <DiscountsPage {...props} />;
   if (page === "currency") return <CurrencyPage {...props} />;
-  if (page === "menu") return <MenuPage {...props} />;
-  if (page === "categories") return <CategoriesPage {...props} />;
-  if (page === "choices") return <ChoicesPage {...props} />;
   if (page === "organizers") return <OrganizersPage {...props} />;
   if (page === "checklist") return <ChecklistPage {...props} />;
-  if (page === "stock") return <StockPage {...props} />;
   if (page === "team") return <TeamPage {...props} />;
   const me = state.me;
   if (me && !me.owner)
@@ -1109,33 +1099,6 @@ export function SettingsScreen(props: SettingsProps) {
           title="Discounts"
           detail={discountsOn ? discountsOn + " on" : "Off"}
           onClick={() => onPage("discounts")}
-        />
-      </div>
-      <p className="group-title">Menu</p>
-      <div className="card card-list">
-        <Row
-          icon={<LayoutGrid size={18} strokeWidth={1.8} />}
-          title="Menu items"
-          detail={plural(state.menu.length, "item")}
-          onClick={() => onPage("menu")}
-        />
-        <Row
-          icon={<Tag size={18} strokeWidth={1.8} />}
-          title="Categories"
-          detail={countText(categoriesOf(state.menu).length)}
-          onClick={() => onPage("categories")}
-        />
-        <Row
-          icon={<ListPlus size={18} strokeWidth={1.8} />}
-          title="Choices"
-          detail={countText(choicesOf(state.menu).length)}
-          onClick={() => onPage("choices")}
-        />
-        <Row
-          icon={<Package size={18} strokeWidth={1.8} />}
-          title="Stock items"
-          detail={countText(s.stockItems?.length ?? 0)}
-          onClick={() => onPage("stock")}
         />
       </div>
       <p className="group-title">Shifts</p>

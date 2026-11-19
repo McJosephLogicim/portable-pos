@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
+import { BookOpen, CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
+import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen } from "./schedule";
 import { Account, Setup } from "./account";
 import { BusinessSwitcher } from "./businesses";
@@ -38,6 +39,7 @@ const tabs = [
   { id: "sales", name: "Sales", icon: ReceiptText },
   { id: "shift", name: "Till", icon: Wallet },
   { id: "schedule", name: "Shifts", icon: CalendarDays },
+  { id: "recipes", name: "Recipes", icon: BookOpen },
   { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
@@ -112,13 +114,15 @@ export function Workspace() {
     [pending, setPending] = useState(false),
     [bootError, setBootError] = useState(""),
     [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
+    [recipesPage, setRecipesPage] = useState<RecipesPage | null>(null),
+    [sharedSchedule, setSharedSchedule] = useState<{ bookingId: string | null } | null>(null),
     [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
     [toast, setToast] = useState(""),
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
   const active = useRef<string | null>(null),
     syncBusy = useRef(false),
-    joinTarget = useRef<string | null>(null),
+    joinTarget = useRef<{ businessId: string; bookingId: string | null } | null>(null),
     joinAsked = useRef(false);
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
@@ -130,6 +134,7 @@ export function Workspace() {
       setState(null);
       setSyncErr("");
       setBootError("");
+      setSharedSchedule(null);
       setTab("sell");
       localStorage.setItem(ACTIVE, id);
       try {
@@ -164,7 +169,9 @@ export function Workspace() {
   useEffect(() => {
     let alive = true;
     async function start() {
-      joinTarget.current = new URLSearchParams(location.search).get("shifts");
+      const params = new URLSearchParams(location.search);
+      const businessId = params.get("shifts");
+      joinTarget.current = businessId ? { businessId, bookingId: params.get("shift") } : null;
       let id = localStorage.getItem(ACTIVE) || DEMO;
       // Supabase processes the confirmation callback on the application origin.
       if (
@@ -342,10 +349,7 @@ export function Workspace() {
       });
     });
     if (input.action === "open") setTab("sell");
-    if (input.action === "setup") {
-      setTab("settings");
-      setSettingsPage("menu");
-    }
+    if (input.action === "setup") openMenu();
   }
   async function cart(next: CartLine[]) {
     if (!state || !key) throw Error("Register unavailable.");
@@ -399,6 +403,7 @@ export function Workspace() {
         await clearRegister(key);
       });
       setSettingsPage(null);
+      setRecipesPage(null);
       await connect(DEMO);
     } catch (e) {
       setNotice(message(e));
@@ -414,24 +419,29 @@ export function Workspace() {
       : online
         ? "Online"
         : "Offline";
-  // Roles are picked per shift, so everyone sees every tab.
-  const shown = tabs;
-  const view: Tab = tab;
+  const canManageRecipes = !state?.me || state.me.owner;
+  const shown = canManageRecipes ? tabs : tabs.filter((item) => item.id !== "recipes");
+  const view: Tab = tab === "recipes" && !canManageRecipes ? "sell" : tab;
   const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
   const go = (t: Tab) => {
     if (t !== tab) buzz.tap();
     setTab(t);
+    if (t !== "schedule") setSharedSchedule(null);
     if (t === "settings") setSettingsPage(null);
+    if (t === "recipes") setRecipesPage(null);
     window.scrollTo(0, 0);
   };
+  function openMenu() {
+    go("recipes");
+    setRecipesPage("menu");
+  }
   async function upload(file: File, face = false) {
     const photo = await compressPhoto(file);
     if (!key || key === DEMO) return blobToDataUrl(photo);
     if (!navigator.onLine) throw Error("Connect to add photos.");
     return uploadImage(key, photo, false, face);
   }
-  /** Open another business on this phone. Each keeps its own till and sync queue. */
-  // An invitation or shared shift link opens the team's open seats.
+  // Shared schedules open a specific shift. Team invitations open the team's open seats.
   useEffect(() => {
     const target = joinTarget.current;
     if (!target || !state || !key) return;
@@ -439,20 +449,21 @@ export function Workspace() {
       joinTarget.current = null;
       const url = new URL(location.href);
       url.searchParams.delete("shifts");
+      url.searchParams.delete("shift");
       history.replaceState(null, "", url);
     };
-    if (key === DEMO) {
-      if (!joinAsked.current) {
-        joinAsked.current = true;
-        setNotice("Sign in to see the open shifts.");
-        setAccount(true);
+    if (state.business?.id !== target.businessId) {
+      if (key === DEMO) {
+        if (!joinAsked.current) {
+          joinAsked.current = true;
+          setNotice(target.bookingId ? "Sign in to see this shift." : "Sign in to see the open shifts.");
+          setAccount(true);
+        }
+        return;
       }
-      return;
-    }
-    if (state.business?.id !== target) {
       if (!online || syncErr) return;
-      if (state.businesses?.some((b) => b.id === target))
-        void switchBusiness(target).catch((e) => setNotice(message(e)));
+      if (state.businesses?.some((b) => b.id === target.businessId))
+        void switchBusiness(target.businessId).catch((e) => setNotice(message(e)));
       else {
         done();
         setNotice("You're not on that team yet. Ask the owner to invite your email.");
@@ -460,12 +471,13 @@ export function Workspace() {
       return;
     }
     done();
-    try {
-      sessionStorage.setItem("shifts-filter", "open");
-    } catch {}
+    const bookingId = state.bookings?.find((b) => b.id === target.bookingId)?.id ?? null;
+    if (target.bookingId && !bookingId) setNotice("This shift is no longer available.");
+    setSharedSchedule({ bookingId });
     setTab("schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.business?.id, state?.businesses, key, online, syncErr]);
+  /** Open another business on this phone. Each keeps its own till and sync queue. */
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;
     const { userId } = parseKey(key);
@@ -473,6 +485,7 @@ export function Workspace() {
     const first = await loadRegister(userId);
     buzz.tick();
     setSettingsPage(null);
+    setRecipesPage(null);
     await connect(first.business?.id === businessId ? userId : registerKey(userId, businessId));
   }
   async function addBusiness(input: OwnerAction) {
@@ -487,8 +500,7 @@ export function Workspace() {
     });
     setAdding(false);
     await connect(next);
-    setTab("settings");
-    setSettingsPage("menu");
+    openMenu();
     setToast("Added " + input.name);
   }
   const loadProof = useCallback(
@@ -521,9 +533,11 @@ export function Workspace() {
   else if (view === "schedule")
     screen = (
       <ScheduleScreen
+        key={sharedSchedule?.bookingId ?? (sharedSchedule ? "open-seats" : "schedule")}
         state={state}
         online={online}
         demo={demo}
+        sharedSchedule={sharedSchedule}
         onAction={owner}
         onSaved={setToast}
         onSales={(focus: SalesFocus) => {
@@ -551,7 +565,19 @@ export function Workspace() {
         onBusinesses={() => setSwitching(true)}
       />
     );
-  else if (tab === "sales")
+  else if (view === "recipes")
+    screen = (
+      <RecipesScreen
+        state={state}
+        online={online}
+        page={recipesPage}
+        onPage={setRecipesPage}
+        onSaved={setToast}
+        onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
+        onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
+      />
+    );
+  else if (view === "sales")
     screen = (
       <SalesScreen
         state={state}
@@ -562,11 +588,11 @@ export function Workspace() {
         onFocus={setSalesFocus}
       />
     );
-  else if (tab === "shift" || !sellable)
+  else if (view === "shift" || !sellable)
     screen = (
         <ShiftScreen
-          key={tab}
-          compact={tab === "sell"}
+          key={view}
+          compact={view === "sell"}
           state={state}
           online={online}
           onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
@@ -581,10 +607,7 @@ export function Workspace() {
           onUnexpense={unexpense}
           onLink={(newShift) => owner({ action: "link", newShift })}
           onSell={() => go("sell")}
-          onGoMenu={() => {
-            setTab("settings");
-            setSettingsPage("menu");
-          }}
+          onGoMenu={canManageRecipes ? openMenu : undefined}
         />
       );
   else

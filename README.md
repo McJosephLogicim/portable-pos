@@ -29,13 +29,17 @@ Opening asks for the cash float, counted by coin and bill (for example ₱5 × 1
 
 After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Send image** shares a PNG made on the phone (or saves it where sharing files is not available), and **Copy text** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
 
-The Shifts page's share button copies the schedule grouped by place, one line per day with who works it, plus a link (`/?shifts=<business id>`) that opens that team's open seats. Teammates still need an invite to join.
+The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use Copy schedule to paste the preview into a chat. Teammates need an invite to join.
 
 ## Menu and stock
 
-The owner adds items from the **Add item** tile at the end of the Sell grid, or in Settings › Menu. New items and edits to names, prices and options appear on the open till and on other phones when they sync. Finish or clear a current order before changing its prices or selections on the same phone. Receipts made before the update sync with the menu version they used. Item removals and stock use changes take effect from the next shift.
+The owner adds items from the **Add item** tile at the end of the Sell grid, or in Recipes › Menu items. New items and edits to names, prices and options appear on the open till and on other phones when they sync. Finish or clear a current order before changing its prices or selections on the same phone. Receipts made before the update sync with the menu version they used. Item removals and stock use changes take effect from the next shift.
 
-Settings › Stock items lists what is counted at opening and closing, like a strawberry pack, a kilo of ice or a litre of milk, each with a unit (piece, pack, box, bottle, cup, tray, kg, g, L or mL). A menu item's **Uses stock** section picks the stock items one sale uses and how much, like 1 pack and 0.2 kg. Each sale takes that off what is left, a reversal puts it back, the Sell tile shows how many more can be made, and an item sells out when any stock it uses runs out, offline too. Menu items set up before stock items existed with **Count this item itself** still work as a stock item of their own.
+Recipes › Stock items lists what is counted at opening and closing, like a strawberry pack, a kilo of ice or a litre of milk, each with a unit (piece, pack, box, bottle, cup, tray, kg, g, L or mL). A menu item's **Uses stock** section picks the stock items one sale uses and how much, like 1 pack and 0.2 kg. Each sale takes that off what is left, a reversal puts it back, the Sell tile shows how many more can be made, and an item sells out when any stock it uses runs out, offline too. Menu items set up before stock items existed with **Count this item itself** still work as a stock item of their own.
+
+In Recipes › Prep recipes, batch costing uses purchased ingredients, finished yield, and any other batch cost. To add a recipe to a stock item that the menu already uses, open that item in Stock items and choose **Prep recipe** as its cost source. Menu costing picks up the result whenever an ingredient price or batch yield changes. The till counts the finished prep as its own stock item.
+
+In a menu item, turn on **Cost a batch** to enter ingredient quantities for the whole batch and its serving yield. The editor divides material costs by the yield, then adds labor and other variable costs per serving. The Stock section controls what the till deducts when a serving sells.
 
 When adding an item, categories, pick-one choices, add-ons and options already on the menu are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
 

@@ -1,7 +1,7 @@
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { round, stockModel, unitText } from "./stock";
-import { shiftRoleNames } from "./team";
+import { dayOf, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -243,25 +243,38 @@ function num(n: number) {
   return round(n).toLocaleString("en", { maximumFractionDigits: 3 });
 }
 
-/** Group a schedule by place, one line per day with who works it, to paste in a chat. */
+/** Group a schedule by place and event, with a direct link for each shift. */
 export function scheduleText(
   bookings: Booking[],
   timeZone: string,
+  { origin, businessId }: { origin: string; businessId: string },
 ) {
   const day = new Intl.DateTimeFormat("en", { timeZone, month: "short", day: "numeric" });
-  const groups = new Map<string, Booking[]>();
+  const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+  const link = new URL("/", origin);
+  link.searchParams.set("shifts", businessId);
+  const groups = new Map<string, Map<string, Booking[]>>();
   for (const b of [...bookings].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
     const name = [b.place?.name, b.event?.name].filter(Boolean).join(" - ") || b.organizer?.name || "Shifts";
-    groups.set(name, [...(groups.get(name) ?? []), b]);
+    const days = groups.get(name) ?? new Map<string, Booking[]>();
+    const date = dayOf(b.startsAt, timeZone);
+    days.set(date, [...(days.get(date) ?? []), b]);
+    groups.set(name, days);
   }
   return [...groups]
-    .map(([name, list]) => {
-      const lines = new Map<string, string[]>();
-      for (const b of list) {
-        const d = day.format(new Date(b.startsAt));
-        lines.set(d, [...(lines.get(d) ?? []), ...b.staff.map((s) => s.name.split(" ")[0])]);
-      }
-      return [name, ...[...lines].map(([d, people]) => [d, [...new Set(people)].join(", ")].filter(Boolean).join(" "))].join("\n");
+    .map(([name, days]) => {
+      const lines = [...days.values()].flatMap((shifts) =>
+        shifts.map((b) => {
+          const starts = new Date(b.startsAt);
+          const people = [...new Set(b.staff.map((s) => s.name.split(" ")[0]))].join(", ");
+          const label = [day.format(starts), shifts.length > 1 ? time.format(starts) : "", people]
+            .filter(Boolean)
+            .join(" ");
+          link.searchParams.set("shift", b.id);
+          return `${label} - ${link.href}`;
+        }),
+      );
+      return [name, ...lines].join("\n");
     })
     .join("\n\n");
 }

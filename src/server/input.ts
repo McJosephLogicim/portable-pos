@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkSettings } from "../lib/settings";
+import { checkPrepRecipes, maxBatchServings } from "../lib/stock";
 import { planActions } from "../lib/team";
 import { ensure } from "./errors";
 
@@ -7,6 +8,7 @@ const key = z.string().trim().min(1).max(128);
 const name = z.string().trim().min(1).max(120);
 const pin = z.string().regex(/^\d{4,8}$/, "Use a 4 to 8 digit owner PIN.");
 const amount = z.number().int().min(0).max(2147483647);
+const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000) });
 const product = z.object({
   id: key,
   name,
@@ -19,9 +21,19 @@ const product = z.object({
     .optional(),
   stock: z.boolean().optional(),
   uses: z
-    .array(z.object({ stockId: key, amount: z.number().positive().max(100000) }))
+    .array(stockUse)
     .max(20)
     .optional(),
+  costing: z.object({
+    batch: z.object({
+      servings: z.number().int().min(1).max(maxBatchServings),
+      uses: z.array(stockUse).min(1).max(20).refine(
+        (uses) => new Set(uses.map((use) => use.stockId)).size === uses.length,
+      ),
+    }).optional(),
+    laborPerServing: amount.optional(),
+    otherPerServing: amount.optional(),
+  }).optional(),
   groups: z
     .array(
       z.object({
@@ -124,6 +136,16 @@ const settings = z.object({
         id: key,
         name: z.string().trim().min(1).max(60),
         unit: z.string().trim().min(1).max(16),
+        purchase: z.object({
+          price: amount,
+          quantity: z.number().min(0.001).max(1_000_000),
+          yieldPercent: z.number().min(0.01).max(100).optional(),
+        }).optional(),
+        prep: z.object({
+          yieldQuantity: z.number().min(0.001).max(1_000_000),
+          uses: z.array(stockUse).min(1).max(20),
+          extraBatchCost: amount.optional(),
+        }).optional(),
       }),
     )
     .max(100)
@@ -318,6 +340,7 @@ export function parseCommand(input: unknown) {
   if (value.action === "settings") {
     try {
       checkSettings(value.settings);
+      checkPrepRecipes(value.settings.stockItems);
     } catch (error) {
       ensure(false, (error as Error).message);
     }

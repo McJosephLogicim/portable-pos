@@ -170,17 +170,27 @@ test(
     await o({ action: "setup", name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin });
     const bread = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
     await o({ action: "menu", menu: [bread], pin });
-    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }] } });
+    const stockItem = { id: bread.id, name: bread.name, unit: "piece" };
+    const purchase = { price: 500, quantity: 1 };
+    const garnish = { id: "crumbs", name: "Bread crumbs", unit: "g" };
+    const prep = { yieldQuantity: 50, uses: [{ stockId: stockItem.id, amount: 1 }] };
+    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }], stockItems: [{ ...stockItem, purchase }, { ...garnish, prep }] } });
+    const costing = { laborPerServing: 200, batch: { servings: 12, uses: [{ stockId: garnish.id, amount: 50 }] } };
+    await o({ action: "menu", menu: [{ ...bread, costing }], pin });
     let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), rate: 70000, pin });
     snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, rate: 60000, pin });
     assert.equal(snap.team!.length, 3);
     assert.equal(snap.me!.owner, true);
+    assert.deepEqual(snap.business!.settings.stockItems, [{ ...stockItem, purchase }, { ...garnish, prep }]);
+    assert.deepEqual(snap.menu[0].costing, costing);
     // An unconfirmed address can't claim the invite.
     assert.equal((await runCommand({ id: beaUser.id, email: null }, { action: "bootstrap" })).business, null);
     const bea = as(beaUser);
     const asBea = await bea({ action: "bootstrap" });
     assert.equal(asBea.business!.name, "Pop-up");
     assert.equal(asBea.me!.owner, false);
+    assert.deepEqual(asBea.business!.settings.stockItems, [stockItem, garnish]);
+    assert.equal(asBea.menu[0].costing, undefined);
     assert.deepEqual(asBea.team, []);
     await assert.rejects(bea({ action: "menu", menu: [], pin }), /owner/);
     await assert.rejects(bea({ action: "setup", name: "Mine", currency: "PHP", timeZone: "UTC", pin }), { status: 409 });
@@ -208,12 +218,18 @@ test(
     snap = await o({ action: "assign", bookingId: id, memberId: ownerMe.memberId, role: "cashier", replace: asBea.me!.memberId, pin });
     assert.deepEqual(snap.bookings![0].staff.map((s) => s.name).sort(), ["Owner " + ownerUser.email.split("@")[0].slice(6).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), "Paolo"].sort());
 
-    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: [] }), /checklist/);
+    const openingStock = { bread: 2, crumbs: 50 };
+    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: [] }), /checklist/);
     await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: {}, checked: ["float"] }), /Count/);
-    const opened = await o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: ["float"], bookingId: id });
+    const opened = await o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: ["float"], bookingId: id });
     const shift = opened.shift!;
-    assert.deepEqual(shift.stock, { bread: 2 });
+    assert.equal(shift.menu[0].costing, undefined);
+    assert.deepEqual(shift.settings.stockItems, [stockItem, garnish]);
+    assert.deepEqual(shift.stock, openingStock);
     assert.equal(shift.bookingId, id);
+    const recosted = await o({ action: "menu", menu: [{ ...bread, costing: { ...costing, laborPerServing: 250 } }], pin });
+    assert.equal(recosted.menu[0].costing?.laborPerServing, 250);
+    assert.equal(recosted.shift!.menuVersion, shift.menuVersion);
     const sale = (n: number, quantity: number) => {
       const s = makeSale({ id: randomUUID(), shift, sequence: n, cart: [{ productId: "bread", optionIds: [], quantity }], soldOut: [], tender: "cash", received: 5000, createdAt: new Date().toISOString() });
       return { type: "sale" as const, id: s.id, shiftId: shift.id, sale: s };
@@ -244,7 +260,7 @@ test(
     await o({ action: "menu", menu: editedMenu, deviceId, pin });
     const refreshed = await o({ action: "bootstrap" });
     assert.equal(refreshed.shift!.id, shift.id);
-    assert.deepEqual(refreshed.shift!.stock, { bread: 2, ube: 4 });
+    assert.deepEqual(refreshed.shift!.stock, { ...openingStock, ube: 4 });
     assert.equal(stockLeft(refreshed.shift!, refreshed.sales).bread, -1);
     assert.equal(refreshed.sales[0].lines[0].name, "Pandesal");
     assert.equal(refreshed.shift!.menu[0].name, "Fresh Pandesal");

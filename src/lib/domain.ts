@@ -1,5 +1,5 @@
 import { currencyDigits, discountAmount } from "./settings";
-import { canMake, round, shiftStock, stockModel } from "./stock";
+import { canMake, round, shiftStock, stockModel, withoutMenuCosts } from "./stock";
 import type {
   CartLine,
   Expense,
@@ -135,7 +135,7 @@ export function updateShiftMenu(
   menu: Product[],
   counts: Record<string, number> = {},
 ): Shift {
-  const byId = new Map(menu.map((item) => [item.id, item]));
+  const byId = new Map(withoutMenuCosts(menu).map((item) => [item.id, item]));
   const current = shift.menu.map((item) => {
     const updated = byId.get(item.id);
     byId.delete(item.id);

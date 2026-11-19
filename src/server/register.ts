@@ -8,6 +8,7 @@ import {
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
+import { batchIngredientProblem, hasStockCostAmounts, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
 import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
 import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
@@ -115,6 +116,8 @@ export async function runCommand(
     }
 
     if (cmd.action === "menu") {
+      const problem = batchIngredientProblem(cmd.menu, business.settings?.stockItems);
+      if (problem) ensure(false, problem);
       await tx
         .update(businesses)
         .set({ menu: cmd.menu })
@@ -141,6 +144,8 @@ export async function runCommand(
         }
       }
     } else if (cmd.action === "settings") {
+      const problem = batchIngredientProblem(business.menu, cmd.settings.stockItems);
+      if (problem) ensure(false, problem);
       const [open] = await tx
         .select()
         .from(shifts)
@@ -153,6 +158,12 @@ export async function runCommand(
           !business.menu.length ||
             currencyDigits(cmd.currency) === currencyDigits(business.currency),
           `${cmd.currency} uses different decimals. Clear the menu first or keep ${business.currency}.`,
+          409,
+        );
+        ensure(
+          !hasStockCostAmounts(cmd.settings) ||
+            currencyDigits(cmd.currency) === currencyDigits(business.currency),
+          `${cmd.currency} uses different decimals. Clear the stock and batch costs first or keep ${business.currency}.`,
           409,
         );
       }
@@ -224,9 +235,9 @@ export async function runCommand(
           openingCash: cmd.openingCash,
           number: (last?.number ?? 0) + 1,
           openedAt: new Date().toISOString(),
-          menu: business.menu,
+          menu: withoutMenuCosts(business.menu),
           settings: {
-            ...(business.settings ?? defaultSettings(business.currency)),
+            ...withoutStockCosts(business.settings ?? defaultSettings(business.currency)),
             currency: business.currency,
           },
         });

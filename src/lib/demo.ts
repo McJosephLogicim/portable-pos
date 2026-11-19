@@ -1,11 +1,11 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
 import { checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu } from "./domain";
-import { round } from "./stock";
+import { batchIngredientProblem, checkPrepRecipes, hasStockCostAmounts, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
-import { defaultSettings, mergeShiftSettings } from "./settings";
+import { currencyDigits, defaultSettings, mergeShiftSettings } from "./settings";
 import type {
   Bootstrap,
   Product,
@@ -33,8 +33,8 @@ export function newShift(
     openedAt: new Date().toISOString(),
     closedAt: null,
     openingCash,
-    menu: structuredClone(menu),
-    settings: structuredClone(settings),
+    menu: structuredClone(withoutMenuCosts(menu)),
+    settings: structuredClone(withoutStockCosts(settings)),
   };
 }
 export function demoBootstrap(deviceId: string): Bootstrap {
@@ -185,6 +185,8 @@ export function demoAction(
       };
     }
     case "menu": {
+      const problem = batchIngredientProblem(input.menu, state.business?.settings.stockItems);
+      if (problem) throw Error(problem);
       const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock);
       return {
         ...state,
@@ -197,6 +199,11 @@ export function demoAction(
       const business = state.business!;
       if (input.currency !== business.currency && state.shift)
         throw Error("Close the shift before changing currency.");
+      if (hasStockCostAmounts(input.settings) && currencyDigits(input.currency) !== currencyDigits(business.currency))
+        throw Error(`${input.currency} uses different decimals. Clear the stock and batch costs first or keep ${business.currency}.`);
+      checkPrepRecipes(input.settings.stockItems);
+      const problem = batchIngredientProblem(state.menu, input.settings.stockItems);
+      if (problem) throw Error(problem);
       const shift = state.shift && {
         ...state.shift,
         settings: mergeShiftSettings(state.shift.settings, input.settings),

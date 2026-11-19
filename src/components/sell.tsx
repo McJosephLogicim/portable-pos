@@ -232,7 +232,7 @@ function ItemOptions({
                 <button
                   key={option.id}
                   type="button"
-                  className="list-row"
+                  className="list-row sell-option"
                   role={group.required ? "radio" : "checkbox"}
                   aria-checked={on}
                   disabled={out || busy}
@@ -1198,6 +1198,7 @@ export function SellScreen({
           menu={state.menu}
           liveShift
           stockItems={shift.settings.stockItems}
+          costItems={business.settings.stockItems}
           onClose={() => setAdding(false)}
           onSave={async (item, count) => {
             const done = await withPin((pin) =>

@@ -23,6 +23,7 @@ import {
   buzz,
   centerOf,
   EmptyRow,
+  progressStyle,
   useCelebrate,
   useCountUp,
   usePin,
@@ -232,7 +233,7 @@ function NoShift({
   state: RegisterState;
   onStart: (bookingId: string) => void;
   onSchedule: () => void;
-  onGoMenu: () => void;
+  onGoMenu?: () => void;
 }) {
   const zone = state.business!.timeZone;
   if (!state.menu.length)
@@ -242,10 +243,14 @@ function NoShift({
           Add what you sell <span className="g">before the first shift.</span>
         </h1>
         <div className="card card-pad stack gap-12">
-          <p className="muted">A name and a price is enough. Photos and options can come later.</p>
-          <button className="btn" onClick={onGoMenu}>
-            Add menu items
-          </button>
+          {onGoMenu ? (
+            <>
+              <p className="muted">A name and a price is enough. Photos and options can come later.</p>
+              <button className="btn" onClick={onGoMenu}>Add menu items</button>
+            </>
+          ) : (
+            <p className="muted">Ask the owner to add the first menu item.</p>
+          )}
         </div>
       </div>
     );
@@ -384,7 +389,7 @@ function OpenShift({
             </span>
           </div>
           <span className="bar wide" aria-hidden="true">
-            <i style={{ width: `${(checked.length / checklist.length) * 100}%` }} />
+            <i style={progressStyle((checked.length / checklist.length) * 100)} />
           </span>
           <div className="card card-list">
             {checklist.map((c) => {
@@ -699,7 +704,7 @@ export function ShiftScreen({
   onUnexpense: (id: string) => Promise<void>;
   onLink: (walkIn: WalkIn) => Promise<void>;
   onSell: () => void;
-  onGoMenu: () => void;
+  onGoMenu?: () => void;
   onSchedule: () => void;
   onSales: (focus: SalesFocus) => void;
   demo: boolean;
@@ -861,7 +866,7 @@ export function ShiftScreen({
                       <span className="grow stack">
                         <span className="ellipsis">{item?.name ?? "Stock item"}</span>
                         <span className="meter" aria-hidden="true">
-                          <i style={{ width: `${opened ? Math.max(0, left / opened) * 100 : 0}%` }} />
+                          <i style={progressStyle(opened ? Math.max(0, left / opened) * 100 : 0)} />
                         </span>
                       </span>
                       <span className={"num" + (left <= 0 ? " g" : "")}>
