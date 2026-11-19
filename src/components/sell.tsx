@@ -15,13 +15,16 @@ import {
   parseMoney,
   priceLines,
   priceOrder,
+  stockLeft,
   totalLines,
 } from "@/lib/domain";
+import { ItemSheet } from "./settings";
 import { currencyDigits } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
   DoneCheck,
   errorText,
+  usePin,
   formatMoney,
   haptic,
   MethodIcon,
@@ -619,6 +622,8 @@ export interface SellProps {
   ) => Promise<Sale>;
   onAvailability: (targetId: string, soldOut: boolean) => Promise<void>;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
+  onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
+  onSaved: (text: string) => void;
 }
 
 export function SellScreen({
@@ -630,7 +635,11 @@ export function SellScreen({
   onCheckout,
   onAvailability,
   onReverse,
+  onMenu,
+  onSaved,
 }: SellProps) {
+  const [adding, setAdding] = useState(false);
+  const withPin = usePin();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
@@ -643,6 +652,7 @@ export function SellScreen({
   const lock = useRef(false);
   const shift = state.shift!;
   const business = state.business!;
+  const canEdit = !state.me || state.me.owner;
   const currency = shift.settings.currency;
   const menu = shift.menu;
   const categories = useMemo(
@@ -713,7 +723,9 @@ export function SellScreen({
     void write(() => onCart(next));
     if (!next.length) setCharging(false);
   }
+  const left = stockLeft(shift, state.sales);
   const isOut = (p: Product) =>
+    (p.id in left && left[p.id] <= 0) ||
     state.soldOut.includes(p.id) ||
     p.groups.some(
       (g) => g.required && g.options.every((o) => state.soldOut.includes(o.id)),
@@ -893,10 +905,29 @@ export function SellScreen({
                   <span className="name">{product.name}</span>
                   <span className="price">{formatMoney(product.price, currency)}</span>
                   {out && <span className="out-tag">Sold out</span>}
+                  {!out && product.id in left && (
+                    <span className={"stock-tag" + (left[product.id] - qty <= 3 ? " low" : "")}>
+                      {Math.max(0, left[product.id] - qty)} left
+                    </span>
+                  )}
                   {qty > 0 && !marking && <span className="badge qty">{qty}</span>}
                 </button>
               );
             })}
+            {canEdit && !marking && !q && !category && (
+              <button
+                className="item add-tile"
+                disabled={!online}
+                onClick={() => setAdding(true)}
+                aria-label="Add an item to the menu"
+              >
+                <span className="add-plus" aria-hidden="true">
+                  <Plus size={22} />
+                </span>
+                <span className="name">Add item</span>
+                <span className="price">{online ? "Sells from now" : "Connect to add"}</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="empty card">
@@ -909,8 +940,15 @@ export function SellScreen({
             <p className="label">
               {menu.length
                 ? "Try another name or category."
-                : "Add items in Settings, then open the next shift."}
+                : canEdit
+                  ? "Add your first item. It goes on sale right away."
+                  : "Ask the owner to add items."}
             </p>
+            {canEdit && !menu.length && (
+              <button className="btn" disabled={!online} onClick={() => setAdding(true)}>
+                <Plus size={18} /> Add item
+              </button>
+            )}
           </div>
         )}
         <aside className="order-panel card" aria-label="Current order">
@@ -979,6 +1017,21 @@ export function SellScreen({
           onReceipt={(sale) => {
             setCharging(false);
             setReceipt(sale);
+          }}
+        />
+      )}
+      {adding && (
+        <ItemSheet
+          currency={currency}
+          categories={Array.from(new Set(state.menu.map((m) => m.category).filter(Boolean)))}
+          liveShift
+          onClose={() => setAdding(false)}
+          onSave={async (item, count) => {
+            const done = await withPin((pin) =>
+              onMenu([...state.menu, item], pin, count !== undefined ? { [item.id]: count } : undefined),
+            );
+            if (done) onSaved("Added " + item.name);
+            return done;
           }}
         />
       )}

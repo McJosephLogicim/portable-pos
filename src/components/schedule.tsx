@@ -1,0 +1,1193 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Minus,
+  Plus,
+  Trash2,
+  Trophy,
+  X,
+} from "lucide-react";
+import type { OwnerAction } from "@/lib/demo";
+import { amountText, parseMoney } from "@/lib/domain";
+import { slugId } from "@/lib/settings";
+import {
+  addDays,
+  bookingProfit,
+  dayOf,
+  daysBetween,
+  roleNames,
+  salesByBooking,
+  shiftTimes,
+  timeOf,
+  weekday,
+  type BookingInput,
+} from "@/lib/team";
+import type {
+  Booking,
+  Member,
+  Organizer,
+  Place,
+  RegisterState,
+  Role,
+  StaffSlot,
+  Tag,
+} from "@/lib/types";
+import { Combobox } from "./combobox";
+import { LocationPicker, MapPreview, mapsLink } from "./places";
+import { bookingTitle } from "./shift";
+import { Avatar, RolePicker } from "./team";
+import { errorText, formatMoney, Money, MoneyField, Sheet, usePin } from "./ui";
+
+type Act = (input: OwnerAction) => Promise<void>;
+
+export interface ScheduleProps {
+  state: RegisterState;
+  online: boolean;
+  demo: boolean;
+  onAction: Act;
+  onSaved: (text: string) => void;
+}
+
+const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
+
+function useFormats(timeZone: string) {
+  return useMemo(
+    () => ({
+      time: new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" }),
+      day: new Intl.DateTimeFormat("en", { timeZone, weekday: "short", month: "short", day: "numeric" }),
+      long: new Intl.DateTimeFormat("en", { timeZone, weekday: "long", month: "long", day: "numeric" }),
+    }),
+    [timeZone],
+  );
+}
+
+/** "Sat 22" style, for a plain "YYYY-MM-DD" date. */
+function plainDay(day: string, options: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat("en", { ...options, timeZone: "UTC" }).format(new Date(day + "T12:00:00Z"));
+}
+
+function seatsOpen(b: Booking) {
+  return Math.max(0, b.seats - b.staff.length);
+}
+
+/* ---------- calendar ---------- */
+
+function MonthCalendar({
+  month,
+  selected,
+  today,
+  marks,
+  onMonth,
+  onSelect,
+}: {
+  month: string; // YYYY-MM-01
+  selected: string;
+  today: string;
+  marks: Map<string, { count: number; open: boolean; mine: boolean }>;
+  onMonth: (month: string) => void;
+  onSelect: (day: string) => void;
+}) {
+  const first = weekday(month);
+  const start = addDays(month, -first);
+  const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  const rows = days[35].slice(0, 7) === month.slice(0, 7) ? 6 : 5;
+  const shift = (n: number) => {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + n, 1));
+    onMonth(d.toISOString().slice(0, 10));
+  };
+  return (
+    <div className="card calendar">
+      <div className="between cal-head">
+        <span className="strong">{plainDay(month, { month: "long", year: "numeric" })}</span>
+        <span className="row gap-4">
+          <button type="button" className="round flat" aria-label="Previous month" onClick={() => shift(-1)}>
+            <ChevronLeft size={19} />
+          </button>
+          <button type="button" className="round flat" aria-label="Next month" onClick={() => shift(1)}>
+            <ChevronRight size={19} />
+          </button>
+        </span>
+      </div>
+      <div className="cal-grid" role="grid" aria-label="Shifts by day">
+        {weekdayLetters.map((d, i) => (
+          <span key={i} className="cal-dow" aria-hidden="true">
+            {d}
+          </span>
+        ))}
+        {days.slice(0, rows * 7).map((day) => {
+          const mark = marks.get(day);
+          const outside = day.slice(0, 7) !== month.slice(0, 7);
+          return (
+            <button
+              key={day}
+              type="button"
+              role="gridcell"
+              className={
+                "cal-day" +
+                (outside ? " outside" : "") +
+                (day === today ? " today" : "") +
+                (mark?.mine ? " mine" : "")
+              }
+              aria-selected={day === selected}
+              aria-label={
+                plainDay(day, { weekday: "long", month: "long", day: "numeric" }) +
+                (mark ? `, ${mark.count} ${mark.count === 1 ? "shift" : "shifts"}${mark.open ? ", open seats" : ""}` : "")
+              }
+              onClick={() => onSelect(day)}
+            >
+              <span className="cal-num">{Number(day.slice(8))}</span>
+              <span className="cal-dots" aria-hidden="true">
+                {mark &&
+                  Array.from({ length: Math.min(3, mark.count) }, (_, i) => (
+                    <i key={i} className={mark.open && i === 0 ? "open" : ""} />
+                  ))}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- a shift in a list ---------- */
+
+function BookingCard({
+  b,
+  state,
+  sales,
+  onOpen,
+}: {
+  b: Booking;
+  state: RegisterState;
+  sales?: number;
+  onOpen: () => void;
+}) {
+  const business = state.business!;
+  const f = useFormats(business.timeZone);
+  const me = state.me;
+  const mine = b.staff.some((s) => s.memberId === me?.memberId);
+  const open = seatsOpen(b);
+  const past = Date.parse(b.endsAt) < Date.now();
+  const p = me?.owner && sales !== undefined ? bookingProfit({ ...b, sales }) : null;
+  return (
+    <button type="button" className={"card booking" + (past ? " past" : "")} onClick={onOpen}>
+      <span className="booking-time">
+        <span className="strong">{f.time.format(new Date(b.startsAt))}</span>
+        <span className="label">{f.time.format(new Date(b.endsAt))}</span>
+      </span>
+      <span className="grow stack gap-4">
+        <span className="strong ellipsis">{bookingTitle(b)}</span>
+        <span className="label ellipsis">
+          {[b.place && b.event ? b.place.name : "", b.organizer?.name].filter(Boolean).join(" · ") || "No location yet"}
+        </span>
+        <span className="row gap-6 faces">
+          {b.staff.slice(0, 4).map((s) => (
+            <Avatar key={s.memberId} name={s.name} small />
+          ))}
+          {Array.from({ length: Math.min(3, open) }, (_, i) => (
+            <span key={i} className="avatar small seat" aria-hidden="true" />
+          ))}
+          <span className="label">
+            {mine ? "You're on" : open ? `${open} open` : "Full"}
+          </span>
+        </span>
+      </span>
+      {p && past && (
+        <span className={"pill" + (p.net >= 0 ? " good" : " bad")}>
+          {p.net >= 0 ? "+" : "−"}
+          {formatMoney(Math.abs(p.net), business.currency)}
+        </span>
+      )}
+      {!past && open > 0 && !mine && <span className="pill">Open</span>}
+    </button>
+  );
+}
+
+/* ---------- people ---------- */
+
+function PersonPicker({
+  team,
+  title,
+  exclude,
+  roleHint,
+  onPick,
+  onClose,
+}: {
+  team: Member[];
+  title: string;
+  exclude: string[];
+  roleHint?: Role;
+  onPick: (member: Member, role: Role) => void;
+  onClose: () => void;
+}) {
+  const [member, setMember] = useState<Member | null>(null);
+  const [role, setRole] = useState<Role[]>([]);
+  const people = team.filter((m) => !exclude.includes(m.id));
+  return (
+    <Sheet
+      title={member ? member.name : title}
+      onClose={onClose}
+      footer={
+        member && (
+          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, role[0])}>
+            Add as {role.length ? roleNames[role[0]].toLowerCase() : "…"}
+          </button>
+        )
+      }
+    >
+      {member ? (
+        <div className="field">
+          <span>Working as</span>
+          <RolePicker value={role} onChange={setRole} allowed={member.roles} single />
+        </div>
+      ) : people.length ? (
+        <div className="card card-list">
+          {people.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="list-row"
+              onClick={() => {
+                if (m.roles.length === 1) onPick(m, m.roles[0]);
+                else {
+                  setMember(m);
+                  setRole([roleHint && m.roles.includes(roleHint) ? roleHint : m.roles[0]]);
+                }
+              }}
+            >
+              <Avatar name={m.name} dim={!m.joined} />
+              <span className="grow stack">
+                <span className="ellipsis">{m.owner ? m.name + " (you)" : m.name}</span>
+                <span className="label">
+                  {m.roles.map((r) => roleNames[r]).join(" and ")}
+                  {m.joined ? "" : " · invite pending"}
+                </span>
+              </span>
+              <ChevronRight size={18} className="chev" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="label">Everyone on the team is already on this shift. Invite more people in Settings › Team.</p>
+      )}
+    </Sheet>
+  );
+}
+
+/* ---------- details ---------- */
+
+function BookingSheet({
+  booking: b,
+  props,
+  sales,
+  onEdit,
+  onClose,
+}: {
+  booking: Booking;
+  props: ScheduleProps;
+  sales?: number;
+  onEdit: () => void;
+  onClose: () => void;
+}) {
+  const { state, online } = props;
+  const business = state.business!;
+  const currency = business.currency;
+  const me = state.me!;
+  const f = useFormats(business.timeZone);
+  const withPin = usePin();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [picking, setPicking] = useState<{ replace?: StaffSlot } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [managing, setManaging] = useState<StaffSlot | null>(null);
+  const mine = b.staff.find((s) => s.memberId === me.memberId);
+  const open = seatsOpen(b);
+  const started = Date.parse(b.startsAt) <= Date.now();
+  const over = Date.parse(b.endsAt) <= Date.now();
+  const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0 }) : null;
+  const team = state.team ?? [];
+  const joinable = me.roles.filter(() => !mine && open > 0 && !over);
+
+  async function run(input: OwnerAction, label: string, owner = true) {
+    setBusy(true);
+    setError("");
+    try {
+      const done = owner
+        ? await withPin((pin) => props.onAction({ ...input, pin } as OwnerAction))
+        : (await props.onAction(input), true);
+      if (done) props.onSaved(label);
+      return done;
+    } catch (e) {
+      setError(errorText(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Sheet
+        title={bookingTitle(b)}
+        onClose={onClose}
+        busy={busy}
+        action={
+          me.owner && (
+            <button className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
+              Edit
+            </button>
+          )
+        }
+        footer={
+          !me.owner &&
+          (mine ? (
+            !started && (
+              <button
+                className="btn secondary block"
+                disabled={!online || busy}
+                onClick={() => void run({ action: "leave", bookingId: b.id, memberId: me.memberId }, "You left the shift", false)}
+              >
+                Leave this shift
+              </button>
+            )
+          ) : joinable.length ? (
+            <div className={joinable.length === 2 ? "grid-2" : "stack"}>
+              {joinable.map((r) => (
+                <button
+                  key={r}
+                  className={"btn block" + (joinable.length === 2 && r === "server" ? " secondary" : "")}
+                  disabled={!online || busy}
+                  onClick={() => void run({ action: "join", bookingId: b.id, role: r }, "You're on the shift", false)}
+                >
+                  Join as {roleNames[r].toLowerCase()}
+                </button>
+              ))}
+            </div>
+          ) : null)
+        }
+      >
+        <div className="stack gap-4">
+          <p className="strong">{f.long.format(new Date(b.startsAt))}</p>
+          <p className="label">
+            {f.time.format(new Date(b.startsAt))} to {f.time.format(new Date(b.endsAt))}
+            {b.organizer ? " · " + b.organizer.name : ""}
+          </p>
+        </div>
+        {b.place && (
+          <a className="card place-card" href={mapsLink(b.place)} target="_blank" rel="noreferrer">
+            {b.place.lat !== undefined && b.place.lon !== undefined && (
+              <MapPreview lat={b.place.lat} lon={b.place.lon} height={140} />
+            )}
+            <span className="row gap-10 place-meta">
+              <MapPin size={18} strokeWidth={1.8} />
+              <span className="grow stack">
+                <span className="ellipsis">{b.place.name}</span>
+                {b.place.address && <span className="label ellipsis">{b.place.address}</span>}
+              </span>
+              <span className="label">Directions</span>
+            </span>
+          </a>
+        )}
+
+        <div className="stack gap-10">
+          <p className="group-title">
+            People · {b.staff.length} of {b.seats}
+          </p>
+          <div className="card card-list">
+            {b.staff.map((s) => (
+              <div
+                className="list-row"
+                key={s.memberId}
+                role={me.owner ? "button" : undefined}
+                tabIndex={me.owner ? 0 : undefined}
+                onClick={me.owner && online && !busy ? () => setManaging(s) : undefined}
+              >
+                <Avatar name={s.name} />
+                <span className="grow stack">
+                  <span className="ellipsis">
+                    {s.memberId === me.memberId ? s.name + " (you)" : s.name}
+                  </span>
+                  <span className="label">
+                    {roleNames[s.role]}
+                    {s.salary !== undefined ? " · " + formatMoney(s.salary, currency) : ""}
+                  </span>
+                </span>
+                {me.owner && <ChevronRight size={18} className="chev" />}
+              </div>
+            ))}
+            {Array.from({ length: open }, (_, i) => (
+              <div className="list-row" key={"open" + i}>
+                <span className="avatar seat" aria-hidden="true" />
+                <span className="grow g">Open seat</span>
+                {me.owner && (
+                  <button
+                    type="button"
+                    className="btn small secondary"
+                    disabled={!online || busy}
+                    onClick={() => setPicking({})}
+                  >
+                    Assign
+                  </button>
+                )}
+              </div>
+            ))}
+            {me.owner && !open && (
+              <button type="button" className="list-row" disabled={!online || busy} onClick={() => setPicking({})}>
+                <span className="avatar seat" aria-hidden="true">
+                  <Plus size={16} />
+                </span>
+                <span className="grow">Add someone</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {b.quota > 0 && (
+          <div className="tile">
+            <span className="between">
+              <span className="label">Quota</span>
+              {p?.hit && (
+                <span className="pill good">
+                  <Trophy size={13} /> Hit
+                </span>
+              )}
+            </span>
+            <span className="row gap-6">
+              <Money value={b.quota} currency={currency} className="tile-num" />
+            </span>
+            {p && (
+              <span className="meter" aria-label={`${Math.min(100, Math.round((p.sales / b.quota) * 100))}% of quota`}>
+                <i style={{ width: `${Math.min(100, (p.sales / b.quota) * 100)}%` }} />
+              </span>
+            )}
+            <span className="micro">
+              {b.incentive
+                ? `${formatMoney(b.incentive, currency)} each when sales reach it.`
+                : "No incentive set."}
+            </span>
+          </div>
+        )}
+
+        {p && (
+          <div className="stack gap-10">
+            <p className="group-title">{over ? "How it did" : started ? "So far" : "Break-even"}</p>
+            <div className="card card-list">
+              <div className="list-row">
+                <span className="grow">Sales</span>
+                <Money value={p.sales} currency={currency} />
+              </div>
+              <div className="list-row">
+                <span className="grow">Rent</span>
+                <Money value={-p.rent} currency={currency} sign />
+              </div>
+              <div className="list-row">
+                <span className="grow">Salaries</span>
+                <Money value={-p.salaries} currency={currency} sign />
+              </div>
+              {p.hit && (
+                <div className="list-row">
+                  <span className="grow">Incentives · {b.staff.length} people</span>
+                  <Money value={-p.incentives} currency={currency} sign />
+                </div>
+              )}
+              <div className="list-row">
+                <span className="grow strong">
+                  {!started && !p.sales ? "Sales needed to cover costs" : p.net >= 0 ? "Profit" : "Loss"}
+                </span>
+                {!started && !p.sales ? (
+                  <Money value={p.costs} currency={currency} className="strong" />
+                ) : (
+                  <span className={"row gap-6 strong" + (p.net < 0 ? " danger" : "")}>
+                    <span className={"dot " + (p.net >= 0 ? "success" : "danger")} />
+                    <Money value={p.net} currency={currency} />
+                  </span>
+                )}
+              </div>
+            </div>
+            <p className="label">
+              Sales come from tills opened for this shift. Cost of goods isn't counted.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        {me.owner &&
+          (confirmDelete ? (
+            <div className="notice">
+              <span className="grow">Delete this shift for everyone?</span>
+              <button className="btn small secondary" onClick={() => setConfirmDelete(false)}>
+                Keep
+              </button>
+              <button
+                className="btn small"
+                disabled={busy}
+                onClick={async () => {
+                  if (await run({ action: "deleteBooking", bookingId: b.id }, "Shift deleted")) onClose();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ) : (
+            <button className="btn ghost danger compact" disabled={!online || busy} onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={16} /> Delete shift
+            </button>
+          ))}
+      </Sheet>
+      {managing && (
+        <Sheet
+          title={managing.name}
+          onClose={() => setManaging(null)}
+          footer={
+            <>
+              {managing.memberId !== me.memberId && (
+                <button
+                  className="btn block"
+                  onClick={() => {
+                    const s = managing;
+                    setManaging(null);
+                    void run(
+                      {
+                        action: "assign",
+                        bookingId: b.id,
+                        memberId: me.memberId,
+                        role: me.roles.includes(s.role) ? s.role : me.roles[0],
+                        replace: s.memberId,
+                      },
+                      "You took over from " + s.name,
+                    );
+                  }}
+                >
+                  Take over this shift
+                </button>
+              )}
+              <button
+                className="btn secondary block"
+                onClick={() => {
+                  setPicking({ replace: managing });
+                  setManaging(null);
+                }}
+              >
+                Give it to someone else
+              </button>
+              <button
+                className="btn ghost danger compact block"
+                onClick={() => {
+                  const s = managing;
+                  setManaging(null);
+                  void run({ action: "leave", bookingId: b.id, memberId: s.memberId }, s.name + " is off the shift");
+                }}
+              >
+                Take {managing.memberId === me.memberId ? "yourself" : managing.name.split(" ")[0]} off
+              </button>
+            </>
+          }
+        >
+          <p className="label">
+            {roleNames[managing.role]}
+            {managing.salary !== undefined ? " · " + formatMoney(managing.salary, currency) + " for this shift" : ""}.{" "}
+            {managing.memberId !== me.memberId
+              ? "Taking over puts you in their seat, at your own pay."
+              : ""}
+          </p>
+        </Sheet>
+      )}
+      {picking && (
+        <PersonPicker
+          team={team}
+          title={picking.replace ? "Swap " + picking.replace.name + " for" : "Assign someone"}
+          exclude={b.staff.map((s) => s.memberId)}
+          roleHint={picking.replace?.role}
+          onClose={() => setPicking(null)}
+          onPick={async (m, role) => {
+            setPicking(null);
+            await run(
+              { action: "assign", bookingId: b.id, memberId: m.id, role, replace: picking.replace?.memberId },
+              picking.replace ? `${m.name} replaces ${picking.replace.name}` : `${m.name} is on the shift`,
+            );
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/* ---------- create and edit ---------- */
+
+interface Draft {
+  day: string;
+  until: string;
+  weekdays: number[];
+  start: string;
+  end: string;
+  place: Place | null;
+  organizer: Tag | null;
+  event: Tag | null;
+  seats: number;
+  staff: { memberId: string; name: string; role: Role; salary: string }[];
+  rent: string;
+  quota: string;
+  incentive: string;
+}
+
+function useOrganizers(state: RegisterState) {
+  const [organizers, setOrganizers] = useState<Organizer[]>(state.organizers ?? []);
+  const changed = JSON.stringify(organizers) !== JSON.stringify(state.organizers ?? []);
+  return { organizers, setOrganizers, changed };
+}
+
+function BookingEditor({
+  booking,
+  bulk = false,
+  props,
+  defaultDay,
+  onClose,
+}: {
+  booking?: Booking;
+  bulk?: boolean;
+  props: ScheduleProps;
+  defaultDay: string;
+  onClose: () => void;
+}) {
+  const { state } = props;
+  const business = state.business!;
+  const zone = business.timeZone;
+  const currency = business.currency;
+  const team = state.team ?? [];
+  const withPin = usePin();
+  const { organizers, setOrganizers, changed } = useOrganizers(state);
+  const money = (v?: number) => (v ? amountText(v, currency).replace(/\.0+$/, "") : "");
+  const [d, setD] = useState<Draft>(() => {
+    const last = [...(state.bookings ?? [])].sort((a, b) => b.startsAt.localeCompare(a.startsAt))[0];
+    const base = booking ?? last;
+    return {
+      day: booking ? dayOf(booking.startsAt, zone) : defaultDay,
+      until: addDays(defaultDay, 6),
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      start: base ? timeOf(base.startsAt, zone) : "10:00",
+      end: base ? timeOf(base.endsAt, zone) : "20:00",
+      place: booking ? booking.place : null,
+      organizer: booking ? booking.organizer : null,
+      event: booking ? booking.event : null,
+      seats: booking?.seats ?? base?.seats ?? 2,
+      staff: (booking?.staff ?? []).map((s) => ({ ...s, salary: money(s.salary) })),
+      rent: money(booking?.rent),
+      quota: money(booking?.quota),
+      incentive: money(booking?.incentive),
+    };
+  });
+  const [locating, setLocating] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
+  const organizer = organizers.find((o) => o.id === d.organizer?.id);
+  const days = bulk ? daysBetween(d.day, d.until, d.weekdays) : [d.day];
+  const recent = useMemo(() => {
+    const seen = new Map<string, Place>();
+    for (const b of [...(state.bookings ?? [])].reverse()) if (b.place) seen.set(b.place.name, b.place);
+    return [...seen.values()].slice(0, 8);
+  }, [state.bookings]);
+
+  function parse(v: string) {
+    return v.trim() ? parseMoney(v, currency) : 0;
+  }
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      const staff = d.staff.map((s) => ({ memberId: s.memberId, name: s.name, role: s.role, salary: parse(s.salary) }));
+      if (staff.length > d.seats) throw Error("More people than seats. Add a seat or take someone off.");
+      const rent = parse(d.rent);
+      const quota = parse(d.quota);
+      const incentive = parse(d.incentive);
+      if (bulk && !days.length) throw Error("No days match. Check the dates and weekdays.");
+      if (bulk && days.length > 120) throw Error("Add up to 120 shifts at a time.");
+      const make = (day: string, id: string): BookingInput => ({
+        id,
+        ...shiftTimes(day, d.start, d.end, zone),
+        place: d.place,
+        organizer: d.organizer,
+        event: d.event,
+        seats: d.seats,
+        staff,
+        rent,
+        quota,
+        incentive,
+      });
+      const done = await withPin(async (pin) => {
+        if (changed) await props.onAction({ action: "organizers", organizers, pin });
+        if (bulk)
+          await props.onAction({
+            action: "bulkBookings",
+            bookings: days.map((day) => make(day, crypto.randomUUID())),
+            pin,
+          });
+        else await props.onAction({ action: "booking", booking: make(d.day, booking?.id ?? crypto.randomUUID()), pin });
+      });
+      if (done) {
+        props.onSaved(bulk ? `Added ${days.length} shifts` : booking ? "Shift saved" : "Shift added");
+        onClose();
+      }
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const tag = (name: string, taken: string[]): Tag => ({ id: slugId(name, taken), name });
+
+  return (
+    <>
+      <Sheet
+        title={bulk ? "Add many shifts" : booking ? "Edit shift" : "New shift"}
+        onClose={onClose}
+        busy={busy}
+        footer={
+          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={() => void save()}>
+            {busy
+              ? "Saving…"
+              : bulk
+                ? days.length
+                  ? `Add ${days.length} ${days.length === 1 ? "shift" : "shifts"}`
+                  : "No days picked"
+                : booking
+                  ? "Save shift"
+                  : "Add shift"}
+          </button>
+        }
+      >
+        <div className="card card-pad stack gap-14">
+          <Combobox
+            label="Organizer"
+            placeholder="Who runs the market or event"
+            options={organizers}
+            value={d.organizer}
+            onChange={(o) => set({ organizer: o, event: o?.id === d.organizer?.id ? d.event : null })}
+            onCreate={(name) => {
+              const o = { ...tag(name, organizers.map((x) => x.id)), events: [] };
+              setOrganizers([...organizers, o]);
+              return o;
+            }}
+            onRemove={(o) => setOrganizers(organizers.filter((x) => x.id !== o.id))}
+          />
+          <Combobox
+            label="Event"
+            placeholder={d.organizer ? "e.g. Christmas Bazaar" : "Pick the organizer first"}
+            disabled={!d.organizer}
+            options={organizer?.events ?? []}
+            value={d.event}
+            onChange={(e) => set({ event: e })}
+            onCreate={(name) => {
+              const all = organizers.flatMap((o) => o.events.map((e) => e.id));
+              const e = tag(name, all);
+              setOrganizers(
+                organizers.map((o) => (o.id === d.organizer!.id ? { ...o, events: [...o.events, e] } : o)),
+              );
+              return e;
+            }}
+            onRemove={(e) =>
+              setOrganizers(
+                organizers.map((o) =>
+                  o.id === d.organizer!.id ? { ...o, events: o.events.filter((x) => x.id !== e.id) } : o,
+                ),
+              )
+            }
+          />
+          <div className="field">
+            <span>Location</span>
+            <button type="button" className="input place-button" onClick={() => setLocating(true)}>
+              <MapPin size={18} strokeWidth={1.8} />
+              <span className={"grow ellipsis" + (d.place ? "" : " g")}>
+                {d.place ? d.place.name : "Search a venue or address"}
+              </span>
+              {d.place && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="combo-clear"
+                  aria-label="Clear location"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    set({ place: null });
+                  }}
+                >
+                  <X size={16} />
+                </span>
+              )}
+            </button>
+            {d.place?.address && <p className="label">{d.place.address}</p>}
+          </div>
+        </div>
+
+        <div className="card card-pad stack gap-14">
+          {bulk ? (
+            <>
+              <div className="grid-2">
+                <label className="field">
+                  <span>From</span>
+                  <input className="input" type="date" value={d.day} onChange={(e) => e.target.value && set({ day: e.target.value })} />
+                </label>
+                <label className="field">
+                  <span>Until</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={d.until}
+                    min={d.day}
+                    onChange={(e) => e.target.value && set({ until: e.target.value })}
+                  />
+                </label>
+              </div>
+              <div className="field">
+                <span>On these days</span>
+                <div className="weekdays" role="group" aria-label="Weekdays">
+                  {weekdayLetters.map((w, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      aria-pressed={d.weekdays.includes(i)}
+                      aria-label={plainDay(addDays("2026-11-01", i), { weekday: "long" })}
+                      onClick={() =>
+                        set({
+                          weekdays: d.weekdays.includes(i) ? d.weekdays.filter((x) => x !== i) : [...d.weekdays, i],
+                        })
+                      }
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <label className="field">
+              <span>Date</span>
+              <input className="input" type="date" value={d.day} onChange={(e) => e.target.value && set({ day: e.target.value })} />
+            </label>
+          )}
+          <div className="grid-2">
+            <label className="field">
+              <span>Starts</span>
+              <input className="input" type="time" value={d.start} onChange={(e) => e.target.value && set({ start: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Ends</span>
+              <input className="input" type="time" value={d.end} onChange={(e) => e.target.value && set({ end: e.target.value })} />
+            </label>
+          </div>
+          {d.end <= d.start && <p className="label">Ends the next morning.</p>}
+          {bulk && (
+            <p className="label">
+              {days.length
+                ? `${days.length} ${days.length === 1 ? "shift" : "shifts"}: ${plainDay(days[0], { weekday: "short", month: "short", day: "numeric" })}${
+                    days.length > 1
+                      ? " to " + plainDay(days[days.length - 1], { weekday: "short", month: "short", day: "numeric" })
+                      : ""
+                  }`
+                : "No days match."}
+            </p>
+          )}
+        </div>
+
+        <div className="stack gap-10">
+          <p className="group-title">People</p>
+          <div className="card card-list">
+            <div className="list-row">
+              <span className="grow stack">
+                <span>People needed</span>
+                <span className="label">Open seats show up for the team to join.</span>
+              </span>
+              <div className="stepper" role="group" aria-label="People needed">
+                <button
+                  type="button"
+                  aria-label="One fewer"
+                  disabled={d.seats <= Math.max(1, d.staff.length)}
+                  onClick={() => set({ seats: d.seats - 1 })}
+                >
+                  <Minus size={16} />
+                </button>
+                <span aria-live="polite">{d.seats}</span>
+                <button type="button" aria-label="One more" disabled={d.seats >= 50} onClick={() => set({ seats: d.seats + 1 })}>
+                  <Plus size={16} />
+                </button>
+              </div>
+            </div>
+            {d.staff.map((s) => (
+              <div className="list-row" key={s.memberId}>
+                <Avatar name={s.name} />
+                <span className="grow stack">
+                  <span className="ellipsis">{s.name}</span>
+                  <span className="label">{roleNames[s.role]}</span>
+                </span>
+                <span className="money-input salary">
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    aria-label={"Salary for " + s.name}
+                    placeholder="0"
+                    value={s.salary}
+                    onChange={(e) =>
+                      set({
+                        staff: d.staff.map((x) =>
+                          x.memberId === s.memberId ? { ...x, salary: e.target.value.replace(/[^\d.]/g, "") } : x,
+                        ),
+                      })
+                    }
+                  />
+                  <span className="prefix">{formatMoney(0, currency).replace(/[\d.,\s]/g, "")}</span>
+                </span>
+                <button
+                  type="button"
+                  className="round flat"
+                  aria-label={"Remove " + s.name}
+                  onClick={() => set({ staff: d.staff.filter((x) => x.memberId !== s.memberId) })}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+            <button type="button" className="list-row" onClick={() => setAdding(true)}>
+              <span className="avatar seat" aria-hidden="true">
+                <Plus size={16} />
+              </span>
+              <span className="grow">{bulk ? "Put someone on every shift" : "Assign someone"}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="stack gap-10">
+          <p className="group-title">Money</p>
+          <div className="card card-pad stack gap-14">
+            <MoneyField label={bulk ? "Rent for each shift" : "Rent or booth fee"} value={d.rent} onChange={(v) => set({ rent: v })} currency={currency} />
+            <div className="grid-2">
+              <MoneyField label="Sales quota" value={d.quota} onChange={(v) => set({ quota: v })} currency={currency} />
+              <MoneyField label="Incentive each" value={d.incentive} onChange={(v) => set({ incentive: v })} currency={currency} />
+            </div>
+            <p className="label">
+              When sales reach the quota, everyone on the shift earns the incentive. Profit is sales minus rent, salaries and incentives.
+            </p>
+          </div>
+        </div>
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+      </Sheet>
+      {locating && (
+        <LocationPicker
+          recent={recent}
+          timeZone={zone}
+          onClose={() => setLocating(false)}
+          onPick={(place) => {
+            set({ place });
+            setLocating(false);
+          }}
+        />
+      )}
+      {adding && (
+        <PersonPicker
+          team={team}
+          title="Assign someone"
+          exclude={d.staff.map((s) => s.memberId)}
+          onClose={() => setAdding(false)}
+          onPick={(m, role) => {
+            set({
+              staff: [...d.staff, { memberId: m.id, name: m.name, role, salary: money(m.rate) }],
+              seats: Math.max(d.seats, d.staff.length + 1),
+            });
+            setAdding(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/* ---------- screen ---------- */
+
+type Filter = "day" | "open" | "mine";
+
+export function ScheduleScreen(props: ScheduleProps) {
+  const { state, demo } = props;
+  const business = state.business!;
+  const zone = business.timeZone;
+  const me = state.me;
+  const f = useFormats(zone);
+  const today = dayOf(Date.now(), zone);
+  const [selected, setSelected] = useState(today);
+  const [month, setMonth] = useState(today.slice(0, 8) + "01");
+  const [filter, setFilter] = useState<Filter>("day");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Booking | "new" | "bulk" | null>(null);
+  const bookings = useMemo(
+    () => [...(state.bookings ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    [state.bookings],
+  );
+  // Live registers get sales from the server. The demo adds what this phone rang up.
+  const local = useMemo(() => salesByBooking(state.shifts, state.sales), [state.shifts, state.sales]);
+  const salesOf = (b: Booking) =>
+    me?.owner ? (!demo && b.sales !== undefined ? b.sales : (b.sales ?? 0) + (local.get(b.id) ?? 0)) : undefined;
+
+  const marks = useMemo(() => {
+    const map = new Map<string, { count: number; open: boolean; mine: boolean }>();
+    for (const b of bookings) {
+      const day = dayOf(b.startsAt, zone);
+      const m = map.get(day) ?? { count: 0, open: false, mine: false };
+      m.count++;
+      if (seatsOpen(b) > 0 && Date.parse(b.endsAt) > Date.now()) m.open = true;
+      if (b.staff.some((s) => s.memberId === me?.memberId)) m.mine = true;
+      map.set(day, m);
+    }
+    return map;
+  }, [bookings, zone, me?.memberId]);
+
+  const upcoming = bookings.filter((b) => Date.parse(b.endsAt) > Date.now());
+  const openSeats = upcoming.filter((b) => seatsOpen(b) > 0 && !b.staff.some((s) => s.memberId === me?.memberId));
+  const mineNext = upcoming.filter((b) => b.staff.some((s) => s.memberId === me?.memberId));
+  const list =
+    filter === "open" ? openSeats : filter === "mine" ? mineNext : bookings.filter((b) => dayOf(b.startsAt, zone) === selected);
+
+  // Owner summary: what finished shifts this month earned.
+  const monthDone = bookings.filter(
+    (b) => Date.parse(b.endsAt) < Date.now() && dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7),
+  );
+  const monthNet = monthDone.reduce((sum, b) => sum + bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net, 0);
+  const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
+  const next = mineNext[0];
+  const openBooking = openId ? bookings.find((b) => b.id === openId) : undefined;
+
+  return (
+    <div className="page narrow">
+      <div className="page-top">
+        <h1 className="headline grow">Schedule</h1>
+        {me?.owner && (
+          <>
+            <button
+              className="round"
+              aria-label="Add many shifts"
+              disabled={!props.online}
+              onClick={() => setEditing("bulk")}
+            >
+              <CalendarRange size={19} />
+            </button>
+            <button className="btn small" disabled={!props.online} onClick={() => setEditing("new")}>
+              <Plus size={16} /> Shift
+            </button>
+          </>
+        )}
+      </div>
+
+      {me?.owner && monthDone.length > 0 ? (
+        <div className="hero stack gap-8">
+          <span className="hero-label">
+            {plainDay(month, { month: "long" })} so far · {monthDone.length} {monthDone.length === 1 ? "shift" : "shifts"}
+          </span>
+          <Money value={monthNet} currency={business.currency} className="big-num" sign />
+          <span className="hero-label">
+            {winners} of {monthDone.length} paid for themselves after rent, salaries and incentives.
+          </span>
+        </div>
+      ) : next ? (
+        <p className="headline small-head">
+          Next up: {f.day.format(new Date(next.startsAt))}, {f.time.format(new Date(next.startsAt))}{" "}
+          <span className="g">at {next.place?.name ?? bookingTitle(next)}.</span>
+        </p>
+      ) : null}
+
+      <MonthCalendar
+        month={month}
+        selected={selected}
+        today={today}
+        marks={marks}
+        onMonth={setMonth}
+        onSelect={(day) => {
+          setSelected(day);
+          setFilter("day");
+        }}
+      />
+
+      <div className="segmented" role="group" aria-label="Show">
+        <button aria-pressed={filter === "day"} onClick={() => setFilter("day")}>
+          {selected === today ? "Today" : plainDay(selected, { weekday: "short", day: "numeric" })}
+        </button>
+        <button aria-pressed={filter === "open"} onClick={() => setFilter("open")}>
+          Open seats{openSeats.length ? ` · ${openSeats.length}` : ""}
+        </button>
+        <button aria-pressed={filter === "mine"} onClick={() => setFilter("mine")}>
+          Mine{mineNext.length ? ` · ${mineNext.length}` : ""}
+        </button>
+      </div>
+
+      <div className="stack gap-10">
+        {list.map((b, i) => {
+          const day = dayOf(b.startsAt, zone);
+          const showDay = filter !== "day" && (i === 0 || dayOf(list[i - 1].startsAt, zone) !== day);
+          return (
+            <div className="stack gap-10" key={b.id}>
+              {showDay && <p className="group-title">{f.day.format(new Date(b.startsAt))}</p>}
+              <BookingCard b={b} state={state} sales={salesOf(b)} onOpen={() => setOpenId(b.id)} />
+            </div>
+          );
+        })}
+        {!list.length && (
+          <div className="empty card">
+            <p className="strong">
+              {filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
+            </p>
+            <p className="label">
+              {filter === "day"
+                ? me?.owner
+                  ? "Add a shift for this day, or add a run of them for a bazaar."
+                  : "Pick another day, or check open seats."
+                : filter === "mine"
+                  ? "Open seats are yours to join."
+                  : "Every upcoming shift is full."}
+            </p>
+            {me?.owner && filter === "day" && (
+              <button className="btn secondary" disabled={!props.online} onClick={() => setEditing("new")}>
+                <Plus size={16} /> Add a shift
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {openBooking && (
+        <BookingSheet
+          booking={openBooking}
+          props={props}
+          sales={salesOf(openBooking)}
+          onEdit={() => {
+            setEditing(openBooking);
+            setOpenId(null);
+          }}
+          onClose={() => setOpenId(null)}
+        />
+      )}
+      {editing && (
+        <BookingEditor
+          booking={editing === "new" || editing === "bulk" ? undefined : editing}
+          bulk={editing === "bulk"}
+          props={props}
+          defaultDay={selected < today ? today : selected}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}

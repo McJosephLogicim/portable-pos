@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Wallet } from "lucide-react";
-import type { Business, RegisterState, Shift } from "@/lib/types";
-import { parseMoney, shiftTotals } from "@/lib/domain";
+import { CalendarDays, Check, ChevronRight, Wallet } from "lucide-react";
+import type { Booking, Business, RegisterState, Shift } from "@/lib/types";
+import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
+import type { Opening } from "@/lib/demo";
 import { currencyDigits } from "@/lib/settings";
 import { shiftCurrency } from "./receipt";
 import {
@@ -33,6 +34,18 @@ function Difference({ value, currency }: { value: number; currency: string }) {
   );
 }
 
+/** Scheduled shifts a till opened now is most likely for: running now or starting within three hours. */
+function nearBookings(state: RegisterState) {
+  const now = Date.now();
+  return (state.bookings ?? []).filter(
+    (b) => Date.parse(b.endsAt) > now && Date.parse(b.startsAt) - now < 3 * 3600000,
+  );
+}
+
+export function bookingTitle(b: Booking) {
+  return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";
+}
+
 function OpenShift({
   state,
   online,
@@ -41,7 +54,7 @@ function OpenShift({
 }: {
   state: RegisterState;
   online: boolean;
-  onOpen: (openingCash: number) => Promise<void>;
+  onOpen: (opening: Opening) => Promise<void>;
   onGoMenu: () => void;
 }) {
   const business = state.business!;
@@ -52,10 +65,21 @@ function OpenShift({
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const tracked = state.menu.filter((p) => p.stock);
+  const checklist = business.settings.checklist ?? [];
+  const near = nearBookings(state);
+  const mine = near.find((b) => b.staff.some((s) => s.memberId === state.me?.memberId));
+  const [bookingId, setBookingId] = useState<string | null>((mine ?? near[0])?.id ?? null);
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [checked, setChecked] = useState<string[]>([]);
   let value: number | undefined;
   try {
     value = amount.trim() ? parseMoney(amount, currency) : undefined;
   } catch {}
+  const uncounted = tracked.filter((p) => !(counts[p.id] ?? "").trim()).length;
+  const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
+  const ready = value !== undefined && !uncounted && !unticked;
+  const time = new Intl.DateTimeFormat("en", { timeZone: business.timeZone, hour: "numeric", minute: "2-digit" });
   if (!state.menu.length)
     return (
       <div className="stack gap-18">
@@ -75,8 +99,40 @@ function OpenShift({
   return (
     <div className="stack gap-18">
       <h1 className="headline">
-        Count the drawer. <span className="g">Then open the shift.</span>
+        Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span>
       </h1>
+      {near.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">This till is for</p>
+          <div className="card card-list">
+            {[...near, null].map((b) => (
+              <button
+                key={b?.id ?? "none"}
+                type="button"
+                className="list-row"
+                aria-pressed={bookingId === (b?.id ?? null)}
+                onClick={() => setBookingId(b?.id ?? null)}
+              >
+                <span className="well">
+                  <CalendarDays size={18} strokeWidth={1.8} />
+                </span>
+                <span className="grow stack">
+                  <span className="ellipsis">{b ? bookingTitle(b) : "Not a scheduled shift"}</span>
+                  {b && (
+                    <span className="label ellipsis">
+                      {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
+                      {b.place && b.event ? " · " + b.place.name : ""}
+                    </span>
+                  )}
+                </span>
+                <span className={"tick" + (bookingId === (b?.id ?? null) ? " on" : "")}>
+                  <Check size={14} strokeWidth={2.6} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="card card-pad stack gap-14">
         <p className="label">Cash in the drawer right now</p>
         <div className="quick">
@@ -97,6 +153,60 @@ function OpenShift({
           onChange={setAmount}
           currency={currency}
         />
+      </div>
+      {tracked.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Stock on hand</p>
+          <div className="card card-list">
+            {tracked.map((p) => (
+              <label className="list-row" key={p.id}>
+                {p.image ? (
+                  <img src={p.image} alt="" width={40} height={40} className="thumb" />
+                ) : (
+                  <span className="well">{p.name.slice(0, 1)}</span>
+                )}
+                <span className="grow ellipsis">{p.name}</span>
+                <input
+                  className="input count"
+                  inputMode="numeric"
+                  placeholder="0"
+                  aria-label={"How many " + p.name}
+                  value={counts[p.id] ?? ""}
+                  onChange={(e) =>
+                    setCounts({ ...counts, [p.id]: e.target.value.replace(/\D/g, "").slice(0, 5) })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      {checklist.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Before you open</p>
+          <div className="card card-list">
+            {checklist.map((c) => {
+              const on = checked.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  className="list-row"
+                  onClick={() => setChecked(on ? checked.filter((x) => x !== c.id) : [...checked, c.id])}
+                >
+                  <span className={"tick" + (on ? " on" : "")}>
+                    <Check size={14} strokeWidth={2.6} />
+                  </span>
+                  <span className={"grow" + (on ? " g" : "")}>{c.text}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="stack gap-10">
         {!online && (
           <p className="label row gap-6">
             <span className="dot danger" /> Connect once to open the shift. Sales
@@ -110,12 +220,17 @@ function OpenShift({
         )}
         <button
           className="btn block"
-          disabled={!online || busy || value === undefined}
+          disabled={!online || busy || !ready}
           onClick={async () => {
             setBusy(true);
             setError("");
             try {
-              await onOpen(value!);
+              await onOpen({
+                openingCash: value!,
+                stock: Object.fromEntries(tracked.map((p) => [p.id, Number(counts[p.id])])),
+                checked,
+                ...(bookingId ? { bookingId } : {}),
+              });
             } catch (e) {
               setError(errorText(e));
             } finally {
@@ -127,7 +242,11 @@ function OpenShift({
             ? "Opening…"
             : value === undefined
               ? "Open shift"
-              : `Open with ${formatMoney(value, currency)}`}
+              : uncounted
+                ? `Count ${uncounted} more ${uncounted === 1 ? "item" : "items"}`
+                : unticked
+                  ? `Tick ${unticked} more ${unticked === 1 ? "step" : "steps"}`
+                  : `Open with ${formatMoney(value, currency)}`}
         </button>
       </div>
     </div>
@@ -277,13 +396,15 @@ export function ShiftScreen({
   onClose,
   onSell,
   onGoMenu,
+  onSchedule,
 }: {
   state: RegisterState;
   online: boolean;
-  onOpen: (openingCash: number) => Promise<void>;
+  onOpen: (opening: Opening) => Promise<void>;
   onClose: (countedCash: number, pin: string) => Promise<void>;
   onSell: () => void;
   onGoMenu: () => void;
+  onSchedule: () => void;
 }) {
   const [closing, setClosing] = useState(false);
   const [detail, setDetail] = useState<Shift | null>(null);
@@ -355,6 +476,39 @@ export function ShiftScreen({
               </span>
             </div>
           </div>
+          {shift.stock && Object.keys(shift.stock).length > 0 && (
+            <div className="stack gap-10">
+              <p className="group-title">Stock left</p>
+              <div className="card card-list">
+                {Object.entries(stockLeft(shift, state.sales)).map(([id, left]) => {
+                  const p = shift.menu.find((m) => m.id === id);
+                  const opened = shift.stock![id];
+                  return (
+                    <div className="list-row" key={id}>
+                      <span className="grow stack">
+                        <span className="ellipsis">{p?.name ?? "Item"}</span>
+                        <span className="meter" aria-hidden="true">
+                          <i style={{ width: `${opened ? Math.max(0, left / opened) * 100 : 0}%` }} />
+                        </span>
+                      </span>
+                      <span className={"num" + (left <= 0 ? " g" : "")}>
+                        {left <= 0 ? "Sold out" : `${left} of ${opened}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) && (
+            <button className="notice" onClick={onSchedule}>
+              <CalendarDays size={18} strokeWidth={1.8} />
+              <span className="grow" style={{ textAlign: "left" }}>
+                For {bookingTitle(state.bookings!.find((b) => b.id === shift.bookingId)!)}
+              </span>
+              <ChevronRight size={18} className="chev" />
+            </button>
+          )}
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">

@@ -4,6 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ChevronRight,
+  ListChecks,
+  Users,
   Coins,
   Image as ImageIcon,
   LayoutGrid,
@@ -22,6 +24,8 @@ import type {
   Settings,
 } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
+import type { OwnerAction } from "@/lib/demo";
+import { ChecklistPage, TeamPage } from "./team";
 import { currencyDigits, paymentKinds, slugId } from "@/lib/settings";
 import {
   errorText,
@@ -41,7 +45,15 @@ export type SettingsInput = {
   settings: Settings;
 };
 
-type Page = "business" | "payments" | "discounts" | "currency" | "menu";
+export type SettingsPage =
+  | "business"
+  | "payments"
+  | "discounts"
+  | "currency"
+  | "menu"
+  | "checklist"
+  | "team";
+type Page = SettingsPage;
 
 export interface SettingsProps {
   state: RegisterState;
@@ -50,7 +62,8 @@ export interface SettingsProps {
   status: string;
   offlineReady: boolean;
   onSave: (input: SettingsInput, pin: string) => Promise<void>;
-  onMenu: (menu: Product[], pin: string) => Promise<void>;
+  onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
+  onAction: (input: OwnerAction) => Promise<void>;
   onSignIn: () => void;
   onSignOut: () => void;
   onSaved: (text: string) => void;
@@ -58,7 +71,7 @@ export interface SettingsProps {
   onPage: (page: Page | null) => void;
 }
 
-function Row({
+export function Row({
   icon,
   title,
   detail,
@@ -79,7 +92,7 @@ function Row({
   );
 }
 
-function SubPage({
+export function SubPage({
   title,
   sentence,
   onBack,
@@ -105,7 +118,7 @@ function SubPage({
 }
 
 /** Edits a copy of the settings and saves it with one tap, behind the owner PIN. */
-function useDraft(props: SettingsProps) {
+export function useDraft(props: SettingsProps) {
   const business = props.state.business!;
   const initial: SettingsInput = {
     name: business.name,
@@ -708,10 +721,11 @@ type GroupDraft = Omit<OptionGroup, "options"> & {
   options: { id: string; name: string; price: string }[];
 };
 
-function ItemSheet({
+export function ItemSheet({
   product,
   currency,
   categories,
+  liveShift = false,
   onSave,
   onRemove,
   onClose,
@@ -719,11 +733,16 @@ function ItemSheet({
   product?: Product;
   currency: string;
   categories: string[];
-  onSave: (p: Product) => Promise<boolean>;
+  /** A new item goes on sale on the shift open on this phone, so ask how many there are. */
+  liveShift?: boolean;
+  onSave: (p: Product, count?: number) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(product?.name ?? "");
+  const [tracked, setTracked] = useState(Boolean(product?.stock));
+  const [count, setCount] = useState("");
+  const askCount = tracked && liveShift && !product;
   const [price, setPrice] = useState(product ? amountText(product.price, currency) : "");
   const [category, setCategory] = useState(product?.category ?? "");
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
@@ -756,7 +775,7 @@ function ItemSheet({
         <>
           <button
             className="btn block"
-            disabled={busy || !name.trim() || !price.trim()}
+            disabled={busy || !name.trim() || !price.trim() || (askCount && !count.trim())}
             onClick={() =>
               void run(async () => {
                 const saved = groups.map((g) => {
@@ -773,14 +792,19 @@ function ItemSheet({
                     })),
                   };
                 });
-                return onSave({
-                  ...product,
-                  id: product?.id ?? crypto.randomUUID(),
-                  name: name.trim(),
-                  category: category.trim(),
-                  price: parseMoney(price, currency),
-                  groups: saved,
-                });
+                const { stock: _, ...rest } = product ?? ({} as Partial<Product>);
+                return onSave(
+                  {
+                    ...rest,
+                    id: product?.id ?? crypto.randomUUID(),
+                    name: name.trim(),
+                    category: category.trim(),
+                    price: parseMoney(price, currency),
+                    groups: saved,
+                    ...(tracked ? { stock: true } : {}),
+                  },
+                  askCount ? Number(count) : undefined,
+                );
               })
             }
           >
@@ -827,6 +851,33 @@ function ItemSheet({
             ))}
           </datalist>
         </label>
+      </div>
+      <div className="card card-pad stack gap-12">
+        <div className="row gap-12">
+          <span className="grow stack">
+            <span className="strong">Track stock</span>
+            <span className="label">
+              For a set supply, like bread or pastries. You count it when the shift opens and it
+              sells out at zero.
+            </span>
+          </span>
+          <Switch checked={tracked} label="Track stock" onChange={setTracked} />
+        </div>
+        {askCount && (
+          <label className="field">
+            <span>How many do you have now?</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              placeholder="0"
+              value={count}
+              onChange={(e) => setCount(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            />
+          </label>
+        )}
+        {tracked && product && liveShift && !product.stock && (
+          <p className="label">Counting starts when the next shift opens.</p>
+        )}
       </div>
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
@@ -948,8 +999,9 @@ function MenuPage(props: SettingsProps) {
     name: c,
     items: menu.filter((m) => (m.category || "") === c),
   }));
-  async function save(next: Product[], label: string) {
-    const done = await withPin((pin) => props.onMenu(next, pin));
+  const live = Boolean(props.state.shift && props.state.shift.deviceId === props.state.deviceId);
+  async function save(next: Product[], label: string, stock?: Record<string, number>) {
+    const done = await withPin((pin) => props.onMenu(next, pin, stock));
     if (done) props.onSaved(label);
     return done;
   }
@@ -995,9 +1047,11 @@ function MenuPage(props: SettingsProps) {
                   )}
                   <span className="grow stack">
                     <span className="ellipsis">{p.name}</span>
-                    {p.groups.length > 0 && (
+                    {(p.groups.length > 0 || p.stock) && (
                       <span className="label ellipsis">
-                        {p.groups.map((x) => x.name).join(", ")}
+                        {[p.stock ? "Counted each shift" : "", ...p.groups.map((x) => x.name)]
+                          .filter(Boolean)
+                          .join(", ")}
                       </span>
                     )}
                   </span>
@@ -1011,7 +1065,9 @@ function MenuPage(props: SettingsProps) {
       <p className="label">
         {props.online
           ? props.state.shift
-            ? "Menu changes reach the register when the next shift opens. To pause an item now, mark it sold out on Sell."
+            ? live
+              ? "New items go on sale right away. Edits to existing items apply from the next shift. To pause an item now, mark it sold out on Sell."
+              : "Changes reach the register when the next shift opens."
             : "Changes reach the register when you open the next shift."
           : "Connect to edit the menu."}
       </p>
@@ -1020,13 +1076,15 @@ function MenuPage(props: SettingsProps) {
           product={editing === "new" ? undefined : editing}
           currency={business.currency}
           categories={categories}
+          liveShift={live}
           onClose={() => setEditing(null)}
-          onSave={(item) =>
+          onSave={(item, count) =>
             save(
               editing === "new"
                 ? [...menu, item]
                 : menu.map((p) => (p.id === item.id ? item : p)),
               editing === "new" ? "Added " + item.name : "Saved " + item.name,
+              count !== undefined ? { [item.id]: count } : undefined,
             )
           }
           onRemove={
@@ -1054,6 +1112,36 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "discounts") return <DiscountsPage {...props} />;
   if (page === "currency") return <CurrencyPage {...props} />;
   if (page === "menu") return <MenuPage {...props} />;
+  if (page === "checklist") return <ChecklistPage {...props} />;
+  if (page === "team") return <TeamPage {...props} />;
+  const me = state.me;
+  if (me && !me.owner)
+    return (
+      <div className="page narrow">
+        <div className="page-top">
+          <h1 className="headline">Settings</h1>
+        </div>
+        <div className="card card-list">
+          <div className="list-row">
+            <span className="mark">{me.name.slice(0, 1).toUpperCase() || "?"}</span>
+            <span className="grow stack">
+              <span className="strong ellipsis">{me.name}</span>
+              <span className="label">
+                {me.roles.length === 2 ? "Cashier and server" : me.roles[0] === "cashier" ? "Cashier" : "Server"} at {business.name}
+              </span>
+            </span>
+          </div>
+        </div>
+        <p className="label" style={{ padding: "0 4px" }}>
+          The owner manages the menu, payments and team.
+        </p>
+        <div className="card card-pad">
+          <button className="btn secondary block" onClick={props.onSignOut}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
   const initials = business.name
     .split(/\s+/)
     .filter(Boolean)
@@ -1097,6 +1185,21 @@ export function SettingsScreen(props: SettingsProps) {
           title="Menu"
           detail={state.menu.length + (state.menu.length === 1 ? " item" : " items")}
           onClick={() => onPage("menu")}
+        />
+      </div>
+      <p className="group-title">Shifts</p>
+      <div className="card card-list">
+        <Row
+          icon={<Users size={18} strokeWidth={1.8} />}
+          title="Team"
+          detail={(state.team?.length ?? 1) + ((state.team?.length ?? 1) === 1 ? " person" : " people")}
+          onClick={() => onPage("team")}
+        />
+        <Row
+          icon={<ListChecks size={18} strokeWidth={1.8} />}
+          title="Opening checklist"
+          detail={(s.checklist?.length ?? 0) ? s.checklist!.length + " steps" : "Off"}
+          onClick={() => onPage("checklist")}
         />
       </div>
       <p className="group-title">Register</p>
