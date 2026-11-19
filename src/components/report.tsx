@@ -6,7 +6,7 @@ import { reportText, shiftReport } from "@/lib/report";
 import { reportImage } from "@/lib/report-image";
 import type { Business, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
-import { buzz, errorText, formatMoney, Sheet } from "./ui";
+import { buzz, errorText, facesOf, formatMoney, Sheet } from "./ui";
 
 /** The end-of-shift report: a picture to send to the group chat, or the same as text. */
 export function ReportSheet({
@@ -25,8 +25,11 @@ export function ReportSheet({
   const currency = shiftCurrency(shift, business);
   const booking = state.bookings?.find((b) => b.id === shift.bookingId);
   const report = useMemo(
-    () => shiftReport(shift, state.sales, state.expenses ?? [], business, booking),
-    [shift, state.sales, state.expenses, business, booking],
+    () => shiftReport(shift, state.sales, state.expenses ?? [], business, booking, {
+        menu: state.menu,
+        faces: facesOf(state).byId,
+      }),
+    [shift, state, business, booking],
   );
   const fmt = (n: number) => formatMoney(n, currency);
   const text = reportText(report, fmt);

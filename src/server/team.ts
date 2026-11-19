@@ -25,10 +25,11 @@ export function presentMember(row: MemberRow): Member {
     rate: row.rate,
     owner: row.owner,
     joined: Boolean(row.userId),
+    ...(row.photo ? { photo: row.photo } : {}),
   };
 }
 export function presentMe(row: MemberRow): Me {
-  return { memberId: row.id, name: row.name, roles: row.roles, owner: row.owner };
+  return { memberId: row.id, name: row.name, roles: row.roles, owner: row.owner, ...(row.photo ? { photo: row.photo } : {}) };
 }
 export function presentBooking(row: typeof bookings.$inferSelect): Booking {
   return {
@@ -147,6 +148,7 @@ export async function resolveAccess(
         email: actor.email ?? "",
         name: ownerName(actor),
         roles: ["cashier", "server"],
+        photo: null,
         rate: 0,
         owner: true,
         createdAt: owned.createdAt,

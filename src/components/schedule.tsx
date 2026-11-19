@@ -195,7 +195,7 @@ function BookingCard({
         </span>
         <span className="row gap-6 faces">
           {b.staff.slice(0, 4).map((s) => (
-            <Avatar key={s.memberId} name={s.name} small />
+            <Avatar key={s.memberId} id={s.memberId} name={s.name} small />
           ))}
           {Array.from({ length: Math.min(3, open) }, (_, i) => (
             <span key={i} className="avatar small seat" aria-hidden="true" />
@@ -268,7 +268,7 @@ function PersonPicker({
                 setRole([roleHint ?? "cashier"]);
               }}
             >
-              <Avatar name={m.name} dim={!m.joined} />
+              <Avatar id={m.id} name={m.name} dim={!m.joined} />
               <span className="grow stack">
                 <span className="ellipsis">{m.owner ? m.name + " (you)" : m.name}</span>
                 <span className="label">
@@ -433,7 +433,7 @@ function BookingSheet({
                 tabIndex={me.owner ? 0 : undefined}
                 onClick={me.owner && online && !busy ? () => setManaging(s) : undefined}
               >
-                <Avatar name={s.name} />
+                <Avatar id={s.memberId} name={s.name} />
                 <span className="grow stack">
                   <span className="ellipsis">
                     {s.memberId === me.memberId ? s.name + " (you)" : s.name}
@@ -1009,7 +1009,7 @@ function BookingEditor({
             </div>
             {d.staff.map((s) => (
               <button type="button" className="list-row" key={s.memberId} onClick={() => setStaffing(s.memberId)}>
-                <Avatar name={s.name} />
+                <Avatar id={s.memberId} name={s.name} />
                 <span className="grow stack">
                   <span className="ellipsis">{s.name}</span>
                   <span className="label ellipsis">

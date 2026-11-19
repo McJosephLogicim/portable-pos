@@ -1396,6 +1396,48 @@ function MenuPage(props: SettingsProps) {
   );
 }
 
+/* ---------- your profile ---------- */
+
+function ProfileCard(props: SettingsProps) {
+  const me = props.state.me;
+  const [error, setError] = useState("");
+  if (!me) return null;
+  return (
+    <div className="card card-pad stack gap-8">
+      <div className="row gap-14 profile-row">
+        <PhotoPicker
+          face
+          size="small"
+          value={me.photo}
+          label="your profile photo"
+          disabled={!props.online && !props.demo}
+          onError={setError}
+          onChange={async (photo) => {
+            setError("");
+            try {
+              await props.onAction({ action: "profile", photo: photo ?? null });
+              props.onSaved(photo ? "Photo saved" : "Photo removed");
+            } catch (e) {
+              setError(errorText(e));
+            }
+          }}
+        />
+        <span className="grow stack" style={{ minWidth: 0 }}>
+          <span className="strong ellipsis">{me.name}</span>
+          <span className="label">
+            {me.photo ? "Your photo shows on shifts and reports." : "Add a photo so the team knows who's on shift."}
+          </span>
+        </span>
+      </div>
+      {error && (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ---------- home ---------- */
 
 export function SettingsScreen(props: SettingsProps) {
@@ -1420,17 +1462,7 @@ export function SettingsScreen(props: SettingsProps) {
         <div className="page-top">
           <h1 className="headline">Settings</h1>
         </div>
-        <div className="card card-list">
-          <div className="list-row">
-            <span className="mark">{me.name.slice(0, 1).toUpperCase() || "?"}</span>
-            <span className="grow stack">
-              <span className="strong ellipsis">{me.name}</span>
-              <span className="label">
-                {me.roles.length === 2 ? "Cashier and server" : me.roles[0] === "cashier" ? "Cashier" : "Server"} at {business.name}
-              </span>
-            </span>
-          </div>
-        </div>
+        <ProfileCard {...props} />
         <div className="card card-list">
           <Row
             icon={<Repeat size={18} strokeWidth={1.8} />}
@@ -1456,6 +1488,7 @@ export function SettingsScreen(props: SettingsProps) {
       <div className="page-top">
         <h1 className="headline">Settings</h1>
       </div>
+      <ProfileCard {...props} />
       <div className="card card-list">
         <button className="list-row" onClick={() => onPage("business")}>
           <BusinessMark name={business.name} logo={s.logo} brand={s.brand} />

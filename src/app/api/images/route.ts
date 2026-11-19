@@ -12,8 +12,10 @@ export async function POST(request: Request) {
     if (length > maxImageBytes) throw new RegisterError(413, "That photo is too large. Try again.");
     const data = Buffer.from(await request.arrayBuffer());
     const type = (request.headers.get("content-type") ?? "").split(";")[0].trim();
-    const proof = new URL(request.url).searchParams.get("proof") === "1";
-    return Response.json({ url: await saveImage(actor, type, data, proof) }, { headers });
+    const params = new URL(request.url).searchParams;
+    const proof = params.get("proof") === "1";
+    const face = params.get("face") === "1";
+    return Response.json({ url: await saveImage(actor, type, data, proof, face) }, { headers });
   } catch (error) {
     if (error instanceof RegisterError)
       return Response.json({ error: error.message }, { status: error.status, headers });

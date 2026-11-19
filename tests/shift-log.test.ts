@@ -92,7 +92,9 @@ test("menu items use stock items, sales draw them down, and closing reports the 
   };
   const business: Business = { id: "b", name: "Berry Good", currency: "PHP", timeZone: "Asia/Manila", settings: { receiptNote: "", payments: [], discounts: [] } };
   const report = shiftReport(closed, sales, expenses, business);
-  assert.deepEqual(report.sold, [{ name: "DCC", quantity: 8 }, { name: "SC", quantity: 4 }]);
+  assert.deepEqual(report.sold.map(({ name, quantity }) => ({ name, quantity })), [{ name: "DCC", quantity: 8 }, { name: "SC", quantity: 4 }]);
+  assert.equal(report.sold[0].revenue, 120000);
+  assert.ok(report.hourly.length >= 1 && report.peak);
   assert.deepEqual(report.stock.map((s) => [s.name, s.start, s.used, s.expected, s.counted]), [
     ["Strawberry pack", 28, 8, 20, 19],
     ["Ice", 5, 2.6, 2.4, 2.4],

@@ -9,7 +9,7 @@ import { SettingsScreen, type SettingsPage } from "./settings";
 import { ScheduleScreen } from "./schedule";
 import { Account, Setup } from "./account";
 import { BusinessSwitcher } from "./businesses";
-import { buzz, CelebrateProvider, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { buzz, CelebrateProvider, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import {
@@ -353,6 +353,7 @@ export function Workspace() {
     }
   }
   const demo = key === DEMO;
+  const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
   const status = state?.pending.length
     ? `${state.pending.length} waiting to sync`
@@ -376,11 +377,11 @@ export function Workspace() {
     if (t === "settings") setSettingsPage(null);
     window.scrollTo(0, 0);
   };
-  async function upload(file: File) {
+  async function upload(file: File, face = false) {
     const photo = await compressPhoto(file);
     if (!key || key === DEMO) return blobToDataUrl(photo);
     if (!navigator.onLine) throw Error("Connect to add photos.");
-    return uploadImage(key, photo);
+    return uploadImage(key, photo, false, face);
   }
   /** Open another business on this phone. Each keeps its own till and sync queue. */
   // A shared link like /?shifts=<business> opens that team's open seats.
@@ -573,6 +574,7 @@ export function Workspace() {
   return (
     <CelebrateProvider>
     <PhotoProvider value={upload}>
+      <FacesProvider value={faces}>
     <ProofProvider value={loadProof}>
     <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
       {(notice || (syncErr && !bootError)) && (
@@ -650,6 +652,7 @@ export function Workspace() {
       )}
     </PinProvider>
     </ProofProvider>
+      </FacesProvider>
     </PhotoProvider>
     </CelebrateProvider>
   );

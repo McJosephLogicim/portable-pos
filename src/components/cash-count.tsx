@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { countTotal, denominations, type CashCount } from "@/lib/cash";
 import { parseMoney } from "@/lib/domain";
+import { hasPesoArt, PesoArt } from "./peso";
 import { buzz, formatMoney, MoneyField } from "./ui";
 
 export interface CashValue {
@@ -88,18 +89,19 @@ export function CashCounter({
     list.map((value) => {
       const n = Number(qty[value] || 0);
       const name = formatMoney(value, currency);
+      const art = hasPesoArt(currency, value, kind);
       return (
         <div className="cash-row" key={value}>
           <button
             type="button"
-            className={"denom " + kind}
+            className={"denom " + kind + (art ? " art" : "")}
             aria-label={`Add one ${name} ${kind}`}
             onClick={() => {
               set(value, n + 1);
               buzz.tick();
             }}
           >
-            {name}
+            {art ? <PesoArt value={value} kind={kind} /> : name}
           </button>
           <div className="stepper">
             <button

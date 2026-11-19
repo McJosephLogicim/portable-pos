@@ -208,6 +208,17 @@ test(
     assert.ok(await readProof(ownerUser, proofId));
     assert.equal(await readProof({ id: randomUUID() }, proofId), null);
 
+    // Profile photos: anyone sets their own, only the owner sets someone else's.
+    const face = await saveImage(beaUser, "image/jpeg", photo, false, true);
+    assert.match(face, /^\/api\/images\//);
+    snap = await bea({ action: "profile", photo: face });
+    assert.equal(snap.me!.photo, face);
+    await assert.rejects(bea({ action: "profile", memberId: ownerMe.memberId, photo: face }), { status: 403 });
+    snap = await o({ action: "profile", memberId: asBea.me!.memberId, photo: null, pin });
+    assert.equal(snap.team!.find((m) => m.id === asBea.me!.memberId)!.photo, undefined);
+    snap = await o({ action: "profile", photo: url });
+    assert.equal(snap.faces![ownerMe.memberId], url);
+
     // A second business: its own menu and team, and the first stays the default.
     const second = randomUUID();
     snap = await o({ action: "setup", id: second, name: "Night stall", currency: "PHP", timeZone: "Asia/Manila", pin: "9999" });
