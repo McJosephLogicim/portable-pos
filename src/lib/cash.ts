@@ -34,6 +34,24 @@ export function denominations(currency: string): Denomination[] {
   ];
 }
 
+/** Photos of the coins and bills, by major-unit value. Only for currencies we have them for. */
+const photos: Record<string, Record<number, string>> = {
+  PHP: Object.fromEntries(
+    [
+      ...[1, 5, 10, 20].map((v) => [v, `/cash/coin-${v}.webp`]),
+      ...[50, 100, 200, 500, 1000].map((v) => [v, `/cash/bill-${v}.webp`]),
+    ],
+  ),
+};
+
+/** The photo for a denomination in minor units, if there is one. */
+export function denominationPhoto(currency: string, value: number): string | undefined {
+  return photos[currency]?.[value / 10 ** currencyDigits(currency)];
+}
+
+/** Every coin and bill photo, so the register can keep them for offline use. */
+export const cashPhotos = Object.values(photos).flatMap((set) => Object.values(set));
+
 export function countTotal(count: CashCount | undefined) {
   let total = 0;
   for (const [value, qty] of Object.entries(count ?? {})) total += Number(value) * qty;
