@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
-import { countTotal, denominations, type CashCount } from "@/lib/cash";
+import { countTotal, denominationPhoto, denominations, type CashCount } from "@/lib/cash";
 import { parseMoney } from "@/lib/domain";
 import { buzz, formatMoney, MoneyField } from "./ui";
 
@@ -88,18 +88,27 @@ export function CashCounter({
     list.map((value) => {
       const n = Number(qty[value] || 0);
       const name = formatMoney(value, currency);
+      const photo = denominationPhoto(currency, value);
       return (
         <div className="cash-row" key={value}>
           <button
             type="button"
-            className={"denom " + kind}
+            className={"denom " + kind + (photo ? " photo" : "")}
             aria-label={`Add one ${name} ${kind}`}
             onClick={() => {
               set(value, n + 1);
               buzz.tick();
             }}
           >
-            {name}
+            {photo ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo} alt="" width={kind === "coin" ? 36 : 72} height={kind === "coin" ? 36 : 30} draggable={false} />
+                <span>{name}</span>
+              </>
+            ) : (
+              name
+            )}
           </button>
           <div className="stepper">
             <button

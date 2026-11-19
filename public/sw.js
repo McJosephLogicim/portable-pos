@@ -18,7 +18,7 @@ function assetURL(input, base = ROOT) {
   if (/^\/api\/images\/[0-9a-f-]{36}$/.test(url.pathname)) return url.href;
   if (url.pathname.startsWith("/api/")) return;
   if (
-    url.pathname.startsWith("/menu/") &&
+    (url.pathname.startsWith("/menu/") || url.pathname.startsWith("/cash/")) &&
     /\.(png|jpe?g|webp|svg|avif)$/i.test(url.pathname)
   )
     return url.href;

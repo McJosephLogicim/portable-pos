@@ -1,3 +1,5 @@
+import { cashPhotos } from "./cash";
+
 let preparing: Promise<boolean> | undefined;
 
 async function prepare(): Promise<boolean> {
@@ -16,6 +18,7 @@ async function prepare(): Promise<boolean> {
     "/icon-512.png",
     "/apple-touch-icon.png",
     "/manifest.webmanifest",
+    ...cashPhotos,
     ...performance.getEntriesByType("resource").map((entry) => entry.name),
     ...Array.from(document.images, (img) => img.currentSrc || img.src).filter(
       Boolean,
