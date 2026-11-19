@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -10,9 +11,14 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { isNull } from "drizzle-orm";
+import { isNull, sql } from "drizzle-orm";
 import type {
+  Organizer,
+  Place,
   Product,
+  Role,
+  StaffSlot,
+  Tag,
   ReceiptLine,
   Sale,
   Settings,
@@ -38,6 +44,7 @@ export const businesses = register
     menu: jsonb().$type<Product[]>().default([]).notNull(),
     // Null until the owner saves settings; read as the defaults for the currency.
     settings: jsonb().$type<Settings>(),
+    organizers: jsonb().$type<Organizer[]>().default([]).notNull(),
   })
   .enableRLS();
 
@@ -60,6 +67,9 @@ export const shifts = register
       soldOut: jsonb("sold_out").$type<string[]>().default([]).notNull(),
       // Null for shifts opened before settings existed (cash, QR and card).
       settings: jsonb().$type<ShiftSettings>(),
+      stock: jsonb().$type<Record<string, number>>(),
+      bookingId: uuid("booking_id"),
+      checklist: jsonb().$type<string[]>(),
     },
     (t) => [
       unique().on(t.businessId, t.number),
@@ -104,5 +114,53 @@ export const syncedEvents = register
       fingerprint: text().notNull(),
     },
     (t) => [index().on(t.shiftId)],
+  )
+  .enableRLS();
+
+/** People on a business's team. The owner has a row too, so they can work shifts. */
+export const members = register
+  .table(
+    "members",
+    {
+      id: uuid().primaryKey(),
+      businessId: uuid("business_id")
+        .references(() => businesses.id)
+        .notNull(),
+      // Null until the invited person signs in with the invited email.
+      userId: uuid("user_id"),
+      email: text().notNull(),
+      name: text().notNull(),
+      roles: jsonb().$type<Role[]>().notNull(),
+      rate: money("rate").default(0).notNull(),
+      owner: boolean().default(false).notNull(),
+    },
+    (t) => [
+      uniqueIndex("members_user").on(t.userId),
+      uniqueIndex("members_email").on(t.businessId, sql`lower(${t.email})`),
+    ],
+  )
+  .enableRLS();
+
+/** Scheduled shifts: when and where people work, and what the slot costs. */
+export const bookings = register
+  .table(
+    "bookings",
+    {
+      id: uuid().primaryKey(),
+      businessId: uuid("business_id")
+        .references(() => businesses.id)
+        .notNull(),
+      startsAt: date("starts_at").notNull(),
+      endsAt: date("ends_at").notNull(),
+      place: jsonb().$type<Place>(),
+      organizer: jsonb().$type<Tag>(),
+      event: jsonb().$type<Tag>(),
+      seats: integer().notNull(),
+      staff: jsonb().$type<StaffSlot[]>().default([]).notNull(),
+      rent: money("rent").default(0).notNull(),
+      quota: money("quota").default(0).notNull(),
+      incentive: money("incentive").default(0).notNull(),
+    },
+    (t) => [index().on(t.businessId, t.startsAt)],
   )
   .enableRLS();

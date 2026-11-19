@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { makeSale } from "../lib/domain";
+import { makeSale, stockLeft } from "../lib/domain";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
 import { sales, shifts, syncedEvents } from "./schema";
-import { presentShift } from "./snapshot";
+import { presentSale, presentShift } from "./snapshot";
 
 export async function applyEvents(
   tx: Transaction,
@@ -44,6 +44,16 @@ export async function applyEvents(
     .orderBy(desc(sales.sequence))
     .limit(1);
   let nextSequence = (last?.sequence ?? 0) + 1;
+  // Counted items can't sell below zero, even from a till that was offline.
+  const left =
+    shift.stock && Object.keys(shift.stock).length
+      ? stockLeft(
+          current,
+          (
+            await tx.select().from(sales).where(eq(sales.shiftId, shift.id))
+          ).map(presentSale),
+        )
+      : undefined;
   let availabilityChanged = false;
 
   for (const event of events) {
@@ -107,6 +117,7 @@ export async function applyEvents(
         discountId: sale.discount?.id,
         received: sale.received,
         createdAt: sale.createdAt,
+        stock: left,
       });
     } catch (error) {
       throw new RegisterError(
@@ -117,6 +128,9 @@ export async function applyEvents(
       );
     }
     await tx.insert(sales).values(priced);
+    if (left)
+      for (const line of priced.lines)
+        if (line.productId in left) left[line.productId] -= line.quantity;
     nextSequence++;
   }
   if (availabilityChanged)

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkSettings } from "../lib/settings";
+import { planActions } from "../lib/team";
 import { ensure } from "./errors";
 
 const key = z.string().trim().min(1).max(128);
@@ -16,6 +17,7 @@ const product = z.object({
     .max(512)
     .regex(/^\/(?!\/)/)
     .optional(),
+  stock: z.boolean().optional(),
   groups: z
     .array(
       z.object({
@@ -85,7 +87,92 @@ const settings = z.object({
       }),
     )
     .max(24),
+  checklist: z
+    .array(z.object({ id: key, text: z.string().trim().min(1).max(120) }))
+    .max(30)
+    .optional(),
 });
+
+const counts = z.record(key, z.number().int().min(0).max(99999));
+const role = z.enum(["cashier", "server"]);
+const roles = z.array(role).min(1, "Pick cashier, server, or both.").max(2);
+const tag = z.object({ id: key, name: z.string().trim().min(1).max(80) });
+const booking = z.object({
+  id: z.uuid(),
+  startsAt: z.iso.datetime({ offset: true }),
+  endsAt: z.iso.datetime({ offset: true }),
+  place: z
+    .object({
+      name: z.string().trim().min(1).max(160),
+      address: z.string().trim().max(240).optional(),
+      lat: z.number().min(-90).max(90).optional(),
+      lon: z.number().min(-180).max(180).optional(),
+    })
+    .nullable(),
+  organizer: tag.nullable(),
+  event: tag.nullable(),
+  seats: z.number().int().min(1).max(50),
+  staff: z
+    .array(
+      z.object({
+        memberId: key,
+        name: z.string().max(120),
+        role,
+        salary: amount.optional(),
+      }),
+    )
+    .max(50),
+  rent: amount.optional(),
+  quota: amount,
+  incentive: amount,
+});
+const ownerPin = pin;
+export const planCommand = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("invite"),
+    name,
+    email: z.string().trim().max(254),
+    roles,
+    rate: amount,
+    pin: ownerPin,
+  }),
+  z.object({
+    action: z.literal("member"),
+    memberId: z.uuid(),
+    name,
+    roles,
+    rate: amount,
+    pin: ownerPin,
+  }),
+  z.object({ action: z.literal("removeMember"), memberId: z.uuid(), pin: ownerPin }),
+  z.object({
+    action: z.literal("organizers"),
+    organizers: z.array(tag.extend({ events: z.array(tag).max(200) })).max(200),
+    pin: ownerPin,
+  }),
+  z.object({ action: z.literal("booking"), booking, pin: ownerPin }),
+  z.object({
+    action: z.literal("bulkBookings"),
+    bookings: z.array(booking).min(1).max(120),
+    pin: ownerPin,
+  }),
+  z.object({ action: z.literal("deleteBooking"), bookingId: z.uuid(), pin: ownerPin }),
+  z.object({
+    action: z.literal("assign"),
+    bookingId: z.uuid(),
+    memberId: z.uuid(),
+    role,
+    replace: z.uuid().optional(),
+    pin: ownerPin,
+  }),
+  z.object({
+    action: z.literal("leave"),
+    bookingId: z.uuid(),
+    memberId: z.uuid(),
+    pin: ownerPin.optional(),
+  }),
+  z.object({ action: z.literal("join"), bookingId: z.uuid(), role }),
+]);
 
 const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
@@ -100,6 +187,8 @@ const command = z.discriminatedUnion("action", [
     action: z.literal("menu"),
     menu: z.array(product).max(1000),
     pin,
+    deviceId: key.optional(),
+    stock: counts.optional(),
   }),
   z.object({
     action: z.literal("settings"),
@@ -110,7 +199,14 @@ const command = z.discriminatedUnion("action", [
     settings,
     pin,
   }),
-  z.object({ action: z.literal("open"), deviceId: key, openingCash: amount }),
+  z.object({
+    action: z.literal("open"),
+    deviceId: key,
+    openingCash: amount,
+    stock: counts.default({}),
+    checked: z.array(key).max(30).default([]),
+    bookingId: z.uuid().optional(),
+  }),
   z.object({
     action: z.literal("sync"),
     deviceId: key,
@@ -133,7 +229,11 @@ const command = z.discriminatedUnion("action", [
 ]);
 
 export function parseCommand(input: unknown) {
-  const parsed = command.safeParse(input);
+  const plan =
+    typeof input === "object" &&
+    input !== null &&
+    (planActions as readonly unknown[]).includes((input as { action?: unknown }).action);
+  const parsed = (plan ? planCommand : command).safeParse(input);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     ensure(

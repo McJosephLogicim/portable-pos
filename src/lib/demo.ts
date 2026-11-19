@@ -1,5 +1,7 @@
 import { demoMenu } from "./demo-menu";
-import { shiftTotals } from "./domain";
+import { checkOpening, shiftTotals, withNewItems } from "./domain";
+import { demoPlan } from "./demo-plan";
+import { applyPlan, PlanError, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { defaultSettings, mergeShiftSettings } from "./settings";
 import type {
@@ -42,11 +44,26 @@ export function demoBootstrap(deviceId: string): Bootstrap {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     settings: defaultSettings(currency),
   };
-  const shift = newShift(deviceId, business.id, 1, 200000, demoMenu, {
-    ...business.settings,
-    currency,
-  });
+  business.settings.checklist = [
+    { id: "float", text: "Count the cash float" },
+    { id: "gcash", text: "GCash QR is printed and on the counter" },
+    { id: "ice", text: "Ice and milk are in the cooler" },
+  ];
+  const plan = demoPlan({ business });
+  const today = plan.bookings.find((b) => b.id.startsWith("demo-0-"));
+  const shift = {
+    ...newShift(deviceId, business.id, 1, 200000, demoMenu, {
+      ...business.settings,
+      currency,
+    }),
+    stock: Object.fromEntries(
+      demoMenu.filter((p) => p.stock).map((p, i) => [p.id, [18, 12, 24][i] ?? 12]),
+    ),
+    bookingId: today?.id,
+    checklist: business.settings.checklist.map((c) => c.text),
+  };
   return {
+    ...plan,
     business,
     menu: demoMenu,
     shift,
@@ -55,9 +72,16 @@ export function demoBootstrap(deviceId: string): Bootstrap {
     soldOut: [],
   };
 }
+export interface Opening {
+  openingCash: number;
+  stock: Record<string, number>;
+  checked: string[];
+  bookingId?: string;
+}
 export type OwnerAction =
-  | { action: "open"; openingCash: number }
-  | { action: "menu"; menu: Product[]; pin: string }
+  | ({ action: "open" } & Opening)
+  | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
+  | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
   | { action: "close"; countedCash: number; pin: string }
   | {
@@ -79,24 +103,40 @@ export function demoAction(
   state: RegisterState,
   input: OwnerAction,
 ): Bootstrap {
-  if ("pin" in input && input.pin !== DEMO_PIN)
+  if ("pin" in input && input.pin !== undefined && input.pin !== DEMO_PIN)
     throw new RequestFailure(403, "Wrong PIN. The demo PIN is 1234.");
   switch (input.action) {
     case "open": {
       if (state.shift) throw Error("A shift is already open.");
       const business = state.business!;
-      const shift = newShift(
-        state.deviceId,
-        "demo",
-        Math.max(0, ...state.shifts.map((s) => s.number)) + 1,
-        input.openingCash,
-        state.menu,
-        { ...business.settings, currency: business.currency },
-      );
+      const checklist = business.settings.checklist ?? [];
+      const stock = checkOpening(state.menu, checklist, input.stock, input.checked);
+      if (input.bookingId && !state.bookings?.some((b) => b.id === input.bookingId))
+        throw Error("That scheduled shift was removed.");
+      const shift: Shift = {
+        ...newShift(
+          state.deviceId,
+          "demo",
+          Math.max(0, ...state.shifts.map((s) => s.number)) + 1,
+          input.openingCash,
+          state.menu,
+          { ...business.settings, currency: business.currency },
+        ),
+        stock,
+        bookingId: input.bookingId,
+        checklist: checklist.map((c) => c.text),
+      };
       return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
     }
-    case "menu":
-      return { ...state, menu: input.menu };
+    case "menu": {
+      const shift = state.shift && withNewItems(state.shift, input.menu, input.stock);
+      return {
+        ...state,
+        menu: input.menu,
+        shift,
+        shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),
+      };
+    }
     case "settings": {
       const business = state.business!;
       if (input.currency !== business.currency && state.shift)
@@ -157,7 +197,30 @@ export function demoAction(
         soldOut: [],
       };
     }
-    default:
+    case "setup":
       throw Error("Create a live account to set up a business.");
+    default: {
+      const me = state.me!;
+      try {
+        const plan = applyPlan(
+          {
+            members: state.team ?? [],
+            organizers: state.organizers ?? [],
+            bookings: state.bookings ?? [],
+          },
+          me,
+          input,
+        );
+        return {
+          ...state,
+          team: plan.members,
+          organizers: plan.organizers,
+          bookings: plan.bookings.sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+        };
+      } catch (error) {
+        if (error instanceof PlanError) throw new RequestFailure(error.status, error.message);
+        throw error;
+      }
+    }
   }
 }

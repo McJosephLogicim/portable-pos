@@ -15,10 +15,16 @@ export interface Discount {
   value: number;
   on: boolean;
 }
+export interface ChecklistItem {
+  id: string;
+  text: string;
+}
 export interface Settings {
   receiptNote: string;
   payments: PaymentMethod[];
   discounts: Discount[];
+  /** Ticked off before a shift opens. Missing on registers saved before checklists existed. */
+  checklist?: ChecklistItem[];
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
 export interface ShiftSettings extends Settings {
@@ -42,6 +48,8 @@ export interface Product {
   price: number;
   groups: OptionGroup[];
   image?: string;
+  /** Counted when a shift opens and sold down to zero, like bread or pastries. */
+  stock?: boolean;
 }
 export interface Business {
   id: string;
@@ -62,6 +70,12 @@ export interface Shift {
   settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
+  /** Opening count of each stock-tracked item, by product id. */
+  stock?: Record<string, number>;
+  /** The scheduled shift this till ran for. */
+  bookingId?: string;
+  /** Checklist lines ticked when the shift opened. */
+  checklist?: string[];
 }
 export interface CartLine {
   productId: string;
@@ -98,8 +112,71 @@ export type RegisterEvent =
       targetId: string;
       soldOut: boolean;
     };
+export type Role = "cashier" | "server";
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  roles: Role[];
+  /** Default pay for one shift, in minor units. */
+  rate: number;
+  owner: boolean;
+  /** True once they signed in with the invited email. */
+  joined: boolean;
+}
+/** Who is using this register. */
+export interface Me {
+  memberId: string;
+  name: string;
+  roles: Role[];
+  owner: boolean;
+}
+export interface Place {
+  name: string;
+  address?: string;
+  lat?: number;
+  lon?: number;
+}
+export interface Tag {
+  id: string;
+  name: string;
+}
+export interface Organizer extends Tag {
+  events: Tag[];
+}
+export interface StaffSlot {
+  memberId: string;
+  name: string;
+  role: Role;
+  /** Hidden from teammates other than the owner. */
+  salary?: number;
+}
+/** A scheduled shift: a pop-up slot that people work and that should pay for itself. */
+export interface Booking {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  place: Place | null;
+  organizer: Tag | null;
+  event: Tag | null;
+  /** People needed. */
+  seats: number;
+  staff: StaffSlot[];
+  /** Hidden from everyone but the owner. */
+  rent?: number;
+  /** Sales that earn the incentive. 0 means no quota. */
+  quota: number;
+  /** Paid to each person on the shift when sales reach the quota. */
+  incentive: number;
+  /** Owner only: net sales rung up on tills opened for this shift. */
+  sales?: number;
+}
 export interface Bootstrap {
   business: Business | null;
+  me?: Me | null;
+  team?: Member[];
+  organizers?: Organizer[];
+  bookings?: Booking[];
   menu: Product[];
   shift: Shift | null;
   soldOut: string[];

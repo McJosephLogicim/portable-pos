@@ -103,6 +103,67 @@ export function totalLines(lines: ReceiptLine[]) {
   return total;
 }
 
+/** Units of each stock-tracked item still on hand this shift. */
+export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
+  const left = { ...(shift.stock ?? {}) };
+  for (const sale of sales) {
+    if (sale.shiftId !== shift.id || sale.reversedAt) continue;
+    for (const line of sale.lines)
+      if (line.productId in left) left[line.productId] -= line.quantity;
+  }
+  return left;
+}
+
+/**
+ * Items added to the menu during a shift go on sale at once. Edits to items already
+ * on the till wait for the next shift so receipts keep their prices.
+ */
+export function withNewItems(
+  shift: Shift,
+  menu: Product[],
+  counts: Record<string, number> = {},
+): Shift {
+  const fresh = menu.filter((p) => !shift.menu.some((m) => m.id === p.id));
+  if (!fresh.length) return shift;
+  const stock = { ...(shift.stock ?? {}) };
+  for (const p of fresh) if (p.stock) stock[p.id] = counts[p.id] ?? 0;
+  return { ...shift, menu: [...shift.menu, ...fresh], stock };
+}
+
+/** Check what the opening screen sends: a count for every tracked item and every checklist line ticked. */
+export function checkOpening(
+  menu: Product[],
+  checklist: { id: string }[],
+  stock: Record<string, number>,
+  checked: string[],
+) {
+  for (const p of menu)
+    if (p.stock && !(Number.isInteger(stock[p.id]) && stock[p.id] >= 0))
+      throw Error(`Count the ${p.name} before opening.`);
+  if (checklist.some((c) => !checked.includes(c.id)))
+    throw Error("Tick every line of the opening checklist.");
+  return Object.fromEntries(menu.filter((p) => p.stock).map((p) => [p.id, stock[p.id]]));
+}
+
+/** Refuse an order that asks for more of a counted item than is left. */
+export function checkStock(
+  menu: Product[],
+  cart: { productId: string; quantity: number }[],
+  left: Record<string, number>,
+) {
+  const wanted = new Map<string, number>();
+  for (const line of cart)
+    if (line.productId in left)
+      wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.quantity);
+  for (const [id, quantity] of wanted) {
+    const have = Math.max(0, left[id]);
+    if (quantity > have) {
+      const name = menu.find((p) => p.id === id)?.name ?? "that item";
+      throw Error(have ? `Only ${have} ${name} left.` : `${name} is sold out.`);
+    }
+  }
+}
+
 interface SaleInput {
   id: string;
   shift: Shift;
@@ -113,6 +174,8 @@ interface SaleInput {
   discountId?: string;
   received: number;
   createdAt: string;
+  /** Units left of stock-tracked items before this sale. */
+  stock?: Record<string, number>;
 }
 
 /** Subtotal, discount and total for a cart, using the shift's own discount list. */
@@ -142,6 +205,7 @@ export function makeSale(input: SaleInput): Sale {
   );
   if (!method) throw Error("Invalid payment method.");
   const lines = priceLines(input.shift.menu, input.cart, input.soldOut);
+  if (input.stock) checkStock(input.shift.menu, lines, input.stock);
   const { subtotal, discount, total } = priceOrder(
     input.shift,
     lines,

@@ -1,0 +1,191 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+import { checkOpening, makeSale, stockLeft, withNewItems } from "../src/lib/domain";
+import {
+  applyPlan,
+  bookingProfit,
+  daysBetween,
+  dayOf,
+  redactBooking,
+  shiftTimes,
+  timeOf,
+  zonedInstant,
+  type Plan,
+} from "../src/lib/team";
+import type { Booking, Me, Member, Product, Shift } from "../src/lib/types";
+import { runCommand } from "../src/server/register";
+
+const owner: Member = { id: "o", name: "Owner", email: "o@x.co", roles: ["cashier", "server"], rate: 0, owner: true, joined: true };
+const bea: Member = { id: "b", name: "Bea", email: "bea@x.co", roles: ["cashier"], rate: 70000, owner: false, joined: true };
+const paolo: Member = { id: "p", name: "Paolo", email: "p@x.co", roles: ["server"], rate: 60000, owner: false, joined: true };
+const asOwner: Me = { memberId: "o", name: "Owner", roles: owner.roles, owner: true };
+const asBea: Me = { memberId: "b", name: "Bea", roles: bea.roles, owner: false };
+const later = Date.parse("2026-12-01T00:00:00Z");
+const booking: Booking = {
+  id: "k",
+  startsAt: "2026-12-05T02:00:00.000Z",
+  endsAt: "2026-12-05T10:00:00.000Z",
+  place: { name: "Legazpi Park" },
+  organizer: null,
+  event: null,
+  seats: 2,
+  staff: [],
+  rent: 150000,
+  quota: 800000,
+  incentive: 20000,
+};
+const plan: Plan = { members: [owner, bea, paolo], organizers: [], bookings: [booking] };
+
+test("only the owner plans; teammates join open seats in their role", () => {
+  assert.throws(() => applyPlan(plan, asBea, { action: "deleteBooking", bookingId: "k" }, later), /owner/);
+  assert.throws(() => applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "server" }, later), /not set up/);
+  const joined = applyPlan(plan, asBea, { action: "join", bookingId: "k", role: "cashier" }, later);
+  assert.deepEqual(joined.bookings[0].staff, [{ memberId: "b", name: "Bea", role: "cashier", salary: 70000 }]);
+  const full = applyPlan(joined, asOwner, { action: "assign", bookingId: "k", memberId: "p", role: "server" }, later);
+  assert.throws(() => applyPlan(full, asOwner, { action: "join", bookingId: "k", role: "cashier" }, later), /filled/);
+  // Taking over puts the owner in Bea's seat.
+  const taken = applyPlan(full, asOwner, { action: "assign", bookingId: "k", memberId: "o", role: "cashier", replace: "b" }, later);
+  assert.deepEqual(taken.bookings[0].staff.map((s) => s.memberId), ["o", "p"]);
+  assert.throws(() => applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "b" }, Date.parse(booking.startsAt) + 1), /started/);
+  assert.equal(applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "b" }, later).bookings[0].staff.length, 0);
+  assert.throws(() => applyPlan(joined, asBea, { action: "leave", bookingId: "k", memberId: "o" }, later), /owner/);
+});
+
+test("removing someone opens their future seats and keeps past names", () => {
+  const past = { ...booking, id: "past", startsAt: "2026-11-01T02:00:00.000Z", endsAt: "2026-11-01T08:00:00.000Z", staff: [{ memberId: "b", name: "Bea", role: "cashier" as const, salary: 1 }] };
+  const future = { ...booking, staff: past.staff };
+  const next = applyPlan({ ...plan, bookings: [past, future] }, asOwner, { action: "removeMember", memberId: "b" }, later);
+  assert.equal(next.members.length, 2);
+  assert.equal(next.bookings.find((b) => b.id === "past")!.staff.length, 1);
+  assert.equal(next.bookings.find((b) => b.id === "k")!.staff.length, 0);
+  assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "B2", email: "BEA@x.co", roles: ["server"], rate: 0 }), /already/);
+});
+
+test("profit is sales minus rent, pay, and the incentive once the quota is hit", () => {
+  const staffed = { ...booking, staff: [{ memberId: "b", name: "Bea", role: "cashier" as const, salary: 70000 }, { memberId: "p", name: "Paolo", role: "server" as const, salary: 60000 }] };
+  const miss = bookingProfit({ ...staffed, sales: 700000 });
+  assert.equal(miss.hit, false);
+  assert.equal(miss.net, 700000 - 150000 - 130000);
+  const hit = bookingProfit({ ...staffed, sales: 800000 });
+  assert.equal(hit.incentives, 40000);
+  assert.equal(hit.net, 800000 - 150000 - 130000 - 40000);
+  const seen = redactBooking({ ...staffed, sales: 1 }, asBea);
+  assert.equal(seen.rent, undefined);
+  assert.equal(seen.sales, undefined);
+  assert.equal(seen.staff[0].salary, 70000);
+  assert.equal(seen.staff[1].salary, undefined);
+});
+
+test("bulk days and times follow the business time zone", () => {
+  assert.equal(zonedInstant("2026-11-28", "10:00", "Asia/Manila"), "2026-11-28T02:00:00.000Z");
+  assert.equal(zonedInstant("2026-03-08", "03:30", "America/New_York"), "2026-03-08T07:30:00.000Z");
+  const night = shiftTimes("2026-11-28", "18:00", "02:00", "Asia/Manila");
+  assert.equal(night.endsAt, "2026-11-28T18:00:00.000Z");
+  assert.equal(dayOf(night.startsAt, "Asia/Manila"), "2026-11-28");
+  assert.equal(timeOf(night.startsAt, "Asia/Manila"), "18:00");
+  assert.deepEqual(daysBetween("2026-11-27", "2026-12-06", [0, 6]), ["2026-11-28", "2026-11-29", "2026-12-05", "2026-12-06"]);
+});
+
+test("counted items sell down to zero and come back on reversal", () => {
+  const bread: Product = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
+  const tea: Product = { id: "tea", name: "Tea", category: "", price: 500, groups: [] };
+  assert.throws(() => checkOpening([bread, tea], [{ id: "c" }], {}, ["c"]), /Count the Pandesal/);
+  assert.throws(() => checkOpening([bread], [{ id: "c" }], { bread: 2 }, []), /checklist/);
+  const shift: Shift = {
+    id: randomUUID(), number: 1, businessId: "b", deviceId: "d", openedAt: "", closedAt: null, openingCash: 0,
+    menu: [bread, tea], stock: checkOpening([bread, tea], [], { bread: 2, tea: 9 }, []),
+    settings: { currency: "PHP", receiptNote: "", discounts: [], payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }] },
+  };
+  assert.deepEqual(shift.stock, { bread: 2 });
+  const sell = (quantity: number, sales: ReturnType<typeof makeSale>[]) =>
+    makeSale({ id: randomUUID(), shift, sequence: sales.length + 1, cart: [{ productId: "bread", optionIds: [], quantity }], soldOut: [], tender: "cash", received: 5000, createdAt: "", stock: stockLeft(shift, sales) });
+  assert.throws(() => sell(3, []), /Only 2/);
+  const first = sell(2, []);
+  assert.throws(() => sell(1, [first]), /sold out/);
+  assert.doesNotThrow(() => sell(1, [{ ...first, reversedAt: "now" }]));
+  const added = withNewItems(shift, [bread, tea, { ...bread, id: "ube", name: "Ube roll" }], { ube: 6 });
+  assert.equal(added.menu.length, 3);
+  assert.equal(added.stock!.ube, 6);
+});
+
+test(
+  "a real Postgres team: invites by email, roles, schedule, and profit",
+  {
+    skip:
+      !process.env.POS_TEST_DATABASE_URL &&
+      "Set POS_TEST_DATABASE_URL to a migrated local test database.",
+  },
+  async () => {
+    process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+    const ownerUser = { id: randomUUID(), email: `owner-${randomUUID()}@example.com` };
+    const beaEmail = `bea-${randomUUID()}@example.com`;
+    const beaUser = { id: randomUUID(), email: beaEmail };
+    const paoloEmail = `paolo-${randomUUID()}@example.com`;
+    const paoloUser = { id: randomUUID(), email: paoloEmail };
+    const pin = "4321";
+    const deviceId = randomUUID();
+    const as = (who: { id: string; email?: string | null }) => (input: object) => runCommand(who, input);
+    const o = as(ownerUser);
+    await o({ action: "setup", name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin });
+    const bread = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [], stock: true };
+    await o({ action: "menu", menu: [bread], pin });
+    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }] } });
+    let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), roles: ["cashier"], rate: 70000, pin });
+    snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, roles: ["server"], rate: 60000, pin });
+    assert.equal(snap.team!.length, 3);
+    assert.equal(snap.me!.owner, true);
+    // An unconfirmed address can't claim the invite.
+    assert.equal((await runCommand({ id: beaUser.id, email: null }, { action: "bootstrap" })).business, null);
+    const bea = as(beaUser);
+    const asBea = await bea({ action: "bootstrap" });
+    assert.equal(asBea.business!.name, "Pop-up");
+    assert.equal(asBea.me!.owner, false);
+    assert.deepEqual(asBea.team, []);
+    await assert.rejects(bea({ action: "menu", menu: [], pin }), /owner/);
+    await assert.rejects(bea({ action: "setup", name: "Mine", currency: "PHP", timeZone: "UTC", pin }), { status: 409 });
+    const paolo = as(paoloUser);
+    const asPaolo = await paolo({ action: "bootstrap" });
+    assert.deepEqual(asPaolo.menu, []);
+    await assert.rejects(paolo({ action: "open", deviceId: randomUUID(), openingCash: 0 }), /cashiers/);
+
+    const id = randomUUID();
+    const start = new Date(Date.now() + 3600000).toISOString();
+    const end = new Date(Date.now() + 8 * 3600000).toISOString();
+    const booking = { id, startsAt: start, endsAt: end, place: { name: "Legazpi Park", lat: 14.55, lon: 121.01 }, organizer: { id: "wm", name: "Weekend Market" }, event: { id: "sun", name: "Sunday Market" }, seats: 2, staff: [], rent: 150000, quota: 2000, incentive: 500 };
+    await assert.rejects(bea({ action: "booking", booking, pin }), /owner/);
+    await o({ action: "booking", booking, pin });
+    await assert.rejects(o({ action: "booking", booking: { ...booking, id: randomUUID(), endsAt: start }, pin }), /end after/);
+    snap = await bea({ action: "join", bookingId: id, role: "cashier" });
+    assert.equal(snap.bookings![0].staff[0].name, "Bea");
+    assert.equal(snap.bookings![0].rent, undefined);
+    snap = await paolo({ action: "join", bookingId: id, role: "server" });
+    await assert.rejects(o({ action: "join", bookingId: id, role: "cashier" }), /filled/);
+    // Taking someone off a shift needs the owner PIN; leaving your own does not.
+    await assert.rejects(o({ action: "leave", bookingId: id, memberId: snap.me!.memberId }), { status: 403 });
+    const ownerMe = (await o({ action: "bootstrap" })).me!;
+    snap = await o({ action: "assign", bookingId: id, memberId: ownerMe.memberId, role: "cashier", replace: asBea.me!.memberId, pin });
+    assert.deepEqual(snap.bookings![0].staff.map((s) => s.name).sort(), ["Owner " + ownerUser.email.split("@")[0].slice(6).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), "Paolo"].sort());
+
+    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: [] }), /checklist/);
+    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: {}, checked: ["float"] }), /Count/);
+    const opened = await o({ action: "open", deviceId, openingCash: 0, stock: { bread: 2 }, checked: ["float"], bookingId: id });
+    const shift = opened.shift!;
+    assert.deepEqual(shift.stock, { bread: 2 });
+    assert.equal(shift.bookingId, id);
+    const sale = (n: number, quantity: number) => {
+      const s = makeSale({ id: randomUUID(), shift, sequence: n, cart: [{ productId: "bread", optionIds: [], quantity }], soldOut: [], tender: "cash", received: 5000, createdAt: new Date().toISOString() });
+      return { type: "sale" as const, id: s.id, shiftId: shift.id, sale: s };
+    };
+    await o({ action: "sync", deviceId, events: [sale(1, 2)] });
+    await assert.rejects(o({ action: "sync", deviceId, events: [sale(2, 1)] }), /sold out/);
+    // An item added mid-shift goes on sale with the count given.
+    const added = await o({ action: "menu", menu: [bread, { ...bread, id: "ube", name: "Ube" }], stock: { ube: 4 }, deviceId, pin });
+    assert.equal(added.shift!.stock!.ube, 4);
+    snap = await o({ action: "bootstrap" });
+    assert.equal(snap.bookings![0].sales, 2000);
+    snap = await o({ action: "removeMember", memberId: asPaolo.me!.memberId, pin });
+    assert.equal(snap.bookings![0].staff.length, 1);
+    assert.equal((await paolo({ action: "bootstrap" })).business, null);
+  },
+);

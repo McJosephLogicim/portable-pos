@@ -4,13 +4,14 @@ import { authenticatedOwner } from "@/server/auth";
 import { RegisterError } from "@/server/errors";
 import { readCommand } from "@/server/request";
 import { runCommand } from "@/server/register";
+import { resolveAccess } from "@/server/team";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const headers = { "Cache-Control": "no-store" };
   try {
-    const ownerId = await authenticatedOwner(request);
+    const actor = await authenticatedOwner(request);
     const body = await readCommand(request);
     if (
       typeof body === "object" &&
@@ -20,11 +21,15 @@ export async function POST(request: Request) {
     ) {
       const cursor = "cursor" in body ? body.cursor : undefined;
       return Response.json(
-        await getDb().transaction((tx) => historyPage(tx, ownerId, cursor)),
+        await getDb().transaction(async (tx) => {
+          const access = await resolveAccess(tx, actor, false);
+          const till = access && (access.member.owner || access.member.roles.includes("cashier"));
+          return historyPage(tx, till ? access.business.id : undefined, cursor);
+        }),
         { headers },
       );
     }
-    return Response.json(await runCommand(ownerId, body), { headers });
+    return Response.json(await runCommand(actor, body), { headers });
   } catch (error) {
     if (error instanceof RegisterError) {
       return Response.json(
