@@ -538,6 +538,8 @@ export function Workspace() {
   else if (tab === "shift" || !sellable)
     screen = (
         <ShiftScreen
+          key={tab}
+          compact={tab === "sell"}
           state={state}
           online={online}
           onOpen={(opening: Opening) => owner({ action: "open", ...opening })}

@@ -7,7 +7,7 @@ import {
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
-import { ownerPlanActions, planActions, walkInBooking, type PlanCommand } from "../lib/team";
+import { ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
 import { parseCommand } from "./input";
@@ -188,17 +188,16 @@ export async function runCommand(who: string | Actor, input: unknown) {
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        let bookingId = cmd.bookingId;
-        if (bookingId) {
-          const [booking] = await tx
-            .select({ id: bookings.id })
-            .from(bookings)
-            .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
-          ensure(booking, "That scheduled shift was removed.", 404);
-        } else {
-          // Every till runs for a shift. Without one scheduled, start one now.
-          bookingId = await addWalkIn(tx, business.id, me, cmd.newShift ?? { hours: 8 });
-        }
+        // Shifts start on their schedule, one at a time.
+        const bookingId = cmd.bookingId;
+        ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
+        const [booking] = await tx
+          .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+          .from(bookings)
+          .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
+        ensure(booking, "That scheduled shift was removed.", 404);
+        const problem = startProblem(booking, business.timeZone);
+        ensure(!problem, problem ?? "", 409);
         await tx.insert(shifts).values({
           stock: Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,

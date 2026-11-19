@@ -152,7 +152,7 @@ test(
     const asPaolo = await paolo({ action: "bootstrap" });
 
     const id = randomUUID();
-    const start = new Date(Date.now() + 3600000).toISOString();
+    const start = new Date(Date.now() + 15 * 60000).toISOString();
     const end = new Date(Date.now() + 8 * 3600000).toISOString();
     const booking = { id, startsAt: start, endsAt: end, place: { name: "Legazpi Park", lat: 14.55, lon: 121.01 }, organizer: { id: "wm", name: "Weekend Market" }, event: { id: "sun", name: "Sunday Market" }, seats: 2, staff: [], rent: 150000, quota: 2000, incentive: 500 };
     await assert.rejects(bea({ action: "booking", booking, pin }), /owner/);

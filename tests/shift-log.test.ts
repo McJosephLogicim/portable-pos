@@ -7,6 +7,7 @@ import { reportText, scheduleText, shiftReport } from "../src/lib/report";
 import { canMake, shiftStock } from "../src/lib/stock";
 import type { Booking, Business, Expense, Product, Shift } from "../src/lib/types";
 import { runCommand } from "../src/server/register";
+import { shiftNow } from "./schedule";
 
 const fmt = (n: number) => "₱" + (n / 100).toLocaleString("en");
 
@@ -152,13 +153,14 @@ test(
       settings: { ...boot.business!.settings, stockItems: [strawberry, ice] },
     });
     await cmd({ action: "menu", menu: [dcc, sc], pin });
+    const bookingId = await shiftNow(cmd, pin);
     await assert.rejects(
-      cmd({ action: "open", deviceId, openingCash: 17000, openingCount: { "500": 30 }, stock: { sb: 28, ice: 5 } }),
+      cmd({ action: "open", deviceId, bookingId, openingCash: 17000, openingCount: { "500": 30 }, stock: { sb: 28, ice: 5 } }),
       /add up/,
     );
-    await assert.rejects(cmd({ action: "open", deviceId, openingCash: 17000, stock: { sb: 28 } }), /Count the Ice/);
+    await assert.rejects(cmd({ action: "open", deviceId, bookingId, openingCash: 17000, stock: { sb: 28 } }), /Count the Ice/);
     const opened = await cmd({
-      action: "open", deviceId, openingCash: 17000, openingCount: { "500": 20, "1000": 7 }, stock: { sb: 28, ice: 5 },
+      action: "open", deviceId, bookingId, openingCash: 17000, openingCount: { "500": 20, "1000": 7 }, stock: { sb: 28, ice: 5 },
     });
     const shift = opened.shift!;
     assert.deepEqual(shift.openingCount, { "500": 20, "1000": 7 });
@@ -205,7 +207,7 @@ test(
 );
 
 test(
-  "a till always runs for a shift: one starts on the spot when none is scheduled",
+  "shifts start on their schedule, one at a time",
   {
     skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database.",
   },
@@ -215,18 +217,31 @@ test(
     const deviceId = randomUUID();
     const pin = "4821";
     const cmd = (input: object) => runCommand(owner, input);
-    await cmd({ action: "setup", name: "Walk-in", currency: "PHP", timeZone: "Asia/Manila", pin });
+    await cmd({ action: "setup", name: "On time", currency: "PHP", timeZone: "Asia/Manila", pin });
     await cmd({ action: "menu", menu: [{ id: "tea", name: "Tea", category: "", price: 100, groups: [] }], pin });
-    const opened = await cmd({
-      action: "open", deviceId, openingCash: 50000, newShift: { place: "SM Manila", hours: 6 },
-    });
-    const booking = opened.bookings!.find((b) => b.id === opened.shift!.bookingId)!;
-    assert.equal(booking.place?.name, "SM Manila");
-    assert.equal(Date.parse(booking.endsAt) - Date.parse(booking.startsAt), 6 * 3600000);
-    assert.equal(booking.staff.length, 1);
-    // Linking an already linked till changes nothing.
-    const again = await cmd({ action: "link", deviceId, newShift: { hours: 4 } });
-    assert.equal(again.shift!.bookingId, booking.id);
-    assert.equal(again.bookings!.length, 1);
+    const open = (bookingId?: string) => cmd({ action: "open", deviceId, openingCash: 0, bookingId });
+    // No shift on the schedule, no till.
+    await assert.rejects(cmd({ action: "open", deviceId, openingCash: 0, newShift: { hours: 6 } }), /scheduled shift/);
+    const at = (startHours: number, endHours: number) => {
+      const id = randomUUID();
+      return cmd({
+        action: "booking",
+        pin,
+        booking: {
+          id, startsAt: new Date(Date.now() + startHours * 3600000).toISOString(),
+          endsAt: new Date(Date.now() + endHours * 3600000).toISOString(),
+          place: null, organizer: null, event: null, seats: 1, staff: [], rent: 0, quota: 0, incentive: 0,
+        },
+      }).then(() => id);
+    };
+    await assert.rejects(open(await at(2, 6)), /opens from/);
+    await assert.rejects(open(await at(-8, -1)), /already ended/);
+    // Half an hour early is fine.
+    const soon = await at(0.4, 5);
+    const first = await open(soon);
+    assert.equal(first.shift!.bookingId, soon);
+    // A second start while one runs joins it instead of opening another.
+    const second = await open(await at(-1, 3));
+    assert.equal(second.shift!.id, first.shift!.id);
   },
 );

@@ -422,3 +422,23 @@ export function walkInBooking(
     rent: 0,
   };
 }
+
+/** A till can open this long before its scheduled shift starts. */
+export const OPEN_EARLY = 30 * 60000;
+
+/** Why a scheduled shift can't start now, or null when it can. Shifts start on their schedule. */
+export function startProblem(
+  b: Pick<Booking, "startsAt" | "endsAt">,
+  timeZone: string,
+  now = Date.now(),
+): string | null {
+  const start = Date.parse(b.startsAt);
+  if (now >= Date.parse(b.endsAt)) return "This shift already ended. Add a new one on Shifts.";
+  if (now < start - OPEN_EARLY) {
+    const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+    const day = new Intl.DateTimeFormat("en", { timeZone, weekday: "short", month: "short", day: "numeric" });
+    const sameDay = day.format(now) === day.format(start);
+    return `This shift starts ${sameDay ? "at" : day.format(start) + ","} ${time.format(start)}. The till opens from ${time.format(start - OPEN_EARLY)}.`;
+  }
+  return null;
+}
