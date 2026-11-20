@@ -3240,17 +3240,14 @@ html {
   max-width: 100%;
   min-width: 0;
 }
-.near-me {
+.location-action {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
-.near-me .label:empty {
-  display: none;
-}
-.near-me .label {
+.location-action .label {
   min-width: 0;
   line-height: 1.35;
 }
@@ -3266,11 +3263,6 @@ html {
   background: var(--surface);
   color: var(--ink);
   font-size: 14px;
-}
-.chip-button[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
 }
 .chip-button:disabled {
   opacity: 0.6;
