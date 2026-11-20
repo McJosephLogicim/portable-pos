@@ -32,7 +32,14 @@
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --dur-fast: 120ms;
   --dur-base: 200ms;
+  /* Exits (src/lib/exit.ts). Content fades first, then the space it held closes up. */
+  --ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --exit-fade: 180ms;
+  --exit-collapse: 240ms;
+  --exit-sheet: 240ms;
   --gutter: 20px;
+  --scrim: rgb(0 0 0 / 0.32);
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
   color-scheme: light;
 }
@@ -624,7 +631,7 @@ button.list-row:not(.sell-option):active {
   animation: rise var(--dur-base) var(--ease-out);
 }
 .sheet::backdrop {
-  background: rgb(0 0 0 / 0.32);
+  background: var(--scrim);
   animation: fade var(--dur-base) var(--ease-out);
 }
 .sheet-head {
@@ -685,6 +692,32 @@ button.list-row:not(.sell-option):active {
   .sheet-head::before {
     display: none;
   }
+}
+/* ---------- exits (src/lib/exit.ts) ---------- */
+.exit-ghost,
+.exit-ghost * {
+  animation: none !important;
+  transition: none !important;
+}
+.exit-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: visible;
+  pointer-events: none;
+}
+.exit-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
 }
 @keyframes rise {
   from {

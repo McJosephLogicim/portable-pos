@@ -27,6 +27,7 @@ import { BusinessMark } from "./businesses";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
+import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 import {
   buzz,
   CategoryTabs,
@@ -130,10 +131,11 @@ function OrderLines({
   onQuantity: (index: number, value: number) => void;
 }) {
   return (
-    <div className="card card-list">
+    <div className="card card-list" ref={collapseOnExit}>
       {lines.map((line, index) => (
         <div
           className="order-line"
+          ref={collapseOnExit}
           key={line.productId + ":" + line.optionIds.join(",")}
         >
           <div className="grow stack">
@@ -1204,6 +1206,7 @@ export function SellScreen({
       {count > 0 && !marking && (
         <button
           className="charge-bar"
+          ref={fadeOnExit}
           disabled={busy && !charging}
           onClick={() => { setPaid(false); setCharging(true); }}
           aria-label={`Charge ${formatMoney(total, currency)} for ${count} items`}

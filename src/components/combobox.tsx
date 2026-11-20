@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
+import { fadeOnExit } from "@/lib/exit";
 
 export interface Suggestion {
   key: string;
@@ -52,6 +53,14 @@ export function SuggestInput({
   const activeSuggestion = visible ? shown[active] : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const setListRef = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    const exit = fadeOnExit(node);
+    return () => {
+      listRef.current = null;
+      exit?.();
+    };
+  }, []);
   const activeRef = useRef<HTMLButtonElement>(null);
   useAnchoredList(inputRef, listRef, visible, shown.length);
 
@@ -123,7 +132,7 @@ export function SuggestInput({
       {shown.length > 0 && <ChevronDown aria-hidden="true" className="suggest-chevron" size={16} />}
       {visible && (
         <div
-          ref={listRef}
+          ref={setListRef}
           className="combo-list combo-drop"
           id={id + "-list"}
           role="listbox"
