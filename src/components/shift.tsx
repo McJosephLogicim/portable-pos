@@ -15,6 +15,8 @@ import { SuggestInput } from "./combobox";
 import { RecordEmpty } from "./records";
 import { countOf, StockCount } from "./stock-settings";
 import { ShiftStrip } from "./sell";
+import { ItemsSold, PaymentSales } from "./insights";
+import { shiftKey } from "@/lib/sales-filter";
 import { OPEN_EARLY, startProblem } from "@/lib/team";
 import {
   errorText,
@@ -658,6 +660,7 @@ export function ShiftScreen({
   onSell,
   onGoMenu,
   onSchedule,
+  onSales,
   demo,
   compact,
 }: {
@@ -683,6 +686,7 @@ export function ShiftScreen({
   const [report, setReport] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  const [method, setMethod] = useState<string | null>(null);
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
@@ -852,12 +856,28 @@ export function ShiftScreen({
               </div>
             </div>
           )}
+          <ItemsSold
+            state={state}
+            shiftIds={[shift.id]}
+            menu={shift.menu}
+            currency={currency}
+            title="this till"
+            onSales={(productId) => onSales({ filter: { shift: [shiftKey(shift)], item: [productId] } })}
+          />
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
               {!totals.count && <EmptyRow title="No sales yet" detail="Each payment method adds up here as you sell." />}
               {totals.methods.filter((m) => m.count).map((m) => (
-                <div className="list-row" key={m.id}>
+                <button
+                  type="button"
+                  className="list-row"
+                  key={m.id}
+                  onClick={() => {
+                    buzz.tap();
+                    setMethod(m.id);
+                  }}
+                >
                   <span className="well">
                     <MethodIcon kind={m.kind as never} size={18} />
                   </span>
@@ -868,9 +888,24 @@ export function ShiftScreen({
                     </span>
                   </span>
                   <Money value={m.amount} currency={currency} />
-                </div>
+                  <ChevronRight size={18} className="chev" />
+                </button>
               ))}
             </div>
+            {method && totals.methods.some((m) => m.id === method) && (
+              <PaymentSales
+                state={state}
+                shiftIds={[shift.id]}
+                method={totals.methods.find((m) => m.id === method)!}
+                title="this till"
+                currency={currency}
+                onClose={() => setMethod(null)}
+                onSales={() => {
+                  onSales({ filter: { shift: [shiftKey(shift)], payment: [method] } });
+                  setMethod(null);
+                }}
+              />
+            )}
           </div>
           <div className="stack gap-8">
               <button className="btn block" disabled={!canClose} onClick={() => setClosing(true)}>

@@ -1299,9 +1299,7 @@ button.list-row:not(.sell-option):active {
   padding-top: 4px;
 }
 .confirm-main {
-  align-items: center;
-  text-align: center;
-  padding: 12px 0 4px;
+  padding: 8px 4px 0;
   animation: nudge 220ms var(--ease-out);
 }
 @keyframes nudge {
@@ -1314,6 +1312,33 @@ button.list-row:not(.sell-option):active {
   .confirm-main {
     animation: none;
   }
+}
+.confirm-sale .headline,
+.sale-done .headline {
+  font-size: 34px;
+}
+.saved-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-secondary);
+  font-size: 13.5px;
+}
+.faces.item-faces {
+  margin-top: 0;
+}
+.faces.item-faces .avatar.small {
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+.faces.item-faces .avatar.small + .avatar.small {
+  margin-left: -10px;
+}
+.done-check.small {
+  width: 20px;
+  height: 20px;
+  animation-duration: 260ms;
 }
 .due-num {
   font-size: 56px;
