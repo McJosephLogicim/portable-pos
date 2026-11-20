@@ -29,6 +29,7 @@ import {
   uploadProofs,
 } from "@/lib/register-store";
 import { applyTheme } from "@/lib/theme";
+import { matchCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "@/lib/join-link";
 import { isSimpleMode } from "@/lib/settings";
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
@@ -44,6 +45,9 @@ const tabs = [
   { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
+type JoinTarget =
+  | { businessId: string; bookingId: string | null }
+  | { code: NonNullable<ReturnType<typeof readJoinCode>> };
 const ACTIVE = "portable-pos-account";
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
@@ -123,7 +127,7 @@ export function Workspace() {
     [switching, setSwitching] = useState(false);
   const active = useRef<string | null>(null),
     syncBusy = useRef(false),
-    joinTarget = useRef<{ businessId: string; bookingId: string | null } | null>(null),
+    joinTarget = useRef<JoinTarget | null>(null),
     joinAsked = useRef(false);
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
@@ -171,8 +175,13 @@ export function Workspace() {
     let alive = true;
     async function start() {
       const params = new URLSearchParams(location.search);
-      const businessId = params.get("shifts");
-      joinTarget.current = businessId ? { businessId, bookingId: params.get("shift") } : null;
+      const businessId = params.get("shifts"),
+        code = readJoinCode(params.get("j") ?? "");
+      joinTarget.current = code
+        ? { code }
+        : businessId
+          ? { businessId, bookingId: params.get("shift") }
+          : null;
       let id = localStorage.getItem(ACTIVE) || DEMO;
       // Supabase processes the confirmation callback on the application origin.
       if (
@@ -454,20 +463,28 @@ export function Workspace() {
       const url = new URL(location.href);
       url.searchParams.delete("shifts");
       url.searchParams.delete("shift");
+      url.searchParams.delete("j");
       history.replaceState(null, "", url);
     };
-    if (state.business?.id !== target.businessId) {
+    // Short links carry codes cut from the ids. Match them against this person's teams.
+    const businessId =
+      "code" in target
+        ? (matchCode(state.business ? [state.business] : [], target.code.team, TEAM_CODE) ??
+            matchCode(state.businesses, target.code.team, TEAM_CODE))?.id
+        : target.businessId;
+    const asked = "code" in target ? target.code.shift : target.bookingId;
+    if (!businessId || state.business?.id !== businessId) {
       if (key === DEMO) {
         if (!joinAsked.current) {
           joinAsked.current = true;
-          setNotice(target.bookingId ? "Sign in to see this shift." : "Sign in to see the open shifts.");
+          setNotice(asked ? "Sign in to see this shift." : "Sign in to see the open shifts.");
           setAccount(true);
         }
         return;
       }
       if (!online || syncErr) return;
-      if (state.businesses?.some((b) => b.id === target.businessId))
-        void switchBusiness(target.businessId).catch((e) => setNotice(message(e)));
+      if (businessId && state.businesses?.some((b) => b.id === businessId))
+        void switchBusiness(businessId).catch((e) => setNotice(message(e)));
       else {
         done();
         setNotice("You're not on that team yet. Ask the owner to invite your email.");
@@ -476,11 +493,15 @@ export function Workspace() {
     }
     done();
     if (simple) {
-      if (target.bookingId) setNotice("Scheduled shifts are available in Advanced mode.");
+      if (asked) setNotice("Scheduled shifts are available in Advanced mode.");
       return;
     }
-    const bookingId = state.bookings?.find((b) => b.id === target.bookingId)?.id ?? null;
-    if (target.bookingId && !bookingId) setNotice("This shift is no longer available.");
+    const bookingId =
+      ("code" in target
+        ? target.code.shift ? matchCode(state.bookings, target.code.shift, SHIFT_CODE) : undefined
+        : state.bookings?.find((b) => b.id === target.bookingId)
+      )?.id ?? null;
+    if (asked && !bookingId) setNotice("This shift is no longer available.");
     setSharedSchedule({ bookingId });
     setTab("schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps

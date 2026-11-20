@@ -1,3 +1,4 @@
+import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { isSimpleMode } from "./settings";
@@ -255,8 +256,6 @@ export function scheduleText(
 ) {
   const day = new Intl.DateTimeFormat("en", { timeZone, month: "short", day: "numeric" });
   const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
-  const link = new URL("/", origin);
-  link.searchParams.set("shifts", businessId);
   const groups = new Map<string, Map<string, Booking[]>>();
   for (const b of [...bookings].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
     const name = [b.place?.name, b.event?.name].filter(Boolean).join(" - ") || b.organizer?.name || "Shifts";
@@ -274,8 +273,7 @@ export function scheduleText(
           const label = [day.format(starts), shifts.length > 1 ? time.format(starts) : "", people]
             .filter(Boolean)
             .join(" ");
-          link.searchParams.set("shift", b.id);
-          return `${label} - ${link.href}`;
+          return `${label} - ${joinLink(origin, businessId, b.id)}`;
         }),
       );
       return [name, ...lines].join("\n");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { joinLink } from "@/lib/join-link";
 import { Banknote, Check, ChevronRight, HandPlatter, Link, Plus, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
@@ -202,9 +203,7 @@ function MemberSheet({
             type="button"
             className="btn small secondary"
             onClick={async () => {
-              const link = new URL("/", location.origin);
-              link.searchParams.set("shifts", businessId);
-              const url = link.href;
+              const url = joinLink(location.origin, businessId);
               try {
                 if (navigator.share) await navigator.share({ title: "Portable POS", url });
                 else {
