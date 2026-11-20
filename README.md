@@ -31,7 +31,7 @@ Opening asks for the cash float, counted by coin and bill (for example ₱5 × 1
 
 After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Share** shares a PNG made on the phone. If file sharing is unavailable, use **Save**. **Copy** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
 
-The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. A shared schedule or shift opens after sign-in or email confirmation for teammates with access. To invite someone new to the team, send them a business invitation from Settings › Team.
+The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. A shared schedule or shift opens after sign-in or email confirmation for teammates with access. Before sign-in, a shift link shows the business's name and branding, the date, hours, place, event and open seats (from `/api/links/shift/<code>`). It never shows pay, rent, quotas or who is on the shift. Team-only links are short enough to guess, so they show no preview. To invite someone new to the team, send them a business invitation from Settings › Team.
 
 ## Menu and stock
 
@@ -65,7 +65,7 @@ Checkout can ask for a photo before a sale completes. For a discount, switch on 
 
 ## Team and schedule
 
-Owners invite people in Settings › Team. Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. A person joins a shift as cashier or server and can switch until the shift ends. Owners can change anyone's shift role. Anyone on the team can run the till.
+Owners invite people in Settings › Team. Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. Before sign-in, an invite link shows the business's name, logo and brand color, the primary owner's name, and the name the invitee joins as (from `/api/links/invite/<code>`), and defaults to creating an account. A person joins a shift as cashier or server and can switch until the shift ends. Owners can change anyone's shift role. Anyone on the team can run the till.
 
 To give someone owner access, open **Settings › Team**, select someone who has accepted their invitation, set **Business access** to **Owner**, and save with the business's owner PIN. Owners can manage the register, settings and team, and see pay and profit. Select **Team member** to revoke access for an additional owner. The original owner keeps owner access.
 

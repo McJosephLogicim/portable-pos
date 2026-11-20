@@ -55,23 +55,23 @@ async function mockAuth(page: Page) {
 }
 
 async function enterCredentials(page: Page) {
-  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("test-password");
 }
 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("portable-pos-account", id), accountId);
   await page.goto(appUrl);
-  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to your register" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
   await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
 });
 
 for (const [path, title] of [
-  ["/i/" + inviteCode, "Join a business"],
-  [joinLink(appUrl, teamId), "Open team schedule"],
-  [joinLink(appUrl, teamId, shiftId), "Open shared shift"],
+  ["/i/" + inviteCode, "Join the team"],
+  [joinLink(appUrl, teamId), "Open your team’s shifts"],
+  [joinLink(appUrl, teamId, shiftId), "Open the shift"],
 ]) {
   test(`opens the ${title} entry even after visiting the demo`, async ({ page }) => {
     await page.goto(appUrl);
@@ -98,9 +98,9 @@ test.describe("account-enabled link entry", () => {
     test(`opens the ${label} after email confirmation in a fresh browser`, async ({ page, browser }) => {
       const redirect = await mockAuth(page);
       await page.goto(link);
-      await page.getByRole("button", { name: "Create an account" }).click();
+      await page.getByRole("group", { name: "Account" }).getByRole("button", { name: "Create account" }).click();
       await enterCredentials(page);
-      await page.getByRole("button", { name: "Create account", exact: true }).click();
+      await page.locator("button[type=submit]").click();
       await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
       expect(redirect()).toBe(new URL("/" + query, appUrl).href);
 
@@ -142,7 +142,7 @@ test.describe("account-enabled link entry", () => {
       route.fulfill({ json: route.request().headers()["x-business-id"] === teamId ? team : primary }));
     await page.goto(joinLink(appUrl, teamId, shiftId));
     await enterCredentials(page);
-    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.locator("button[type=submit]").click();
     await expect(page.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
   });
@@ -153,11 +153,11 @@ test.describe("account-enabled link entry", () => {
       route.fulfill({ json: { business: null, menu: [], shift: null, shifts: [], soldOut: [], sales: [] } }));
     await page.goto(joinLink(appUrl, teamId, shiftId));
     await enterCredentials(page);
-    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await page.locator("button[type=submit]").click();
     await expect(page.getByRole("heading", { name: "You can’t open this shift" })).toBeVisible();
     await page.getByRole("button", { name: "Use another account" }).click();
-    await expect(page.getByRole("heading", { name: "Open shared shift" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Open the shift" })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Open shared shift" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Open the shift" })).toBeVisible();
   });
 });

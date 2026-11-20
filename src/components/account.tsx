@@ -1,9 +1,13 @@
 "use client";
-import { ArrowUpRight, Eye, EyeOff } from "lucide-react";
+import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { accountsEnabled, authClient } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
+import { onColor } from "@/lib/theme";
+import type { LinkPreview } from "@/lib/types";
+import { BusinessMark } from "./businesses";
+import { LiquidSegments } from "./liquid-segments";
 import { CurrencyOptions } from "./settings";
 import { errorText, Explain, Sheet } from "./ui";
 import styles from "./account.module.css";
@@ -11,34 +15,132 @@ import styles from "./account.module.css";
 export type AccountEntry = {
   kind: "register" | "invite" | "business" | "shift";
   returnTo?: string;
+  /** The /i/ or /j/ code, for a preview of what the link opens. */
+  code?: string;
 };
 
-const entryCopy = {
-  register: { title: "Sign in", detail: "Open your register." },
-  invite: { title: "Join a business", detail: "Sign in or create an account to accept your invitation." },
-  business: { title: "Open team schedule", detail: "Use the email address your team invited." },
-  shift: { title: "Open shared shift", detail: "Use the email address your team invited." },
-};
+type Mode = "signin" | "create";
+type Preview = { state: "loading" } | { state: "none" } | { state: "gone" } | { state: "ready"; data: LinkPreview };
 
-function AccountPage({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+/** Ask the server what a link opens. Offline or slow, the page falls back to plain copy. */
+function usePreview(entry?: AccountEntry): Preview {
+  const path = entry?.code && (entry.kind === "invite" ? "invite" : entry.kind === "shift" ? "shift" : null);
+  const [preview, setPreview] = useState<Preview>(path ? { state: "loading" } : { state: "none" });
+  useEffect(() => {
+    if (!path || !entry?.code) return;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 5000);
+    fetch(`/api/links/${path}/${encodeURIComponent(entry.code)}`, { signal: abort.signal, cache: "no-store" })
+      .then(async (res) => {
+        if (res.status === 404) return setPreview({ state: path === "invite" ? "gone" : "none" });
+        if (!res.ok) throw Error(String(res.status));
+        setPreview({ state: "ready", data: (await res.json()) as LinkPreview });
+      })
+      .catch(() => setPreview({ state: "none" }))
+      .finally(() => clearTimeout(timer));
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [path, entry?.code]);
+  return preview;
+}
+
+/** The business's color on its own invite, so the link already looks like their till. */
+function brandStyle(brand?: string): CSSProperties | undefined {
+  if (!brand) return undefined;
+  const on = onColor(brand);
+  return {
+    "--accent": brand,
+    "--accent-ring": brand,
+    "--on-accent": on,
+  } as CSSProperties;
+}
+
+function AppMark() {
   return (
-    <main className={styles.page}>
-      <div className={styles.panel}>
-        <div className={styles.content}>
-          <header className={styles.brand}>
-            <Image src="/icon-192.png" alt="" width={34} height={34} loading="eager" unoptimized />
-            <span>Portable POS</span>
-          </header>
-          <section className={styles.body} aria-labelledby="account-title">
-            {children}
-          </section>
-          {footer && <footer className={styles.footer}>{footer}</footer>}
-        </div>
-        <div className={styles.mark} aria-hidden="true">
-          <Image src="/icon-512.png" alt="" width={512} height={512} loading="eager" unoptimized />
-        </div>
+    <div className={styles.app}>
+      <Image src="/icon-192.png" alt="" width={28} height={28} loading="eager" unoptimized />
+      <span>Portable POS</span>
+    </div>
+  );
+}
+
+function AccountPage({ children, brand, credit }: { children: ReactNode; brand?: string; credit?: boolean }) {
+  return (
+    <main className={styles.page} style={brandStyle(brand)}>
+      <div className={styles.column}>
+        {children}
+        {credit && <div className={styles.credit}><AppMark /></div>}
       </div>
     </main>
+  );
+}
+
+function formatShift(shift: NonNullable<LinkPreview["shift"]>) {
+  const zone = { timeZone: shift.timeZone };
+  const start = new Date(shift.startsAt);
+  const end = new Date(shift.endsAt);
+  const day = new Intl.DateTimeFormat(undefined, { ...zone, weekday: "long" }).format(start);
+  const date = new Intl.DateTimeFormat(undefined, { ...zone, month: "long", day: "numeric" }).format(start);
+  const time = new Intl.DateTimeFormat(undefined, { ...zone, hour: "numeric", minute: "2-digit" });
+  return { day, date, hours: `${time.format(start)} – ${time.format(end)}` };
+}
+
+/** The invitation itself: whose business, from whom, and for whom. */
+function InviteCard({ data }: { data: LinkPreview }) {
+  const { business, invite } = data;
+  return (
+    <section className={styles.ticket} aria-labelledby="account-title">
+      <BusinessMark name={business.name} logo={business.logo} brand={business.brand} size={56} />
+      <h1 id="account-title" className={styles.business}>{business.name}</h1>
+      {invite && (
+        <p className={styles.sentence}>
+          {invite.invitedBy ? <strong>{invite.invitedBy}</strong> : "The owner"} invited you to join
+          as <strong>{invite.name}</strong>{invite.owner ? ", with owner access" : ""}.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** A shared shift: the day is the answer, then the hours and the place. */
+function ShiftCard({ data }: { data: LinkPreview }) {
+  const { business, shift } = data;
+  if (!shift) return null;
+  const { day, date, hours } = formatShift(shift);
+  const open = shift.seats - shift.taken;
+  return (
+    <section className={styles.ticket} aria-labelledby="account-title">
+      <div className={styles.from}>
+        <BusinessMark name={business.name} logo={business.logo} brand={business.brand} size={32} />
+        <span>{business.name}</span>
+      </div>
+      <h1 id="account-title" className={styles.day}>
+        <span>{day}</span>
+        {date}
+      </h1>
+      <p className={styles.hours}>{hours}</p>
+      {(shift.place || shift.event) && (
+        <div className={styles.where}>
+          {shift.place && <p>{shift.place}</p>}
+          {shift.event && <p className={styles.quiet}>{shift.event}</p>}
+        </div>
+      )}
+      <p className={styles.seats}>
+        {open > 0 ? `${open} of ${shift.seats} ${shift.seats === 1 ? "seat" : "seats"} open` : "Every seat is taken"}
+      </p>
+    </section>
+  );
+}
+
+function Placeholder() {
+  return (
+    <section className={`${styles.ticket} ${styles.waiting}`} aria-busy="true" aria-label="Loading invitation">
+      <span className={styles.block} style={{ width: 56, height: 56 }} />
+      <span className={styles.block} style={{ width: "62%", height: 30 }} />
+      <span className={styles.block} style={{ width: "88%", height: 18 }} />
+    </section>
   );
 }
 
@@ -52,31 +154,34 @@ export function AccountLinkError({ title, detail, onContinue, onSwitch }: {
   const [error, setError] = useState("");
   return (
     <AccountPage>
-      <div className={styles.intro}>
-        <h1 id="account-title">{title}</h1>
-        <p>{detail}</p>
-      </div>
-      <div className={styles.actions}>
-        {onSwitch && (
-          <button className="btn block" disabled={busy} onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await onSwitch();
-            } catch (e) {
-              setError(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}>
-            {busy ? "Signing out…" : "Use another account"}
+      <AppMark />
+      <section className={styles.card} aria-labelledby="account-title">
+        <div className={styles.head}>
+          <h1 id="account-title" className={styles.title}>{title}</h1>
+          <p className={styles.lede}>{detail}</p>
+        </div>
+        <div className={styles.actions}>
+          {onSwitch && (
+            <button className="btn block" disabled={busy} onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await onSwitch();
+              } catch (e) {
+                setError(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}>
+              {busy ? "Signing out…" : "Use another account"}
+            </button>
+          )}
+          <button className={onSwitch ? styles.plain : "btn block"} onClick={onContinue} disabled={busy}>
+            Go to my register
           </button>
-        )}
-        <button className={onSwitch ? "link" : "btn block"} onClick={onContinue} disabled={busy}>
-          Go to my register
-        </button>
-        {error && <p role="alert" className="alert">{error}</p>}
-      </div>
+          {error && <p role="alert" className="alert">{error}</p>}
+        </div>
+      </section>
     </AccountPage>
   );
 }
@@ -88,32 +193,35 @@ type AccountProps = {
   | { requiredUser: string; onDismiss: () => void }
 );
 
+const MODES = [
+  { value: "signin", label: "Sign in" },
+  { value: "create", label: "Create account" },
+] as const;
+
 export function Account(props: AccountProps) {
   const page = "entry" in props;
   const entry = page ? props.entry : undefined;
-  const [create, setCreate] = useState(false);
+  const kind = entry?.kind ?? "register";
+  const preview = usePreview(entry);
+  const data = preview.state === "ready" ? preview.data : undefined;
+  // Most people who open an invite are new; everyone else already has an account.
+  const [mode, setMode] = useState<Mode>(kind === "invite" ? "create" : "signin");
+  const create = mode === "create";
+  useEffect(() => {
+    if (preview.state === "gone") setMode("signin");
+  }, [preview.state]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [checkEmail, setCheckEmail] = useState(false);
+  const [sentTo, setSentTo] = useState("");
   const [busy, setBusy] = useState(false);
-  const copy = entryCopy[entry?.kind ?? "register"];
-  const title = checkEmail ? "Check your email" : create ? "Create your account" : page ? copy.title : "Sign in";
-  const createDetail =
-    entry?.kind === "invite" ? "Confirm your email to accept the invitation."
-      : entry?.kind === "shift" ? "Use the email address your team invited to open this shift."
-      : entry?.kind === "business" ? "Use the email address your team invited to open the schedule."
-      : "Create an account for your business.";
-  const detail = checkEmail
-    ? <>We sent a confirmation link to <strong>{email}</strong>. Open it to continue.</>
-    : create ? createDetail : page ? copy.detail : "Sign in again to reconnect this register.";
 
-  function switchMode(next: boolean) {
-    setCreate(next);
+  function switchMode(next: Mode) {
+    setMode(next);
     setShowPassword(false);
     setPassword("");
-    setCheckEmail(false);
+    setSentTo("");
     setError("");
   }
 
@@ -138,7 +246,7 @@ export function Account(props: AccountProps) {
       } else {
         setPassword("");
         setShowPassword(false);
-        setCheckEmail(true);
+        setSentTo(email);
       }
     } catch (e) {
       setError(errorText(e));
@@ -146,15 +254,24 @@ export function Account(props: AccountProps) {
       setBusy(false);
     }
   }
-  const form = (
+
+  const business = data?.business.name;
+  const submitLabel = busy
+    ? create ? "Creating account…" : "Signing in…"
+    : create ? "Create account"
+      : kind === "invite" && preview.state !== "gone" ? "Sign in and join"
+      : "Sign in";
+
+  const fields = (
     <form onSubmit={submit} className={styles.form}>
       <fieldset disabled={busy || !accountsEnabled}>
-        <label className="field">
-          <span>Email address</span>
+        <label className={styles.field}>
+          <span>Email</span>
           <input
             className="input"
             name="email"
             type="email"
+            inputMode="email"
             autoComplete="username"
             autoCapitalize="none"
             spellCheck={false}
@@ -163,8 +280,15 @@ export function Account(props: AccountProps) {
             required
           />
         </label>
-        <div className="field">
-          <label htmlFor="account-password">Password</label>
+        <div className={styles.field}>
+          <span className={styles.label}>
+            <label htmlFor="account-password">Password</label>
+            {create && (
+              <Explain title="Password">
+                <p>Use at least 8 characters. You’ll use this email and password on every phone you sell from.</p>
+              </Explain>
+            )}
+          </span>
           <div className={styles.password}>
             <input
               id="account-password"
@@ -183,53 +307,87 @@ export function Account(props: AccountProps) {
             </button>
           </div>
         </div>
-        {error && (
-          <p role="alert" className="alert">
-            {error}
-          </p>
-        )}
-        <button type="submit" className="btn block">
-          {busy ? "Please wait…" : create ? "Create account" : "Sign in"}
-        </button>
+        {error && <p role="alert" className="alert">{error}</p>}
+        <button type="submit" className="btn block">{submitLabel}</button>
       </fieldset>
     </form>
   );
 
+  // Signing in again from inside the register.
   if (!page) return (
-    <Sheet title={title} onClose={props.onDismiss} busy={busy}>
+    <Sheet title="Sign in" onClose={props.onDismiss} busy={busy}>
       <div className="stack gap-14">
-        <p className="muted">{detail}</p>
-        {form}
+        <p className="muted">Sign in again to reconnect this register.</p>
+        {fields}
       </div>
     </Sheet>
   );
 
-  return (
-    <AccountPage footer={entry?.kind === "register" && (
-      <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
-        Try the demo <ArrowUpRight size={16} aria-hidden="true" />
-      </button>
-    )}>
-      <div className={styles.intro}>
-        <h1 id="account-title">{title}</h1>
-        <p role={checkEmail ? "status" : undefined}>{detail}</p>
+  const linked = kind !== "register";
+  const plainTitle =
+    kind === "invite" ? "Join the team"
+      : kind === "shift" ? "Open the shift"
+      : kind === "business" ? "Open your team’s shifts"
+      : "Sign in";
+  const formTitle =
+    kind === "invite" ? (preview.state === "gone" ? "Sign in" : create ? "Create your account to join" : "Sign in to join")
+      : kind === "shift" ? "Sign in to take a seat"
+      : kind === "business" ? "Sign in to see open shifts"
+      : create ? "Create your account" : "Sign in to your register";
+
+  const sent = (
+    <section className={styles.card} aria-labelledby="sent-title">
+      <div className={styles.head}>
+        <h2 id="sent-title" className={styles.title}>Check your email</h2>
+        <p className={styles.lede} role="status">
+          We sent a link to <strong>{sentTo}</strong>. Open it on this phone
+          {business ? <> to {kind === "invite" ? "join" : "open"} {business}</> : linked ? " to continue" : " to finish"}.
+        </p>
       </div>
-      {props.notice && <p role="alert" className="alert">{props.notice}</p>}
-      {!accountsEnabled && <p className="muted">Live accounts are unavailable on this server.</p>}
-      {checkEmail ? (
-        <button type="button" className="btn block" onClick={() => switchMode(false)}>Back to sign in</button>
+      <button type="button" className={styles.plain} onClick={() => switchMode("create")}>Use a different email</button>
+    </section>
+  );
+
+  const form = (
+    <section className={styles.card} aria-labelledby={linked && preview.state !== "none" ? "form-title" : "account-title"}>
+      {linked && preview.state !== "none" ? (
+        <h2 id="form-title" className={styles.formTitle}>{formTitle}</h2>
       ) : (
-        <>
-          {form}
-          {accountsEnabled && (
-            <div className={styles.switch}>
-              <span>{create ? "Already have an account?" : "New to Portable POS?"}</span>
-              <button type="button" className="link" disabled={busy} onClick={() => switchMode(!create)}>
-                {create ? "Sign in" : "Create an account"}
-              </button>
-            </div>
-          )}
-        </>
+        <h1 id="account-title" className={styles.title}>{linked ? plainTitle : formTitle}</h1>
+      )}
+      {accountsEnabled && (
+        <div className={styles.modes}>
+          <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
+        </div>
+      )}
+      {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
+      {props.notice && <p role="alert" className="alert">{props.notice}</p>}
+      {fields}
+    </section>
+  );
+
+  return (
+    <AccountPage brand={data?.business.brand} credit={Boolean(data)}>
+      {!data && <AppMark />}
+      {preview.state === "loading" && <Placeholder />}
+      {data && (kind === "invite" ? <InviteCard data={data} /> : <ShiftCard data={data} />)}
+      {preview.state === "gone" && (
+        <section className={styles.card} aria-labelledby="account-title">
+          <div className={styles.head}>
+            <h1 id="account-title" className={styles.title}>This invite was used</h1>
+            <p className={styles.lede}>If you joined with it, sign in. If not, ask the owner for a new link.</p>
+          </div>
+        </section>
+      )}
+      {sentTo ? sent : form}
+      {kind === "register" && !sentTo && (
+        <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
+          <span>
+            <strong>Try the demo</strong>
+            <span>A sample coffee counter. The PIN is 1234.</span>
+          </span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
       )}
     </AccountPage>
   );
