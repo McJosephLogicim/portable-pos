@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
-import type { Booking, Business, Expense, RegisterState, Shift } from "@/lib/types";
-import { parseMoney, shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
+import { useState, type ComponentProps } from "react";
+import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Wallet } from "lucide-react";
+import type { Booking, ExpenseInput, OpeningExpense, RegisterState, Shift } from "@/lib/types";
+import { shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
@@ -11,7 +11,7 @@ import { ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedu
 import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
-import { SuggestInput } from "./combobox";
+import { ExpensesSection } from "./expenses";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
@@ -23,7 +23,6 @@ import {
   formatMoney,
   MethodIcon,
   Money,
-  MoneyField,
   Notice,
   Sheet,
   buzz,
@@ -38,7 +37,6 @@ import {
 import styles from "./operations.module.css";
 
 export type CloseInput = Omit<Closing, "action" | "pin">;
-export type ExpenseInput = { label: string; amount: number; source: Expense["source"] };
 
 function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zone: string; note?: string; onClick?: () => void }) {
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -203,6 +201,7 @@ function OpenShift({
   const [counting, setCounting] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<string[]>([]);
+  const [expenses, setExpenses] = useState<OpeningExpense[]>([]);
   const value = cash.amount;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
@@ -231,6 +230,9 @@ function OpenShift({
         </div>
       </div>
       <div className="stack gap-10">
+        {expenses.some((expense) => expense.source === "till") && (
+          <p className="label">Enter the starting float before expenses paid from the till.</p>
+        )}
         <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
@@ -246,6 +248,20 @@ function OpenShift({
           onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
         />
       )}
+      <ExpensesSection
+        expenses={expenses.map((expense) => ({ ...expense, by: state.me?.name }))}
+        currency={currency}
+        timeZone={business.timeZone}
+        name={state.me?.name ?? ""}
+        suggestions={(state.expenses ?? []).map((expense) => expense.label)}
+        note="Expenses are saved when you open the till."
+        disabled={busy}
+        onExpense={(input) => {
+          const expense = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+          setExpenses((current) => [expense, ...current]);
+        }}
+        onUnexpense={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
+      />
       {checklist.length > 0 && (
         <div className="stack gap-10">
           <div className="between section-head">
@@ -320,6 +336,7 @@ function OpenShift({
                 ...(cash.count ? { openingCount: cash.count } : {}),
                 stock: countedOnly(tracked.filter((i) => counting || limits.has(i.id)), counts),
                 checked,
+                ...(expenses.length ? { expenses } : {}),
                 bookingId: booking.id,
               });
               if (origin) celebrate(origin);
@@ -352,6 +369,7 @@ function CloseSheet({
   state,
   expected,
   currency,
+  expenseProps,
   onClose,
   onDismiss,
 }: {
@@ -359,6 +377,7 @@ function CloseSheet({
   state: RegisterState;
   expected: number;
   currency: string;
+  expenseProps: ComponentProps<typeof ExpensesSection>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onDismiss: () => void;
 }) {
@@ -420,6 +439,7 @@ function CloseSheet({
         <span className="label">Expected in the drawer</span>
         <Money value={expected} currency={currency} className="big-num" />
       </div>
+      <ExpensesSection {...expenseProps} disabled={busy || expenseProps.disabled} />
       <div className="stack gap-10">
         <p className="group-title">Cash on hand</p>
         <CashCounter currency={currency} label="Cash on hand" onChange={setCash} />
@@ -445,96 +465,6 @@ function CloseSheet({
     </Sheet>
   );
 }
-
-function ExpenseSheet({
-  currency,
-  suggestions,
-  name,
-  onSave,
-  onDismiss,
-}: {
-  currency: string;
-  suggestions: string[];
-  name: string;
-  onSave: (input: ExpenseInput) => Promise<void>;
-  onDismiss: () => void;
-}) {
-  const [label, setLabel] = useState("");
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState<Expense["source"]>("till");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  let value: number | undefined;
-  try {
-    value = amount.trim() ? parseMoney(amount, currency) : undefined;
-  } catch {}
-  const ready = label.trim() && value;
-  return (
-    <Sheet
-      title="Log an expense"
-      onClose={onDismiss}
-      busy={busy}
-      footer={
-        <button
-          className="btn block"
-          disabled={!ready || busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await onSave({ label: label.trim(), amount: value!, source });
-              buzz.success();
-              onDismiss();
-            } catch (e) {
-              setError(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
-        </button>
-      }
-    >
-      <div className="field">
-        <span>What for</span>
-        <SuggestInput
-          label="What for"
-          value={label}
-          onChange={setLabel}
-          suggestions={suggestions.map((s) => ({ key: s, name: s }))}
-          placeholder="Rent, Lalamove, ice…"
-          maxLength={80}
-          autoFocus
-        />
-      </div>
-      <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
-      <div className="stack gap-8">
-        <span className="label">Paid with</span>
-        <div className="segmented" role="group" aria-label="Paid with">
-          <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
-            Cash from the till
-          </button>
-          <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
-            Own pocket
-          </button>
-        </div>
-        <p className="label">
-          {source === "till"
-            ? "Takes it out of the cash expected in the drawer."
-            : `Leaves the drawer alone. The report says to pay back ${name && name !== "You" ? name.split(" ")[0] : "you"}.`}
-        </p>
-      </div>
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
-    </Sheet>
-  );
-}
-
-const expenseIdeas = ["Rent", "Lalamove", "Grab", "Ice", "Supplies", "Parking", "Food", "Gas"];
 
 export function ShiftScreen({
   onOpen,
@@ -564,15 +494,12 @@ export function ShiftScreen({
   const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
-  const [addingExpense, setAddingExpense] = useState(false);
   const [closedId, setClosedId] = useState<string | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
   const [pastTillId, setPastTillId] = useState<string | null>(null);
   const [report, setReport] = useState(false);
-  const [removing, setRemoving] = useState<Expense | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
   const [method, setMethod] = useState<string | null>(null);
-  const [allExpenses, setAllExpenses] = useState(false);
   const [allStock, setAllStock] = useState(false);
   const [allPayments, setAllPayments] = useState(false);
   const business = state.business!;
@@ -581,13 +508,21 @@ export function ShiftScreen({
   const startingBooking = starting ? upcomingBookings(state).find((b) => b.id === starting) : undefined;
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
-  const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
   const replay = shift ? stockReplay(shift, state.sales) : undefined;
   const remainingStock = replay ? Object.entries(replay.left) : [];
   const paymentMethods = totals?.methods.filter((m) => m.count) ?? [];
-  const pastLabels = [...new Set([...expenses.map((e) => e.label), ...expenseIdeas])];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
+  const expenseProps = {
+    expenses: expenses.filter((e) => e.shiftId === shift?.id && !e.voidedAt),
+    suggestions: expenses.map((e) => e.label),
+    name: state.me?.name ?? "",
+    timeZone: business.timeZone,
+    currency,
+    disabled: Boolean(state.closingShiftId),
+    onExpense,
+    onUnexpense,
+  };
   const canClose = online && !state.pending.length;
   const history = [
     ...new Map(
@@ -665,62 +600,7 @@ export function ShiftScreen({
               </span>
             </div>
           </div>
-          <div className="stack gap-10">
-            <div className="between section-head">
-              <p className="group-title">Expenses</p>
-              {shiftExpenses.length > 0 && (
-                <span className="label">{formatMoney(totals.tillExpenses + totals.pocketExpenses, currency)}</span>
-              )}
-            </div>
-            <div className="card card-list">
-              {(allExpenses ? shiftExpenses : shiftExpenses.slice(0, 5)).map((e) => (
-                <div className="list-row" key={e.id}>
-                  <span className="well">
-                    <Receipt size={18} strokeWidth={1.8} />
-                  </span>
-                  <span className="grow stack">
-                    <span className="ellipsis">{e.label}</span>
-                    <span className="label ellipsis">
-                      {e.source === "till" ? "From the till" : `Paid by ${e.by ? e.by.split(" ")[0] : "staff"}`}
-                      {" · "}
-                      {time.format(new Date(e.createdAt))}
-                    </span>
-                  </span>
-                  <Money value={e.amount} currency={currency} />
-                  <button
-                    type="button"
-                    className="round flat"
-                    aria-label={"Remove " + e.label}
-                    onClick={() => {
-                      buzz.tap();
-                      setRemoving(e);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ))}
-              {!shiftExpenses.length && (
-                <EmptyRow title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
-              )}
-              {shiftExpenses.length > 5 && (
-                  <button type="button" className="list-row" onClick={() => setAllExpenses(!allExpenses)} aria-expanded={allExpenses}>
-                  <span className="grow">{allExpenses ? "Show less" : `Show ${shiftExpenses.length - 5} more`}</span>
-                    <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
-                </button>
-              )}
-                <button type="button" className="list-row" aria-haspopup="dialog" onClick={() => setAddingExpense(true)}>
-                <span className="well">
-                  <Plus size={18} strokeWidth={1.8} />
-                </span>
-                <span className="grow stack">
-                  <span>Log an expense</span>
-                  <span className="label">Paid from the till or out of pocket</span>
-                </span>
-                <ChevronRight size={18} className="chev" />
-              </button>
-            </div>
-          </div>
+          <ExpensesSection key={shift.id} {...expenseProps} />
           {remainingStock.length > 0 && (
             <div className="stack gap-10">
               <p className="group-title">Stock left</p>
@@ -826,6 +706,7 @@ export function ShiftScreen({
       ) : (
         startingBooking ? (
           <OpenShift
+            key={startingBooking.id}
             state={state}
             booking={startingBooking}
             online={online}
@@ -849,10 +730,12 @@ export function ShiftScreen({
       )}
       {closing && shift && totals && (
         <CloseSheet
+          key={shift.id}
           shift={shift}
           state={state}
           expected={totals.expectedCash}
           currency={currency}
+          expenseProps={expenseProps}
           onClose={async (closing, pin) => {
             await onClose(closing, pin);
             buzz.success();
@@ -863,24 +746,6 @@ export function ShiftScreen({
       )}
       {linking && (
         <TillShiftsSheet {...schedule} shiftId={linking} onClose={() => setLinking(null)} />
-      )}
-      {addingExpense && (
-        <ExpenseSheet
-          currency={currency}
-          suggestions={pastLabels}
-          name={state.me?.name ?? ""}
-          onSave={onExpense}
-          onDismiss={() => setAddingExpense(false)}
-        />
-      )}
-      {removing && (
-        <ConfirmSheet
-          title="Remove expense?"
-          detail={`${removing.label} (${formatMoney(removing.amount, currency)}) will come out of the shift’s expense total.`}
-          confirmLabel="Remove"
-          onClose={() => setRemoving(null)}
-          onConfirm={() => onUnexpense(removing.id)}
-        />
       )}
       {report && shift && (
         <ReportSheet shift={shift} state={state} business={business} onDismiss={() => setReport(false)} />

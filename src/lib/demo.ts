@@ -8,6 +8,7 @@ import { RequestFailure } from "./client";
 import { currencyDigits, defaultSettings, mergeShiftSettings } from "./settings";
 import type {
   Bootstrap,
+  OpeningExpense,
   Product,
   RegisterMode,
   RegisterResponse,
@@ -82,6 +83,7 @@ export interface Opening {
   openingCount?: CashCount;
   stock: Record<string, number>;
   checked: string[];
+  expenses?: OpeningExpense[];
   bookingId?: string;
   /** Start a shift now when none is scheduled. */
   newShift?: WalkIn;
@@ -163,7 +165,12 @@ export function demoAction(
         bookingId: booking.id,
         checklist: checklist.map((c) => c.text),
       };
-      return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
+      const expenses = input.expenses?.map((expense) => ({
+        ...expense,
+        shiftId: shift.id,
+        by: state.me?.name?.slice(0, 80) || undefined,
+      })) ?? [];
+      return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [], expenses: [...expenses, ...(state.expenses ?? [])] };
     }
     case "profile": {
       const me = state.me!;

@@ -337,14 +337,21 @@ test(
     await assert.rejects(open(await at(-8, -1)), /already ended/);
     // Half an hour early is fine.
     const soon = await at(0.4, 5);
-    const first = await open(soon);
+    const expense = { id: randomUUID(), createdAt: new Date().toISOString(), label: "Opening supplies", amount: 2000, source: "till" };
+    const opening = { action: "open", deviceId, openingCash: 10000, bookingId: soon, expenses: [expense] };
+    const first = await cmd(opening);
     assert.equal(first.shift!.bookingId, soon);
+    assert.deepEqual(first.expenses, [{ ...expense, shiftId: first.shift!.id, by: first.me!.name }]);
+    assert.equal(shiftTotals(first.shift!, first.sales, first.expenses).expectedCash, 8000);
     // The same phone can't start a second shift while its first one runs.
     const other = await at(-1, 3);
     await assert.rejects(open(other), /Close shift 1 on this phone/);
-    // Starting the same scheduled shift again joins it.
-    assert.equal((await open(soon)).shift!.id, first.shift!.id);
-    await cmd({ action: "close", shiftId: first.shift!.id, countedCash: 0, deviceId, pin });
+    // Retrying the opening joins the same till and keeps the original expense once.
+    const retry = await cmd(opening);
+    assert.equal(retry.shift!.id, first.shift!.id);
+    assert.deepEqual(retry.expenses, first.expenses);
+    const closed = await cmd({ action: "close", shiftId: first.shift!.id, countedCash: 8000, deviceId, pin });
+    assert.equal(closed.shifts.find((s) => s.id === first.shift!.id)?.difference, 0);
     // Closing before the scheduled end must make the booking unavailable, even
     // for an old Start request sent by another phone.
     await assert.rejects(

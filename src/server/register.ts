@@ -303,6 +303,16 @@ export async function runCommand(
         }).returning({ id: shifts.id });
         view.till = opened.id;
       }
+      if (cmd.expenses?.length) {
+        const shiftId = view.till;
+        const by = me.name.slice(0, 80) || undefined;
+        await applyEvents(tx, business.id, business.currency, cmd.expenses.map((expense) => ({
+          type: "expense",
+          id: expense.id,
+          shiftId,
+          expense: { ...expense, shiftId, by },
+        })));
+      }
     } else if (cmd.action === "mergeStock") {
       const rows = await tx
         .select()

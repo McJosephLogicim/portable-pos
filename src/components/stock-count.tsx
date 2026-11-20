@@ -235,7 +235,11 @@ export function OptionalStockCount({
         </div>
       )}
       {!on && optional.length > 0 && (
-        <div className="card card-list">
+        <details className="card card-list stock-count-review">
+          <summary className="list-row between">
+            Stock and prep
+            <ChevronDown className="chev" size={18} aria-hidden="true" />
+          </summary>
           {optional.map((item) => (
             <div key={item.id} className="list-row">
               <span className="grow ellipsis">{item.name}</span>
@@ -244,7 +248,7 @@ export function OptionalStockCount({
                 : <span className="label">Not tracked</span>}
             </div>
           ))}
-        </div>
+        </details>
       )}
       {shown.length > 0 && (
         <ShiftStockCount key={on ? "all" : "required"} items={shown} counts={counts} expected={expected} onChange={onChange} />

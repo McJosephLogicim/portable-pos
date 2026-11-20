@@ -160,6 +160,9 @@ export interface Expense {
   by?: string;
   voidedAt?: string;
 }
+export type ExpenseInput = Pick<Expense, "label" | "amount" | "source">;
+export type OpeningExpense = ExpenseInput & Pick<Expense, "id" | "createdAt">;
+
 export interface Business {
   id: string;
   name: string;

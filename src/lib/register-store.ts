@@ -9,6 +9,7 @@ import type {
   Shift,
   Tender,
   Expense,
+  ExpenseInput,
 } from "./types";
 
 /** Fill fields that registers saved by an earlier version of the app don't have. */
@@ -465,7 +466,7 @@ export async function uploadProofs(
 /** Log money spent during the shift. It syncs like a sale. */
 export function logExpense(
   key: string,
-  input: { label: string; amount: number; source: Expense["source"]; by?: string },
+  input: ExpenseInput & Pick<Expense, "by">,
 ) {
   return updateRegister(key, (current) => {
     const shift = writableShift(current);

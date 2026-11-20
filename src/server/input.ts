@@ -330,6 +330,7 @@ const command = z.discriminatedUnion("action", [
     openingCount: cashCount.optional(),
     stock: counts.default({}),
     checked: z.array(key).max(30).default([]),
+    expenses: z.array(expense.omit({ shiftId: true, by: true })).optional(),
     bookingId: z.uuid().optional(),
     newShift: walkIn.optional(),
   }),

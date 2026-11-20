@@ -35,7 +35,7 @@ import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
-import type { CartLine, RegisterResponse, RegisterState, Tender } from "@/lib/types";
+import type { CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
@@ -522,7 +522,7 @@ export function Workspace() {
       setPending(false);
     }
   }
-  async function expense(input: { label: string; amount: number; source: "till" | "pocket" }) {
+  async function expense(input: ExpenseInput) {
     if (!key) throw Error("Register unavailable.");
     await locked("write-" + key, async () =>
       show(key, await logExpense(key, { ...input, by: state?.me?.name || undefined })),
