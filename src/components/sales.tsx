@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ChevronRight, ReceiptText, Search, X } from "lucide-react";
+import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -22,10 +22,9 @@ import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { FilterBar, FilterChoices, toggleFilter } from "./filter-controls";
 import { formatMoney, Money, Sheet } from "./ui";
 
-/** Opens Sales already filtered, like from a best seller on a shift, with a way back to it. */
+/** Opens Sales already filtered, like from "All sales" on a shift. */
 export interface SalesFocus {
   filter: SalesFilter;
-  back?: { bookingId: string; label: string };
 }
 
 export function SalesScreen({
@@ -34,15 +33,12 @@ export function SalesScreen({
   onReverse,
   onSell,
   focus,
-  onBack,
 }: {
   state: RegisterState;
   online: boolean;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
   onSell: () => void;
   focus: SalesFocus | null;
-  /** Back to the shift the focus came from. */
-  onBack: () => void;
 }) {
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
@@ -111,12 +107,6 @@ export function SalesScreen({
   const openShift = open && shifts.get(open.shiftId);
   return (
     <div className="page">
-      {focus?.back && (
-        <button type="button" className="back-row" onClick={onBack}>
-          <ArrowLeft size={17} />
-          <span className="ellipsis">Back to {focus.back.label}</span>
-        </button>
-      )}
       <div className="page-top">
         <h1 className="headline grow">
           {picked.length && live.length ? (
