@@ -165,7 +165,7 @@ export function SubPage({
   children: ReactNode;
 }) {
   return (
-    <div className="page narrow">
+    <div className="page">
       <div className="page-top">
         <button type="button" className="round" aria-label={backLabel} onClick={onBack}>
           <ArrowLeft size={19} aria-hidden="true" />
@@ -1209,7 +1209,7 @@ export function SettingsScreen(props: SettingsProps) {
   const me = state.me;
   if (me && !me.owner)
     return (
-      <div className="page narrow">
+      <div className="page">
         <div className="page-top">
           <h1 className="headline title-help">
             Settings
@@ -1243,7 +1243,7 @@ export function SettingsScreen(props: SettingsProps) {
   const discountsOn = s.discounts.filter((d) => d.on).length;
   const waiting = state.pending.length;
   return (
-    <div className="page narrow">
+    <div className="page">
       <div className="page-top">
         <h1 className="headline">Settings</h1>
       </div>

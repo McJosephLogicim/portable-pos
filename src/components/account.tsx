@@ -411,7 +411,7 @@ export function Setup({
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <div className="page narrow">
+    <div className="page">
       <h1 className="headline" style={{ paddingTop: 24 }}>
         {adding ? "Add a business." : "Set up your stall."} <span className="g">{adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>
       </h1>

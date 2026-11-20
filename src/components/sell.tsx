@@ -687,7 +687,7 @@ function Checkout({
         ) : undefined
       }
     >
-      <div className="desk-hide">
+      <div>
         <OrderLines
           lines={lines}
           currency={currency}
@@ -1024,44 +1024,6 @@ export function SellScreen({
       (g) => g.required && g.options.every((o) => state.soldOut.includes(o.id)),
     );
 
-  const orderSummary = (
-    <>
-      <div className="between">
-        <h2 className="section">Order</h2>
-        {count > 0 && (
-          <button
-            className="btn ghost compact"
-            disabled={busy}
-            onClick={() => setConfirmClear(true)}
-          >
-            Clear
-          </button>
-        )}
-      </div>
-      <div className="order-scroll">
-        {cartMenuError ? null : lines.length ? (
-          <OrderLines
-            lines={lines}
-            currency={currency}
-            busy={busy}
-            onQuantity={setQuantity}
-          />
-        ) : (
-          <p className="label" style={{ padding: "24px 0", textAlign: "center" }}>
-            Tap an item to start an order.
-          </p>
-        )}
-      </div>
-      <button
-        className="btn block"
-        disabled={!count || busy || blocked || cartMenuError}
-        onClick={() => { setPaid(false); setCharging(true); }}
-      >
-        Charge {count > 0 && !cartMenuError && <Money value={total} currency={currency} />}
-      </button>
-    </>
-  );
-
   return (
     <>
       <div className="sell-head">
@@ -1150,7 +1112,7 @@ export function SellScreen({
           Something in this order just sold out. Remove it to charge.
         </p>
       )}
-      <div className="sell-layout">
+      <div>
         {items.length ? (
           <div className="items">
             {items.map((product) => {
@@ -1247,9 +1209,6 @@ export function SellScreen({
             )}
           </div>
         )}
-        <aside className="order-panel card" aria-label="Current order">
-          {orderSummary}
-        </aside>
       </div>
       {count > 0 && !marking && !cartMenuError && (
         <button

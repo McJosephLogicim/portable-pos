@@ -39,6 +39,8 @@
   --exit-collapse: 180ms;
   --exit-sheet: 160ms;
   --gutter: 20px;
+  /* One content width for every page and the account bar above it. */
+  --page-max: 640px;
   --scrim: rgb(0 0 0 / 0.32);
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
   color-scheme: light;
@@ -889,7 +891,7 @@ button.list-row:not(.sell-option):active {
   align-items: center;
   gap: 16px;
   width: 100%;
-  max-width: 600px;
+  max-width: var(--page-max);
   margin: 0 auto;
   padding: calc(10px + env(safe-area-inset-top)) var(--gutter) 0;
 }
@@ -934,7 +936,7 @@ button.list-row:not(.sell-option):active {
 }
 .page {
   width: 100%;
-  max-width: 600px;
+  max-width: var(--page-max);
   margin: 0 auto;
   /* No keyboard term here: --keyboard-bottom moves as iOS pans the page, so feeding it back
      into the page height made the page bounce up and down while typing. */
@@ -1354,13 +1356,6 @@ button.list-row:not(.sell-option):active {
   line-height: 1;
   letter-spacing: -0.04em;
 }
-.sell-layout {
-  display: block;
-}
-.order-panel {
-  display: none;
-}
-
 /* ---------- receipt ---------- */
 .receipt {
   background: var(--surface);
@@ -1442,47 +1437,10 @@ button.list-row:not(.sell-option):active {
   gap: 4px;
 }
 
-/* ---------- wide screens: register keeps the order beside the menu ---------- */
+/* ---------- wide screens: same page width, roomier gutter ---------- */
 @media (min-width: 960px) {
   :root {
     --gutter: 28px;
-  }
-  .page,
-  .account-bar {
-    max-width: 1180px;
-  }
-  .page.narrow,
-  .account-bar.narrow {
-    max-width: 640px;
-  }
-  .sell-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
-    gap: 24px;
-    align-items: start;
-  }
-  .items {
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  }
-  .order-panel {
-    display: flex;
-    flex-direction: column;
-    position: sticky;
-    top: 20px;
-    max-height: calc(100dvh - 140px);
-    padding: 18px 20px;
-    gap: 12px;
-  }
-  .order-panel .order-scroll {
-    overflow-y: auto;
-    margin: 0 -4px;
-    padding: 0 4px;
-  }
-  .charge-bar {
-    display: none;
-  }
-  .desk-hide {
-    display: none !important;
   }
 }
 

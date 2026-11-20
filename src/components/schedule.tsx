@@ -1596,7 +1596,7 @@ export function ScheduleScreen(props: ScheduleProps) {
   }
 
   return (
-    <div className="page narrow">
+    <div className="page">
       <div className={`page-top tight ${styles.scheduleHeader}`}>
         <h1 className="headline grow">Shifts</h1>
         <button

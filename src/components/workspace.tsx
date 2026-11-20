@@ -667,7 +667,7 @@ export function Workspace() {
   let screen: React.ReactNode;
   if (bootError)
     screen = (
-      <div className="page narrow">
+      <div className="page">
         <h1 className="headline" style={{ paddingTop: 24 }}>
           Can't open the register. <span className="g">{bootError}</span>
         </h1>
@@ -747,7 +747,7 @@ export function Workspace() {
     );
   else if (view === "sell" && (!state.shift || state.shift.closedAt))
     screen = (
-      <div className="page narrow stack gap-18">
+      <div className="page stack gap-18">
         <h1 className="headline">Till closed</h1>
         <p className="muted">Open the till to start selling.</p>
         <button className="btn" onClick={() => go("shift")}>Open till</button>
@@ -803,7 +803,7 @@ export function Workspace() {
     <ProofProvider value={loadProof}>
     <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
       {business && (
-        <header className={"account-bar" + (view === "sell" && sellable ? "" : " narrow")}>
+        <header className="account-bar">
           <button type="button" className="grow sell-brand" onClick={() => setSwitching(true)} aria-label={"Switch business, now " + business.name}>
             <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} size={36} />
             <span className="strong ellipsis">{business.name}</span>
@@ -825,7 +825,7 @@ export function Workspace() {
         </header>
       )}
       {(notice || (syncErr && !bootError)) && (
-        <div className="page narrow" style={{ paddingBottom: 0, marginBottom: -14 }}>
+        <div className="page" style={{ paddingBottom: 0, marginBottom: -14 }}>
           {notice && (
             <div className="notice" role="alert">
               <span className="grow">{notice}</span>

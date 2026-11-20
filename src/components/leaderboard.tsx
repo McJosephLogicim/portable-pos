@@ -107,7 +107,7 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
   }
 
   return (
-    <div className={`page narrow ${styles.page}`}>
+    <div className={`page ${styles.page}`}>
       <header className="page-top">
         <button type="button" className="round" aria-label="Back to shifts" onClick={onBack}>
           <ArrowLeft size={19} aria-hidden="true" />
