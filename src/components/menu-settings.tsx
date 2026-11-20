@@ -894,7 +894,7 @@ function CategorySheet({
         </label>
         <div className="field">
           <span>Items</span>
-          <MultiSelect label="Items in this category" placeholder="Search menu items…" items={options} picked={picked} onChange={setPicked} showThumbnails />
+          <MultiSelect label="Items in this category" searchNoun="menu items" items={options} picked={picked} onChange={setPicked} showThumbnails disabled={busy} />
           {moving.length > 0 && (
             <p className="label">
               {namesText(moving.map((p) => p.name)) + " will move here from " + namesText([...new Set(moving.map((p) => p.category.trim()))]) + "."}
@@ -1092,7 +1092,7 @@ function ChoiceSheet({
           Offered on
           <Explain title="Offered on">Saving updates the choice on every item picked here.</Explain>
         </span>
-        <MultiSelect label="Items that offer this choice" placeholder="Search menu items…" items={menuOptions} picked={picked} onChange={setPicked} showThumbnails />
+        <MultiSelect label="Items that offer this choice" searchNoun="menu items" items={menuOptions} picked={picked} onChange={setPicked} showThumbnails disabled={busy} />
       </div>
     </RecordSheet>
   );

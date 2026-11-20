@@ -5,7 +5,6 @@ import { SlidersHorizontal, X } from "lucide-react";
 import { countFilterOptions, matchesFilters, type FilterFacets, type FilterSelection, type FilterValue } from "@/lib/filters";
 import { buzz, Sheet } from "./ui";
 import { MultiSelect } from "./multi-select";
-import { SEARCH_FROM } from "./records";
 
 type FilterGroup<Key extends string> = { key: Key; name: string; options: FilterValue[] };
 const VISIBLE_FILTER_PILLS = 8;
@@ -55,45 +54,23 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
   );
 }
 
-export function FilterChoices({ name, options, picked, onChange, searchable, showThumbnails }: {
+export function FilterChoices({ name, options, picked, onChange, showThumbnails }: {
   name: string;
   options: (FilterValue & { count: number; image?: string })[];
   picked: string[];
   onChange: (picked: string[]) => void;
-  searchable?: boolean;
   showThumbnails?: boolean;
 }) {
-  function change(next: string[]) {
-    buzz.tap();
-    onChange(next);
-  }
-
   return (
     <div className="stack gap-10">
       <p className="group-title">{name}</p>
-      {searchable || options.length >= SEARCH_FROM ? (
-        <MultiSelect
-          label={name}
-          placeholder={`Search by ${name.toLocaleLowerCase()}…`}
-          items={options.map((option) => ({ id: option.value, name: option.label, count: option.count, image: option.image }))}
-          picked={picked}
-          onChange={change}
-          showThumbnails={showThumbnails}
-        />
-      ) : (
-        <div className="chips wrap" role="group" aria-label={name}>
-          {options.map((option) => {
-            const selected = picked.includes(option.value);
-            return (
-              <button key={option.value} type="button" aria-pressed={selected} onClick={() => change(
-                selected ? picked.filter((value) => value !== option.value) : [...picked, option.value],
-              )}>
-                {option.label} <span className="filter-count">{option.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <MultiSelect
+        label={name}
+        items={options.map((option) => ({ id: option.value, name: option.label, count: option.count, image: option.image }))}
+        picked={picked}
+        onChange={onChange}
+        showThumbnails={showThumbnails}
+      />
     </div>
   );
 }

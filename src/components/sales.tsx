@@ -371,7 +371,6 @@ function FilterSheet({
             }))}
             picked={draft[key] ?? []}
             onChange={(picked) => setDraft({ ...draft, [key]: picked })}
-            searchable={key !== "payment"}
             showThumbnails={key === "item"}
           />
         );

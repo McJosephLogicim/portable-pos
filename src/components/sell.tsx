@@ -22,6 +22,7 @@ import {
   totalLines,
 } from "@/lib/domain";
 import { ItemSheet } from "./menu-settings";
+import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
@@ -230,47 +231,55 @@ function ItemOptions({
               {group.required ? "Pick one" : "Optional"}
             </span>
           </legend>
-          <div className="card card-list">
-            {group.options.map((option) => {
-              const out = soldOut.includes(option.id);
-              const on = selected.includes(option.id);
-              return (
-                <label
-                  key={option.id}
-                  className={`list-row ${styles.option}`}
-                >
-                  <input
-                    className="sr-only"
-                    type={group.required ? "radio" : "checkbox"}
-                    name={group.required ? `${optionGroupId}-${group.id}` : undefined}
-                    checked={on}
-                    disabled={out || busy}
-                    onChange={(event) => {
-                      const checked = event.currentTarget.checked;
-                      setSelected((prev) => {
-                        if (group.required)
-                          return [...prev.filter((id) => !group.options.some((o) => o.id === id)), option.id];
-                        return checked ? [...prev, option.id] : prev.filter((id) => id !== option.id);
-                      });
-                    }}
-                  />
-                  <span className={styles.optionMark} aria-hidden="true">
-                    <Check size={15} />
-                  </span>
-                  <span className={"grow" + (out ? " g" : "")}>
-                    {option.name}
-                  </span>
-                  <span className="label end">
-                    {out
-                      ? "Sold out"
-                      : option.price
-                        ? "+" + formatMoney(option.price, currency)
-                        : ""}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+          {group.required ? (
+            <div className="card card-list">
+              {group.options.map((option) => {
+                const out = soldOut.includes(option.id);
+                return (
+                  <label key={option.id} className={`list-row ${styles.option}`}>
+                    <input
+                      className="sr-only"
+                      type="radio"
+                      name={`${optionGroupId}-${group.id}`}
+                      checked={selected.includes(option.id)}
+                      disabled={out || busy}
+                      onChange={() => setSelected((prev) => [
+                        ...prev.filter((id) => !group.options.some((o) => o.id === id)),
+                        option.id,
+                      ])}
+                    />
+                    <span className={styles.optionMark} aria-hidden="true">
+                      <Check size={15} />
+                    </span>
+                    <span className={"grow" + (out ? " g" : "")}>{option.name}</span>
+                    <span className="label end">
+                      {out ? "Sold out" : option.price ? "+" + formatMoney(option.price, currency) : ""}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <MultiSelect
+              label={group.name}
+              searchNoun="add-ons"
+              items={group.options.map((option) => {
+                const out = soldOut.includes(option.id);
+                return {
+                  id: option.id,
+                  name: option.name,
+                  disabled: out,
+                  note: out ? "Sold out" : option.price ? "+" + formatMoney(option.price, currency) : undefined,
+                };
+              })}
+              picked={selected.filter((id) => group.options.some((option) => option.id === id))}
+              onChange={(picked) => setSelected((prev) => [
+                ...prev.filter((id) => !group.options.some((option) => option.id === id)),
+                ...picked,
+              ])}
+              disabled={busy}
+            />
+          )}
         </fieldset>
       ))}
       {error && (

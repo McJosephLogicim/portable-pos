@@ -28,10 +28,6 @@
   transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.option input[type="checkbox"] + .optionMark {
-  border-radius: 7px;
-}
-
 .option input:checked + .optionMark {
   box-shadow: none;
   background: var(--accent);

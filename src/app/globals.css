@@ -2150,21 +2150,32 @@ button.booking-body:active {
 .picker {
   min-width: 0;
 }
-.picker-results {
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+.picker-trigger:disabled,
+.chips.wrap.picker-options > button:disabled {
+  opacity: 0.5;
+}
+.picker-trigger > svg {
+  flex: none;
+  color: var(--ink-secondary);
+}
+.sheet:has(> .sheet-body > .picker-toolbar) {
+  height: min(640px, 80dvh, var(--keyboard-height, 80dvh));
+}
+.sheet-body:has(> .picker-toolbar) {
+  flex: 1;
+}
+.picker-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 8px;
+  background: var(--canvas);
 }
 .picker-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-}
-.picker-results > .picker-meta {
-  min-height: 32px;
-  padding: 0 10px;
 }
 .picker-pages {
   display: flex;
@@ -2175,14 +2186,8 @@ button.booking-body:active {
   width: 44px;
   height: 44px;
 }
-.picker-list {
-  max-height: 168px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.picker-list .combo-pick {
-  gap: 10px;
-  padding: 6px 10px;
+.picker-list .grow {
+  overflow-wrap: anywhere;
 }
 .picker-check {
   display: grid;
@@ -2193,7 +2198,7 @@ button.booking-body:active {
   border-radius: 5px;
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
-.picker-list [aria-selected="true"] .picker-check {
+.picker-list [aria-pressed="true"] .picker-check {
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: none;
@@ -2441,8 +2446,25 @@ button.list-row:not(.sell-option):active:not(:disabled),
 .sheet .chips.wrap > button:not([aria-pressed="true"]) {
   background: var(--surface);
 }
+.chips.wrap.picker-options > button {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding-block: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.sheet .chips.wrap.picker-options > button[aria-pressed="false"] {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.picker-note {
+  flex: none;
+  font-size: 12px;
+  opacity: 0.8;
+}
 .sheet .chips.wrap.picker-pills > button {
-  min-height: 40px;
+  min-height: 44px;
   max-width: 100%;
   background: var(--surface-muted);
   color: var(--ink);
