@@ -122,7 +122,9 @@ test("Leaderboard Share keeps its accessible name when the visible label collaps
   await seedTill(page, true);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   await page.getByRole("button", { name: "Leaderboard", exact: true }).click();
-  await page.getByRole("combobox", { name: "Leaderboard category" }).selectOption("place");
+  const category = page.getByRole("combobox", { name: "Leaderboard category" });
+  await expect(category).toHaveValue("people");
+  await category.selectOption("place");
   const share = page.getByRole("button", { name: "Share", exact: true });
   const label = share.getByText("Share", { exact: true });
   await page.setViewportSize({ width: 320, height: 844 });

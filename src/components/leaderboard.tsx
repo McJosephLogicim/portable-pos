@@ -52,7 +52,7 @@ function RankPortrait({ rank, board }: { rank: Rank; board: Board }) {
 }
 
 export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState; demo: boolean; onBack: () => void }) {
-  const [board, setBoard] = useState<Board>("event");
+  const [board, setBoard] = useState<Board>("people");
   const [range, setRange] = useState<Period>("month");
   const [share, setShare] = useState<LeaderboardShare | null>(null);
   const buildShareImage = useMemo(() => share && (() => leaderboardImage(share)), [share]);
