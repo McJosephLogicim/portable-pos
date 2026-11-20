@@ -24,6 +24,7 @@ import {
   MethodIcon,
   Money,
   MoneyField,
+  Notice,
   Sheet,
   buzz,
   centerOf,
@@ -604,10 +605,7 @@ export function ShiftScreen({
   return (
     <div className="page">
       {state.closingShiftId && (
-        <p className="notice" role="status">
-          <span className="dot danger" />
-          Closing is waiting for the server. Reconnect and close again to finish.
-        </p>
+        <Notice tone="danger">Closing is waiting for the server. Reconnect and close again to finish.</Notice>
       )}
       {(shift || (history.length > 0 && !compact && !startingBooking)) && (
         <div className="stack gap-8">

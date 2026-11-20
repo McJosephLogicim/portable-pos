@@ -12,7 +12,7 @@ import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
 import { Account, AccountLinkError, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
-import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountsEnabled, api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import { priceLines, updateShiftMenu } from "@/lib/domain";
@@ -851,28 +851,26 @@ export function Workspace() {
         </header>
       )}
       {(notice || (syncErr && !bootError)) && (
-        <div className="page" style={{ paddingBottom: 0, marginBottom: -14 }}>
-          {notice && (
-            <div className="notice" role="alert">
-              <span className="grow">{notice}</span>
-              <button className="round flat" aria-label="Dismiss" onClick={() => setNotice("")}>
-                <X size={16} />
-              </button>
-            </div>
-          )}
+        <div className="page-notices">
+          {notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
           {syncErr && !bootError && (
-            <div className="notice" role="alert">
-              <span className="dot danger" />
-              <span className="grow">{syncErr}</span>
-              <button className="btn small secondary" onClick={() => void flush(true)}>
-                Retry
-              </button>
-              {!demo && (
-                <button className="btn small" onClick={() => setAccount(true)}>
-                  Sign in
-                </button>
-              )}
-            </div>
+            <Notice
+              tone="danger"
+              action={
+                <>
+                  <button type="button" className="btn" onClick={() => void flush(true)}>
+                    Retry
+                  </button>
+                  {!demo && (
+                    <button type="button" className="btn" onClick={() => setAccount(true)}>
+                      Sign in
+                    </button>
+                  )}
+                </>
+              }
+            >
+              {syncErr}
+            </Notice>
           )}
         </div>
       )}

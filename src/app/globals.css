@@ -17,6 +17,7 @@
   --accent-ring: #0a0a0a;
   --danger: #d93025;
   --danger-dot: #e5484d;
+  --warn-dot: #e8a317;
   --success: #1e9e5a;
   --hero: radial-gradient(120% 160% at 0% 0%, #333333 0%, #111111 45%, #050505 100%);
   --glossy: linear-gradient(180deg, #3a3a3a 0%, #0e0e0e 100%);
@@ -1004,18 +1005,78 @@ button.list-row:not(.sell-option):active {
 :root[data-input="keyboard"] .tab-selection {
   transition: none;
 }
+/* ---------- live notice ---------- */
+/* One quiet line: a dot for how serious it is, the text, and at most one small action.
+   It sits in the page flow like a row, never a coloured banner. */
 .notice {
   display: flex;
-  gap: 12px;
   align-items: center;
-  padding: 12px 14px 12px 16px;
-  border-radius: var(--radius-md);
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 14px;
   background: var(--surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.35;
+  animation: notice-in var(--dur-base) var(--ease-out);
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.notice:has(> .notice-actions, > .round) {
+  padding-right: 6px;
+}
+.notice-text {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.notice > .round {
+  flex: none;
+}
+/* Actions stay together and wrap as one group, below the text on a narrow phone. */
+.notice-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+/* Actions inside a notice stay soft so the page keeps its one black button. */
+.notice-actions > .btn {
+  flex: none;
+  min-height: 32px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  box-shadow: none;
   font-size: 13.5px;
 }
-.notice .btn {
-  flex: none;
+.notice > .round.small {
+  width: 32px;
+  height: 32px;
+}
+.notice.danger > .dot {
+  background: var(--danger-dot);
+}
+.notice.warn > .dot {
+  background: var(--warn-dot);
+}
+.save-bar .notice {
+  box-shadow: inset 0 0 0 1px var(--line-strong), var(--shadow-card);
+}
+.page-notices {
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 6px var(--gutter) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 .toast-viewport {
   position: fixed;
@@ -1627,12 +1688,6 @@ button.list-row:not(.sell-option):active {
   text-align: center;
   min-height: 44px;
   padding: 0 10px;
-}
-button.notice {
-  width: 100%;
-  border: 0;
-  color: inherit;
-  text-align: left;
 }
 .meter {
   display: block;
@@ -2540,12 +2595,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 
 /* ---------- narrow phones ---------- */
-.notice {
-  flex-wrap: wrap;
-}
-.notice > .grow {
-  min-width: 160px;
-}
 .option-row {
   display: flex;
   align-items: center;
@@ -3172,11 +3221,6 @@ html {
     height: 40px;
   }
 }
-.notice.warn {
-  background: #fff4e0;
-  box-shadow: inset 0 0 0 1px rgb(161 92 0 / 0.18);
-  flex-wrap: nowrap;
-}
 .quick.hours {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3200,13 +3244,9 @@ html {
   flex: none;
   color: var(--ink-secondary);
 }
-.shift-strip.warn {
-  background: #fff4e0;
-  color: #7a4600;
-  box-shadow: inset 0 0 0 1px rgb(161 92 0 / 0.18);
-}
-.shift-strip.warn > svg:first-child {
-  color: inherit;
+.shift-strip > .dot {
+  margin: 0 4px;
+  background: var(--warn-dot);
 }
 /* ---------- branding ---------- */
 /* Pages with a floating save button keep their last card above it. */
@@ -3466,23 +3506,6 @@ html {
 }
 .row-text + .record-end {
   flex: 0 0 auto;
-}
-
-/* ---------- one-time tips ---------- */
-.tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding-right: 10px;
-}
-.tip .round.small {
-  width: 32px;
-  height: 32px;
-  margin: -6px 0 -6px auto;
-  flex: none;
-}
-.tip .label {
-  margin-top: 2px;
 }
 
 /* ---------- opening steps ---------- */
