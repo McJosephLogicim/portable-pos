@@ -17,6 +17,15 @@
         ],
         "createdAt": "2026-11-20T16:28:27.523Z",
         "reason": "Codex verified: the finding is a Canvas Image object with a caller-provided URL. Errors use a drawn fallback instead of a DOM placeholder."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/components/leaderboard.module.css"
+        ],
+        "createdAt": "2026-11-20T16:47:26.135Z",
+        "reason": "Codex verified against the rendered leaderboard: the clipped horizontal highlight depicts the top face of each podium step from the supplied reference."
       }
     ]
   }

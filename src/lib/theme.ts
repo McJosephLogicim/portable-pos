@@ -37,6 +37,37 @@ export function onColor(hex: string) {
   return luminance(hex) > 0.36 ? "#0a0a0a" : "#ffffff";
 }
 
+/** Shared by the on-screen leaderboard and its PNG export. */
+export function leaderboardPalette(brand?: string) {
+  const color = brand && /^#[0-9a-f]{6}$/i.test(brand) ? brand : "#d2874b";
+  function tint(base: string, amount: number) {
+    const rgb = [1, 3, 5].map((i) => {
+      const from = parseInt(base.slice(i, i + 2), 16);
+      const to = parseInt(color.slice(i, i + 2), 16);
+      return Math.round(from + (to - from) * amount);
+    });
+    return `rgb(${rgb.join(", ")})`;
+  }
+
+  return {
+    base: tint("#131313", 0.12),
+    tint: tint("#1d1d1d", 0.24),
+    glow: tint("#191919", 0.4),
+    muted: tint("#ffffff", 0.2),
+    portrait: tint("#ffffff", 0.22),
+    "portrait-first": tint("#ffffff", 0.12),
+    "portrait-line": tint("#ffffff", 0.35),
+    "portrait-ink": tint("#191919", 0.42),
+    first: tint("#353535", 0.44),
+    second: tint("#353535", 0.31),
+    third: tint("#353535", 0.24),
+    middle: tint("#242424", 0.2),
+    "edge-left": tint("#ffffff", 0.86),
+    "edge-glint": tint("#ffffff", 0.7),
+    "edge-right": tint("#ffffff", 0.92),
+  };
+}
+
 const vars = ["--accent", "--accent-ring", "--on-accent", "--on-accent-secondary", "--glossy", "--ink", "--font-sans", "--brand",
   "--radius-xl", "--radius-lg", "--radius-md", "--radius-sm", "--radius-xs", "--radius-pill"];
 

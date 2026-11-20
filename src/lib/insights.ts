@@ -63,32 +63,38 @@ export interface Rank {
 }
 
 export interface LeaderboardShare {
-  business: { name: string; logo?: string };
+  business: { name: string; logo?: string; brand?: string };
   category: string;
   period: string;
   ranking: string;
-  rows: { name: string; score: string; detail: string }[];
+  owner: boolean;
+  icon?: string;
+  rows: { name: string; score: string; details: string[]; photo?: string }[];
 }
 
 export function leaderboardShareRows(
   ranks: Rank[],
   owner: boolean,
   format: (amount: number) => string,
+  photos?: Record<string, string>,
 ): LeaderboardShare["rows"] {
-  return ranks.map(({ label, shifts, hits, sales = 0, profit = 0 }) => {
+  return ranks.map(({ key, label, shifts, hits, sales = 0, profit = 0 }) => {
     const worked = `${shifts} ${shifts === 1 ? "shift" : "shifts"} worked`;
     const quotas = `${hits} ${hits === 1 ? "quota" : "quotas"} hit`;
     return {
       name: label,
-      score: owner ? `${format(sales)} sales` : quotas,
-      detail: owner ? [worked, `${profit < 0 ? "Loss" : "Profit"} ${format(Math.abs(profit))}`, quotas].join(" · ") : worked,
+      score: owner ? format(sales) : quotas,
+      details: owner ? [worked, `${profit < 0 ? "Loss" : "Profit"} ${format(Math.abs(profit))}`, quotas] : [worked],
+      photo: photos?.[key],
     };
   });
 }
 
-export function leaderboardText({ business, category, period, ranking, rows }: LeaderboardShare) {
+export function leaderboardText({ business, category, period, ranking, rows, owner }: LeaderboardShare) {
   const heading = `${business.name} — ${category} leaderboard\n${period} · ${ranking}`;
-  return [heading, ...rows.map((row, i) => `${i + 1}. ${row.name} — ${row.score}\n   ${row.detail}`)].join("\n\n");
+  return [heading, ...rows.map((row, i) =>
+    `${i + 1}. ${row.name} — ${row.score}${owner ? " sales" : ""}\n   ${row.details.join(" · ")}`,
+  )].join("\n\n");
 }
 
 /**

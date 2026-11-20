@@ -2487,10 +2487,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
   color: var(--ink-secondary);
   font-variant-numeric: tabular-nums;
 }
-.rank-num.podium {
-  background: var(--ink);
-  color: var(--on-accent);
-}
 .rank-num.first {
   background: #f2c94c;
   color: #3d2f00;
@@ -2498,19 +2494,10 @@ button.list-row:not(.sell-option):active:not(:disabled),
 .seller-money {
   min-width: 64px;
 }
-.seller .num,
-.rank-score {
+.seller .num {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   flex: none;
-}
-.board .rank.me {
-  background: var(--surface-muted);
-  margin: 0 -12px;
-  padding-left: 12px;
-  padding-right: 12px;
-  width: calc(100% + 24px);
-  border-radius: 12px;
 }
 .hours {
   display: flex;
@@ -2558,14 +2545,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
     transform: none;
   }
 }
-@media (prefers-reduced-motion: no-preference) {
-  :root:not([data-input="keyboard"]) .board:not([data-browsing]) .rank:nth-child(-n + 3) {
-    animation: rank-in 160ms var(--ease-out) both;
-  }
-  @keyframes rank-in {
-    from { opacity: 0; transform: translateY(5px); }
-  }
-}
 
 /* ---------- narrow phones ---------- */
 .notice {
@@ -2603,8 +2582,7 @@ button.list-row:not(.sell-option):active:not(:disabled),
 .between > .ellipsis {
   min-width: 0;
 }
-.between > .num,
-.between > .rank-score {
+.between > .num {
   flex: none;
 }
 

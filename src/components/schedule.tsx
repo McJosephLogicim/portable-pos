@@ -47,7 +47,8 @@ import type {
   Tag,
 } from "@/lib/types";
 import { SuggestInput } from "./combobox";
-import { Leaderboards, ShiftSales } from "./insights";
+import { ShiftSales } from "./insights";
+import { LeaderboardPage } from "./leaderboard";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
@@ -1454,7 +1455,32 @@ export function ScheduleScreen(props: ScheduleProps) {
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
   const openBooking = openId ? bookings.find((b) => b.id === openId) : undefined;
-  const [board, setBoard] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const leaderboardButton = useRef<HTMLButtonElement>(null);
+  const scheduleScroll = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (showLeaderboard) {
+      window.scrollTo(0, 0);
+    } else if (scheduleScroll.current !== null) {
+      window.scrollTo(0, scheduleScroll.current);
+      leaderboardButton.current?.focus({ preventScroll: true });
+      scheduleScroll.current = null;
+    }
+  }, [showLeaderboard]);
+
+  if (showLeaderboard) {
+    return (
+      <LeaderboardPage
+        state={state}
+        demo={demo}
+        onBack={() => {
+          buzz.tap();
+          setShowLeaderboard(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page narrow">
@@ -1472,12 +1498,13 @@ export function ScheduleScreen(props: ScheduleProps) {
           <Share2 size={19} />
         </button>
         <button
+          ref={leaderboardButton}
           className="round"
           aria-label="Leaderboard"
-          aria-haspopup="dialog"
           onClick={() => {
             buzz.tap();
-            setBoard(true);
+            scheduleScroll.current = window.scrollY;
+            setShowLeaderboard(true);
           }}
         >
           <Trophy size={19} />
@@ -1487,7 +1514,7 @@ export function ScheduleScreen(props: ScheduleProps) {
 
       {me?.owner && (
         <Tip id="shifts" title="Plan who works where">
-          Use Add to schedule a shift or a series. The trophy ranks your events, places and people.
+          Use Add to schedule a shift or a series. The trophy opens the leaderboard.
         </Tip>
       )}
 
@@ -1553,11 +1580,6 @@ export function ScheduleScreen(props: ScheduleProps) {
           month={month}
           onClose={() => setSharing(false)}
         />
-      )}
-      {board && (
-        <Sheet title="Leaderboard" onClose={() => setBoard(false)}>
-          <Leaderboards state={state} demo={props.demo} empty />
-        </Sheet>
       )}
       {openBooking && (
         <BookingSheet

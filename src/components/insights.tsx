@@ -1,15 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Crown, Share2 } from "lucide-react";
-import { bestSellers, leaderboard, leaderboardShareRows, leaderboardText, salesByHour, type Board, type LeaderboardShare } from "@/lib/insights";
-import { leaderboardImage } from "@/lib/report-image";
-import { dayOf, zonedInstant } from "@/lib/team";
-import type { Booking, Product, RegisterState } from "@/lib/types";
-import { Avatar } from "./team";
-import { LiquidSegments } from "./liquid-segments";
-import { ImageShareSheet } from "./share";
-import { buzz, Explain, formatMoney, Money, progressStyle, Sheet } from "./ui";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { bestSellers, salesByHour } from "@/lib/insights";
+import type { Product, RegisterState } from "@/lib/types";
+import { buzz, formatMoney, Money, progressStyle, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
@@ -347,147 +342,6 @@ export function ItemsSold({
             setPicked(null);
             onSales(picked);
           }}
-        />
-      )}
-    </div>
-  );
-}
-
-const boards: { id: Board; name: string }[] = [
-  { id: "event", name: "Events" },
-  { id: "organizer", name: "Organizers" },
-  { id: "place", name: "Places" },
-  { id: "people", name: "People" },
-];
-
-/** Who and where did best over finished shifts. */
-export function Leaderboards({ state, demo, empty = false }: { state: RegisterState; demo: boolean; empty?: boolean }) {
-  const [board, setBoard] = useState<Board>("event");
-  const [range, setRange] = useState<"month" | "all">("month");
-  const [browsing, setBrowsing] = useState(false);
-  const [share, setShare] = useState<LeaderboardShare | null>(null);
-  const buildShareImage = useMemo(() => share && (() => leaderboardImage(share)), [share]);
-  const business = state.business!;
-  const me = state.me;
-  const zone = business.timeZone;
-  const local = useMemo(() => {
-    const owner = new Map(state.shifts.filter((s) => s.bookingId).map((s) => [s.id, s.bookingId!]));
-    const totals = new Map<string, number>();
-    for (const sale of state.sales) {
-      const id = owner.get(sale.shiftId);
-      if (id && !sale.reversedAt) totals.set(id, (totals.get(id) ?? 0) + sale.total);
-    }
-    return totals;
-  }, [state.shifts, state.sales]);
-  const salesOf = (b: Booking) =>
-    me?.owner ? (!demo && b.sales !== undefined ? b.sales : (b.sales ?? 0) + (local.get(b.id) ?? 0)) : undefined;
-  const since = useMemo(() => {
-    if (range === "all") return 0;
-    return Date.parse(zonedInstant(dayOf(Date.now(), zone).slice(0, 8) + "01", "00:00", zone));
-  }, [range, zone]);
-  const rows = leaderboard(state.bookings ?? [], board, me, salesOf, since).slice(0, 8);
-  const owner = Boolean(me?.owner);
-  const best = rows[0]?.score || 1;
-  const category = boards.find((option) => option.id === board)!.name;
-
-  function openShare() {
-    buzz.tap();
-    setShare({
-      business: { name: business.name, logo: business.settings.logo },
-      category,
-      period: range === "all" ? "All time" : new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: zone }).format(since),
-      ranking: owner ? "Ranked by sales" : "Ranked by quotas hit, then shifts worked",
-      rows: leaderboardShareRows(rows, owner, (amount) => formatMoney(amount, business.currency)),
-    });
-  }
-
-  if (!(state.bookings ?? []).some((b) => Date.parse(b.endsAt) < Date.now()))
-    return empty ? (
-      <p className="label">Rankings start once the first scheduled shift is over.</p>
-    ) : null;
-  return (
-    <div className="stack gap-10">
-      <div className="between section-head">
-        <p className="group-title title-help">
-          {empty ? "Ranked by " + (owner ? "sales" : "quotas hit") : "Leaderboard"}
-          {!owner && !empty && <Explain title="Leaderboard">Ranked by quotas hit, then shifts worked.</Explain>}
-        </p>
-        {rows.length > 0 && (
-          <button type="button" className="btn small secondary" aria-haspopup="dialog" onClick={openShare}>
-            <Share2 size={15} aria-hidden="true" /> Share
-          </button>
-        )}
-      </div>
-      <LiquidSegments
-        label="Date range"
-        value={range}
-        onChange={(period) => {
-          setBrowsing(true);
-          setRange(period);
-        }}
-        options={[{ value: "month", label: "This month" }, { value: "all", label: "All time" }]}
-      />
-      <div className="chips" role="group" aria-label="Rank by">
-        {boards.map((b) => (
-          <button
-            key={b.id}
-            type="button"
-            aria-pressed={board === b.id}
-            onClick={() => {
-              buzz.tap();
-              setBrowsing(true);
-              setBoard(b.id);
-            }}
-          >
-            {b.name}
-          </button>
-        ))}
-      </div>
-      <div className="card card-list board" data-browsing={browsing || undefined}>
-        {rows.map((r, i) => (
-          <div key={`${board}:${r.key}`} className={"list-row rank" + (r.me ? " me" : "")} style={i < 3 ? { animationDelay: `${i * 30}ms` } : undefined}>
-            <span className={"rank-num" + (i === 0 ? " first" : i < 3 ? " podium" : "")}>
-              {i === 0 ? <Crown size={14} strokeWidth={2.2} /> : i + 1}
-            </span>
-            {board === "people" && <Avatar name={r.label} small />}
-            <span className="grow stack gap-4">
-              <span className="between">
-                <span className="ellipsis">
-                  {r.label}
-                  {r.me ? <span className="g"> · you</span> : null}
-                </span>
-                {owner ? (
-                  <Money value={r.sales ?? 0} currency={business.currency} className="rank-score" />
-                ) : (
-                  <span className="num rank-score">{r.hits}</span>
-                )}
-              </span>
-              <span className="bar" aria-hidden="true">
-                <i style={progressStyle(Math.max(3, (r.score / best) * 100))} />
-              </span>
-              <span className="label">
-                {r.shifts} {r.shifts === 1 ? "shift" : "shifts"}
-                {owner
-                  ? ` · ${r.profit! >= 0 ? "profit" : "loss"} ${formatMoney(Math.abs(r.profit!), business.currency)}`
-                  : ""}
-                {r.hits ? ` · ${r.hits} quota ${r.hits === 1 ? "hit" : "hits"}` : ""}
-              </span>
-            </span>
-          </div>
-        ))}
-        {!rows.length && (
-          <p className="label" style={{ padding: "18px 0" }}>
-            {range === "month" ? "No finished shifts this month yet." : "No finished shifts yet."}
-          </p>
-        )}
-      </div>
-      {share && buildShareImage && (
-        <ImageShareSheet
-          title={`Share ${share.category.toLowerCase()} leaderboard`}
-          filename={`${share.business.name} ${share.category} leaderboard - ${share.period}`}
-          text={leaderboardText(share)}
-          build={buildShareImage}
-          onClose={() => setShare(null)}
         />
       )}
     </div>

@@ -2,6 +2,7 @@ import { countRows } from "./cash";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
 import { round, unitText } from "./stock";
+import { leaderboardPalette } from "./theme";
 
 type Format = (minor: number) => string;
 type Ctx = CanvasRenderingContext2D;
@@ -459,39 +460,56 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(Error("Couldn't draw the report."))), "image/png"));
 }
 
-/** The Studio palette and type from the app, laid out as a readable group-chat card. */
+/** Draw the filtered leaderboard as a branded podium followed by the remaining ranks. */
 export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> {
   const css = getComputedStyle(document.documentElement);
   const color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
-  const [logo] = await Promise.all([
-    report.business.logo ? loadImage(report.business.logo) : Promise.resolve(null),
+  const palette = leaderboardPalette(report.business.brand);
+  const sources = [...new Set(report.rows.flatMap((row) => row.photo ? [row.photo] : []))];
+  const [logo, icon, photos] = await Promise.all([
+    report.business.logo ? loadImage(report.business.logo) : null,
+    report.icon ? loadImage(report.icon) : null,
+    Promise.all(sources.map(async (source) => [source, await loadImage(source)] as const)),
     document.fonts?.ready,
   ]);
+  const portraits = new Map(photos);
   const surface = color("--surface", "#fff");
   const ink = color("--ink", "#0a0a0a");
   const muted = color("--ink-secondary", "#6b6b6b");
-  const accent = color("--accent", "#0a0a0a");
-  const onAccent = color("--on-accent", "#fff");
-  const radius = parseFloat(color("--radius-lg", "24"));
-  const rowHeight = 68;
-  const rowsTop = 154;
-  const end = rowsTop + report.rows.length * rowHeight + 10;
-  const height = end + 44;
+  const tile = color("--surface-muted", "#f2f2f2");
+  const line = color("--line", "#ebebeb");
+  const radius = (name: string, fallback: number) => parseFloat(color(name, String(fallback)));
+  const stageRadius = radius("--radius-xl", 28);
+  const portraitRadius = radius("--radius-md", 20);
+  const smallRadius = radius("--radius-xs", 10);
+
+  const top = report.rows.slice(0, 3);
+  const remaining = report.rows.slice(3);
+  const stageTop = 121;
+  const stageHeight = 402;
+  const stageBottom = stageTop + stageHeight;
+  const listTop = stageBottom + 14;
+  const rowHeight = 60;
+  const end = remaining.length ? listTop + remaining.length * rowHeight : stageBottom;
+  const height = end + 48;
+  // Bound the canvas on tall boards while keeping every rank in the PNG.
+  const scale = Math.min(2, 8192 / height);
   const canvas = document.createElement("canvas");
-  canvas.width = W * 2;
-  canvas.height = height * 2;
+  canvas.width = Math.ceil(W * scale);
+  canvas.height = Math.ceil(height * scale);
   const context = canvas.getContext("2d");
   if (!context) throw Error("Couldn't draw the leaderboard.");
   const ctx = context;
-  ctx.scale(2, 2);
+  ctx.scale(scale, scale);
   ctx.textBaseline = "middle";
 
-  function box(x: number, y: number, w: number, h: number, rad: number, fill: string) {
+  function box(x: number, y: number, w: number, h: number, r: number, fill: string) {
     ctx.fillStyle = fill;
-    rr(ctx, x, y, w, h, rad);
+    rr(ctx, x, y, w, h, r);
     ctx.fill();
   }
+
   function text(value: string, x: number, y: number, size: number, weight: number, fill: string, max = CARD, align: CanvasTextAlign = "left") {
     ctx.font = `${weight} ${size}px ${family}`;
     ctx.fillStyle = fill;
@@ -504,40 +522,127 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
     ctx.fillText(value, x, y);
   }
 
+  function drawPortrait(row: LeaderboardShare["rows"][number], x: number, y: number, size: number, fill: string, podium = false) {
+    const r = podium ? portraitRadius : smallRadius;
+    const photo = row.photo ? portraits.get(row.photo) : null;
+    if (podium) box(x - 1, y - 1, size + 2, size + 2, r + 1, palette["portrait-line"]);
+    if (photo) {
+      cover(ctx, photo, x, y, size, size, r);
+      return;
+    }
+    box(x, y, size, size, r, fill);
+    if (icon) {
+      const glyph = Math.round(size * 0.47);
+      const padding = (size - glyph) / 2;
+      ctx.drawImage(icon, x + padding, y + padding, glyph, glyph);
+    } else {
+      text(initials(row.name), x + size / 2, y + size / 2, size * 0.32, 600, podium ? palette["portrait-ink"] : muted, size - 6, "center");
+    }
+  }
+
   ctx.fillStyle = color("--canvas", "#ededed");
   ctx.fillRect(0, 0, W, height);
   if (logo) {
-    cover(ctx, logo, G, 24, 38, 38, 10);
+    cover(ctx, logo, G, 22, 38, 38, smallRadius);
   } else {
-    box(G, 24, 38, 38, 10, accent);
-    text(initials(report.business.name), G + 19, 43, 14, 600, onAccent, 32, "center");
+    box(G, 22, 38, 38, smallRadius, color("--accent", "#0a0a0a"));
+    text(initials(report.business.name), G + 19, 41, 14, 600, color("--on-accent", "#fff"), 32, "center");
   }
-  text(report.business.name, G + 50, 43, 17, 600, ink, CARD - 50);
-  text(`${report.category} leaderboard`, G, 93, 34, 600, ink);
-  text(`${report.period} · ${report.ranking}`, G, 126, 15, 500, muted);
+  text(report.business.name, G + 50, 41, 17, 600, ink, CARD - 50);
+  text(`${report.category} leaderboard`, G, 88, 32, 600, ink);
 
-  // The first place card uses the same accent as the primary action in the app.
-  box(G, rowsTop, CARD, rowHeight, radius, accent);
-  if (report.rows.length > 1) {
-    box(G, rowsTop + rowHeight + 10, CARD, (report.rows.length - 1) * rowHeight, radius, surface);
-  }
-  const nameX = L + 41;
-  report.rows.forEach(({ name, score, detail }, i) => {
-    const first = i === 0;
-    const y = rowsTop + i * rowHeight + (first ? 0 : 10);
-    if (i > 1) {
-      ctx.fillStyle = color("--line", "#ebebeb");
-      ctx.fillRect(L, y, R - L, 1);
-    }
-    const fg = first ? onAccent : ink;
+  ctx.save();
+  rr(ctx, G, stageTop, CARD, stageHeight, stageRadius);
+  ctx.clip();
+  ctx.save();
+  ctx.translate(W / 2, stageTop);
+  ctx.scale(CARD / 2, stageHeight);
+  const backdrop = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.SQRT2);
+  backdrop.addColorStop(0, palette.glow);
+  backdrop.addColorStop(0.4, palette.tint);
+  backdrop.addColorStop(0.8, palette.base);
+  ctx.fillStyle = backdrop;
+  ctx.fillRect(-1, 0, 2, 1);
+  ctx.restore();
+
+  text(report.period, W / 2, stageTop + 31, 21, 600, "#fff", CARD - 32, "center");
+  text(report.ranking, W / 2, stageTop + 57, 14, 500, palette.muted, CARD - 32, "center");
+
+  const podiumWidth = top.length === 1 ? 196 : top.length === 2 ? 340 : CARD - 28;
+  const side = top.length === 1 ? 0 : podiumWidth / (top.length + 0.14);
+  const center = podiumWidth - side * (top.length - 1);
+  const start = (W - podiumWidth) / 2;
+  const fronts = [palette.first, palette.second, palette.third];
+
+  top.forEach((row, i) => {
+    const x = i === 0 ? start + side : i === 1 ? start : start + side + center;
+    const width = i === 0 ? center : side;
+    const middle = x + width / 2;
+    const tall = [165, 141, 120][i];
+    const y = stageBottom - tall;
+    const face = i === 0 ? 72 : 62;
+    const portraitTop = y - 78 - face;
+    const nameWidth = width - 12;
+
+    drawPortrait(row, middle - face / 2, portraitTop, face, i === 0 ? palette["portrait-first"] : palette.portrait, true);
     ctx.font = `600 16px ${family}`;
-    const scoreWidth = Math.min(208, ctx.measureText(score).width);
-    text(String(i + 1), L + 10, y + 34, 17, 600, first ? onAccent : muted, 26, "center");
-    text(name, nameX, y + 24, 17, 600, fg, R - nameX - scoreWidth - 14);
-    text(score, R, y + 24, 16, 600, fg, 208, "right");
-    text(detail, nameX, y + 46, 14, 400, first ? onAccent : muted, R - nameX);
+    const names: string[] = [];
+    for (const word of row.name.trim().split(/\s+/)) {
+      const last = names.at(-1);
+      if (!last || (names.length < 3 && ctx.measureText(last + " " + word).width > nameWidth)) names.push(word);
+      else names[names.length - 1] = last + " " + word;
+    }
+    names.forEach((name, j) => text(name, middle, y - 48 - (names.length - 1) * 8.5 + j * 17, 16, 600, "#fff", nameWidth, "center"));
+    text(row.score, middle, y - 15, 14, 500, palette.muted, nameWidth, "center");
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x + 12, y);
+    ctx.lineTo(x + width - 12, y);
+    ctx.lineTo(x + width, y + 12);
+    ctx.lineTo(x + width, stageBottom);
+    ctx.lineTo(x, stageBottom);
+    ctx.lineTo(x, y + 12);
+    ctx.closePath();
+    ctx.clip();
+
+    const front = ctx.createLinearGradient(0, y, 0, stageBottom);
+    front.addColorStop(0, fronts[i]);
+    front.addColorStop(0.65, palette.middle);
+    front.addColorStop(1, palette.base);
+    ctx.fillStyle = front;
+    ctx.fillRect(x, y, width, tall);
+    const edge = ctx.createLinearGradient(x, 0, x + width, 0);
+    edge.addColorStop(0, palette["edge-left"]);
+    edge.addColorStop(0.5, palette["edge-glint"]);
+    edge.addColorStop(1, palette["edge-right"]);
+    ctx.fillStyle = edge;
+    ctx.fillRect(x, y, width, 12);
+    ctx.restore();
+
+    text(String(i + 1), middle, y + 39, 48, 650, "#fff", nameWidth, "center");
+    row.details.forEach((detail, j) => text(detail, middle, y + 72 + j * 15, 12.5, 500, "#fff", nameWidth, "center"));
   });
-  text("Portable POS", W / 2, end + 21, 13, 500, muted, CARD, "center");
+  ctx.restore();
+
+  if (remaining.length) box(G, listTop, CARD, remaining.length * rowHeight, stageRadius, surface);
+  remaining.forEach((row, i) => {
+    const y = listTop + i * rowHeight;
+    if (i) {
+      ctx.fillStyle = line;
+      ctx.fillRect(G + 14, y, CARD - 28, 1);
+    }
+    box(G + 12, y + 15, 32, 30, smallRadius, tile);
+    text(String(i + 4), G + 28, y + 30, 13, 600, muted, 26, "center");
+    drawPortrait(row, G + 54, y + 12, 36, tile);
+    const nameX = G + 100;
+    ctx.font = `600 15px ${family}`;
+    const scoreWidth = Math.min(150, ctx.measureText(row.score).width);
+    text(row.name, nameX, y + 21, 16, 600, ink, R - nameX - scoreWidth - 12);
+    text(row.score, R, y + 21, 15, 600, ink, 150, "right");
+    text(row.details.join(" · "), nameX, y + 41, 13, 400, muted, R - nameX);
+  });
+  text("Portable POS", W / 2, end + 24, 13, 500, muted, CARD, "center");
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(Error("Couldn't draw the leaderboard.")), "image/png");
