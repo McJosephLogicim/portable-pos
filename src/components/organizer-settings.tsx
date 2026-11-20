@@ -5,14 +5,13 @@ import { Plus, Ticket, Trash2 } from "lucide-react";
 import type { Organizer, Tag } from "@/lib/types";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
-import { buzz } from "./ui";
+import { buzz, EmptyState } from "./ui";
 import {
   matches,
   andText,
   namesText,
   plural,
   RecordAdd,
-  RecordEmpty,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -203,7 +202,7 @@ export function OrganizersPage(props: SettingsProps) {
           ))}
         </RecordGroup>
       ) : (
-        <RecordEmpty
+        <EmptyState
           icon={<Ticket size={22} strokeWidth={1.6} />}
           title="No organizers yet"
           text="Add them here, or type a new one while scheduling a shift."

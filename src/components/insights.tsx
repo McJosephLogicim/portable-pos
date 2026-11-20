@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import type { Product, RegisterState } from "@/lib/types";
-import { buzz, formatMoney, Money, progressStyle, Sheet } from "./ui";
+import { buzz, EmptyRow, formatMoney, Money, progressStyle, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
@@ -289,12 +289,7 @@ export function ItemsSold({
       <p className="group-title">Items sold</p>
       <div className="card card-list">
         {!sellers.length && (
-          <div className="list-row">
-            <span className="grow stack">
-              <span>No sales yet</span>
-              <span className="label">Each item adds up here as you sell.</span>
-            </span>
-          </div>
+          <EmptyRow title="No sales yet" detail="Each item adds up here as you sell." />
         )}
         {shown.map((s) => {
           const image = menu.find((p) => p.id === s.productId)?.image;

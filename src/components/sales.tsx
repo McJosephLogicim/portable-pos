@@ -21,7 +21,7 @@ import {
 } from "@/lib/sales-filter";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { FilterBar, FilterChoices } from "./filter-controls";
-import { Money, Sheet } from "./ui";
+import { EmptyState, Money, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
 /** Opens Sales already filtered, like from "All sales" on a shift. */
@@ -238,28 +238,25 @@ export function SalesScreen({
           })}
         </div>
       ) : (
-        <div className="empty card">
-          <span className="well">
-            <ReceiptText size={22} />
-          </span>
-          <p className="strong">{q || (active && !onlyThisShift) ? "No receipts match" : "No sales yet"}</p>
-          <p className="label">
-            {q
-              ? "Try a receipt number like #3-012, an item, or GCash."
-              : active && !onlyThisShift
-                ? "Remove a filter above, or clear them all."
-                : "Every sale you ring up lands here with its receipt."}
-          </p>
+        <EmptyState
+          icon={<ReceiptText size={22} />}
+          title={q || (active && !onlyThisShift) ? "No receipts match" : "No sales yet"}
+          text={q
+            ? "Try a receipt number like #3-012, an item, or GCash."
+            : active && !onlyThisShift
+              ? "Remove a filter above, or clear them all."
+              : "Every sale you ring up lands here with its receipt."}
+        >
           {!q && active > 0 && !onlyThisShift ? (
-            <button className="btn compact" style={{ marginTop: 8 }} onClick={() => setFilter({})}>
+            <button className="btn ghost compact" onClick={() => setFilter({})}>
               Clear
             </button>
           ) : !q && mine && (
-            <button className="btn compact" style={{ marginTop: 8 }} onClick={onSell}>
+            <button className="btn compact" onClick={onSell}>
               Start selling
             </button>
           )}
-        </div>
+        </EmptyState>
       )}
       {filtering && (
         <FilterSheet

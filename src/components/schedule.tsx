@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
+  CalendarDays,
   CalendarPlus,
   CalendarRange,
   ChevronLeft,
@@ -62,7 +63,7 @@ import { shiftCurrency } from "./receipt";
 import { ReportSheet } from "./report";
 import { CopyButton } from "./share";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, ConfirmSheet, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, ConfirmSheet, EmptyState, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
 import styles from "./operations.module.css";
 
 type Act = (input: OwnerAction) => Promise<void>;
@@ -1337,10 +1338,7 @@ function ShareSchedule({
       {shown.length ? (
         <pre className="schedule-text">{text}</pre>
       ) : (
-        <div className="empty card">
-          <p className="strong">No shifts to share</p>
-          <p className="label">Add shifts first, or pick the other range.</p>
-        </div>
+        <EmptyState icon={<CalendarDays size={22} />} title="No shifts to share" text="Add shifts first, or pick the other range." />
       )}
       {error && (
         <p className="alert" role="alert">

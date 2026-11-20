@@ -1101,6 +1101,16 @@ button.list-row:not(.sell-option):active {
   border-radius: 16px;
   margin-bottom: 4px;
 }
+.empty .empty-text {
+  max-width: 300px;
+}
+.empty .empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
 .empty-row {
   padding: 16px 0;
 }
@@ -3045,9 +3055,8 @@ html {
     padding-inline: 4px;
   }
 }
-.recipe-cost {
-  margin-top: 8px;
-  padding-top: 12px;
+.batch-share {
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 .costing-grid {

@@ -14,14 +14,13 @@ import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
 import type { RecipesProps } from "./recipes";
 import { MergeLeftoversSheet, useMergeable } from "./merge-leftovers";
-import { buzz, Explain, formatMoney, MoneyField, Sheet } from "./ui";
+import { buzz, EmptyState, Explain, formatMoney, MoneyField, Sheet } from "./ui";
 import {
   matches,
   andText,
   namesText,
   plural,
   RecordAdd,
-  RecordEmpty,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -690,7 +689,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
         </RecordGroup>
       )}
       {!count && (
-        <RecordEmpty
+        <EmptyState
           icon={prepOnly ? <CookingPot size={22} strokeWidth={1.6} /> : <Package size={22} strokeWidth={1.6} />}
           title={prepOnly ? "Nothing made ahead yet" : "No stock items yet"}
           text={prepOnly

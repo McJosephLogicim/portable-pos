@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { Plus } from "lucide-react";
+import { CalendarDays, Plus } from "lucide-react";
 import { shiftTotals } from "@/lib/domain";
 import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
-import { formatMoney, Money } from "./ui";
+import { EmptyState, formatMoney, Money } from "./ui";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -142,25 +142,23 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
           );
         })}
         {!entries.length && (
-          <div className="empty card">
-            <p className="strong">
-              {filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
-            </p>
-            <p className="label">
-              {filter === "day"
-                ? state.me?.owner
-                  ? "Add a shift for this day, or add a run of them for a bazaar."
-                  : "Pick another day, or check open seats."
-                : filter === "mine"
-                  ? "Open seats are yours to join."
-                  : "Every upcoming shift is full."}
-            </p>
+          <EmptyState
+            icon={<CalendarDays size={22} />}
+            title={filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
+            text={filter === "day"
+              ? state.me?.owner
+                ? "Add a shift for this day, or add a run of them for a bazaar."
+                : "Pick another day, or check open seats."
+              : filter === "mine"
+                ? "Open seats are yours to join."
+                : "Every upcoming shift is full."}
+          >
             {onAdd && (
-              <button type="button" className="btn secondary" disabled={!online} onClick={onAdd}>
+              <button type="button" className="btn secondary compact" disabled={!online} onClick={onAdd}>
                 <Plus size={16} /> Add
               </button>
             )}
-          </div>
+          </EmptyState>
         )}
       </div>
     </>
