@@ -8,7 +8,7 @@ import { isSimpleMode } from "@/lib/settings";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
-import { TillShiftsSheet, type ScheduleProps } from "./schedule";
+import { ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedule";
 import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
@@ -536,6 +536,7 @@ export function ShiftScreen({
   const [addingExpense, setAddingExpense] = useState(false);
   const [closedId, setClosedId] = useState<string | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
+  const [pastTillId, setPastTillId] = useState<string | null>(null);
   const [report, setReport] = useState(false);
   const [removing, setRemoving] = useState<Expense | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
@@ -813,8 +814,11 @@ export function ShiftScreen({
       )}
       {pastShifts && (
         <Sheet title="Past shifts" onClose={() => setPastShifts(false)}>
-          <ShiftList entries={history} state={state} showDates />
+          <ShiftList entries={history} state={state} showDates onOpen={setPastTillId} />
         </Sheet>
+      )}
+      {pastTillId && (
+        <ShiftDetailsSheet {...schedule} tillId={pastTillId} onClose={() => setPastTillId(null)} />
       )}
       {closing && shift && totals && (
         <CloseSheet

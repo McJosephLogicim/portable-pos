@@ -7,6 +7,8 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  Link2,
   MapPin,
   Minus,
   Plus,
@@ -16,7 +18,9 @@ import {
   X,
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
-import { amountText, parseMoney } from "@/lib/domain";
+import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
+import { scheduleText, scheduledShiftText } from "@/lib/report";
+import { shiftKey } from "@/lib/sales-filter";
 import { slugId } from "@/lib/settings";
 import {
   addDays,
@@ -42,6 +46,7 @@ import type {
   Place,
   RegisterState,
   Role,
+  Shift,
   ShiftRole,
   StaffSlot,
   Tag,
@@ -52,8 +57,9 @@ import { LeaderboardPage } from "./leaderboard";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
-import { ShiftList, useBookingSales, useShiftFormats } from "./shift-list";
-import { scheduleText, scheduledShiftText } from "@/lib/report";
+import { DrawerDifference, ShiftList, useBookingSales, useShiftFormats } from "./shift-list";
+import { shiftCurrency } from "./receipt";
+import { ReportSheet } from "./report";
 import { CopyButton } from "./share";
 import { Avatar, RolePicker } from "./team";
 import { buzz, centerOf, ConfirmSheet, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
@@ -304,12 +310,16 @@ function BookingSheet({
   booking: b,
   props,
   sales,
+  till,
+  onLinkTill,
   onEdit,
   onClose,
 }: {
   booking: Booking;
   props: ScheduleProps;
   sales?: number;
+  till?: Shift;
+  onLinkTill?: () => void;
   onEdit: () => void;
   onClose: () => void;
 }) {
@@ -322,7 +332,6 @@ function BookingSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState<{ replace?: StaffSlot } | null>(null);
-  const [sharing, setSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [managing, setManaging] = useState<StaffSlot | null>(null);
   const [leaving, setLeaving] = useState<StaffSlot | null>(null);
@@ -372,23 +381,17 @@ function BookingSheet({
         title={bookingTitle(b)}
         onClose={onClose}
         busy={busy}
-        action={
-          <>
-            <button type="button" className="btn small secondary" disabled={busy} aria-haspopup="dialog" onClick={() => {
-              buzz.tap();
-              setSharing(true);
-            }}>
-              <Share2 size={15} aria-hidden="true" /> Share
-            </button>
-            {me.owner && (
-              <button type="button" className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
-                Edit
-              </button>
-            )}
-          </>
-        }
+        action={me.owner && (
+          <button type="button" className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
+            Edit
+          </button>
+        )}
         footer={
-          !me.owner &&
+          onLinkTill ? (
+            <button type="button" className="btn block" disabled={!online || busy} aria-haspopup="dialog" onClick={onLinkTill}>
+              <Link2 size={17} aria-hidden="true" /> Add till
+            </button>
+          ) : !me.owner &&
           (mine ? (
             !over && (
               <div className="grid-2">
@@ -587,15 +590,16 @@ function BookingSheet({
             {error}
           </p>
         )}
-        {me.owner && (
-          <button className="btn ghost danger compact" disabled={!online || busy} onClick={() => setConfirmDelete(true)}>
-            <Trash2 size={16} /> Delete
-          </button>
-        )}
+        <ShiftSheetActions
+          state={state}
+          title={bookingTitle(b)}
+          till={till}
+          shareText={() => scheduledShiftText(b, business, location.origin)}
+          busy={busy}
+          onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
+          deleteDisabled={!online}
+        />
       </Sheet>
-      {sharing && (
-        <ShareShift text={scheduledShiftText(b, business, location.origin)} onClose={() => setSharing(false)} />
-      )}
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
@@ -1248,6 +1252,50 @@ function ShareShift({ text, onClose }: { text: string; onClose: () => void }) {
   );
 }
 
+function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, deleteDisabled }: {
+  state: RegisterState;
+  title: string;
+  till?: Shift;
+  shareText: () => string;
+  busy?: boolean;
+  onDelete?: () => void;
+  deleteDisabled?: boolean;
+}) {
+  const [action, setAction] = useState<"share" | "report" | null>(null);
+  return (
+    <>
+      <div className="card card-list" role="group" aria-label="Shift actions">
+        <button type="button" className="list-row" disabled={busy} aria-haspopup="dialog" onClick={() => {
+          buzz.tap();
+          setAction("share");
+        }}>
+          <Share2 size={17} aria-hidden="true" />
+          <span className="grow">Share</span>
+          <ChevronRight size={16} className="chev" aria-hidden="true" />
+        </button>
+        <button type="button" className="list-row" disabled={busy} aria-haspopup="dialog" onClick={() => setAction("report")}>
+          <FileText size={17} aria-hidden="true" />
+          <span className="grow">Report</span>
+          <ChevronRight size={16} className="chev" aria-hidden="true" />
+        </button>
+        {onDelete && (
+          <button type="button" className="list-row danger" disabled={busy || deleteDisabled} aria-haspopup="dialog" onClick={onDelete}>
+            <Trash2 size={17} aria-hidden="true" /> Delete
+          </button>
+        )}
+      </div>
+      {action === "share" && <ShareShift text={shareText()} onClose={() => setAction(null)} />}
+      {action === "report" && (till ? (
+        <ReportSheet shift={till} state={state} business={state.business!} onDismiss={() => setAction(null)} />
+      ) : (
+        <Sheet title={`${title} report`} onClose={() => setAction(null)}>
+          <p className="muted">No till report is available for this shift.</p>
+        </Sheet>
+      ))}
+    </>
+  );
+}
+
 function ShareSchedule({
   bookings,
   businessId,
@@ -1314,8 +1362,8 @@ function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "n
         setKeyboard(event instanceof KeyboardEvent || (event.type === "click" && "detail" in event && event.detail === 0));
       }}
     >
-      <Menu.Trigger className={`btn add-shift ${styles.addShift}`} disabled={disabled}>
-        <Plus size={18} aria-hidden="true" /> Add
+      <Menu.Trigger className={`btn add-shift responsive-icon ${styles.addShift}`} disabled={disabled}>
+        <Plus size={18} aria-hidden="true" /> <span className="button-label">Add</span>
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner className="add-shift-positioner" align="end" sideOffset={8}>
@@ -1341,8 +1389,9 @@ export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & 
   const now = Date.now();
   const today = dayOf(now, zone);
   const openShifts = upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
-  const [selected, setSelected] = useState<Booking | null>(null);
+  const [selection, setSelection] = useState<{ bookingId: string; confirming?: boolean } | null>(null);
   const [adding, setAdding] = useState(false);
+  const selected = openShifts.find((booking) => booking.id === selection?.bookingId);
 
   return (
     <>
@@ -1350,18 +1399,26 @@ export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & 
         <ShiftList
           entries={openShifts}
           state={state}
-          onOpen={setSelected}
+          onOpen={(bookingId) => setSelection({ bookingId })}
           onAdd={state.me?.owner ? () => setAdding(true) : undefined}
           online={online}
         />
       </Sheet>
       {selected && (
+        <ShiftDetailsSheet
+          {...props}
+          bookingId={selected.id}
+          onClose={() => setSelection(null)}
+          onLinkTill={() => setSelection({ bookingId: selected.id, confirming: true })}
+        />
+      )}
+      {selected && selection?.confirming && (
         <ConfirmSheet
           title="Add till to this shift?"
           detail={<>This till and its sales will be linked to <strong>{bookingTitle(selected)}</strong>.</>}
           confirmLabel="Add till"
           destructive={false}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelection({ bookingId: selected.id })}
           onConfirm={async () => {
             await onAction({ action: "linkBooking", shiftId, bookingId: selected.id });
             buzz.success();
@@ -1375,17 +1432,23 @@ export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & 
   );
 }
 
-/** Open an existing scheduled shift over another page, including its usual edit flow. */
-export function ScheduledShiftSheet({
+export function ShiftDetailsSheet({
   bookingId,
+  tillId,
   onClose,
+  onLinkTill,
   ...props
-}: ScheduleProps & { bookingId: string; onClose: () => void }) {
+}: ScheduleProps & (
+  { bookingId: string; tillId?: never; onLinkTill?: () => void } |
+  { bookingId?: never; tillId: string; onLinkTill?: never }
+) & { onClose: () => void }) {
   const [editing, setEditing] = useState(false);
   const { state, demo } = props;
   const salesOf = useBookingSales(state, demo);
-  const booking = state.bookings?.find((b) => b.id === bookingId);
-  if (!booking) return null;
+  const matchesTill = (shift: Shift) => tillId ? shift.id === tillId : shift.bookingId === bookingId;
+  const till = state.shift && matchesTill(state.shift) ? state.shift : state.shifts.find(matchesTill);
+  const booking = state.bookings?.find((b) => b.id === (bookingId ?? till?.bookingId));
+  if (!booking) return till ? <TillDetailsSheet till={till} props={props} onClose={onClose} /> : null;
   return editing ? (
     <BookingEditor
       booking={booking}
@@ -1398,9 +1461,60 @@ export function ScheduledShiftSheet({
       booking={booking}
       props={props}
       sales={salesOf(booking)}
+      till={till}
+      onLinkTill={onLinkTill}
       onEdit={() => setEditing(true)}
       onClose={onClose}
     />
+  );
+}
+
+function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: ScheduleProps; onClose: () => void }) {
+  const { state, onSales } = props;
+  const business = state.business!;
+  const { long, time } = useShiftFormats(business.timeZone);
+  const title = `Shift ${till.number}`;
+  const date = long.format(new Date(till.openedAt));
+  const hours = time.format(new Date(till.openedAt)) + (till.closedAt ? ` to ${time.format(new Date(till.closedAt))}` : "");
+  const currency = shiftCurrency(till, business);
+  const total = shiftTotals(till, state.sales, state.expenses).total;
+  return (
+    <Sheet title={title} onClose={onClose}>
+      <div className="stack gap-4">
+        <p className="strong">{date}</p>
+        <p className="label">{hours}{till.openedBy ? ` · ${till.openedBy}` : ""}</p>
+      </div>
+      <div className="card card-list">
+        <div className="list-row">
+          <span className="grow">Sales</span>
+          <Money value={total} currency={currency} />
+        </div>
+        {till.difference !== undefined && (
+          <div className="list-row"><DrawerDifference value={till.difference} currency={currency} /></div>
+        )}
+      </div>
+      <ShiftSales
+        state={state}
+        shiftIds={[till.id]}
+        menu={state.menu}
+        currency={currency}
+        title={title}
+        onSales={(productId) => {
+          onClose();
+          onSales({ filter: { shift: [shiftKey(till)], ...(productId ? { item: [productId] } : {}) } });
+        }}
+      />
+      <ShiftSheetActions
+        state={state}
+        title={title}
+        till={till}
+        shareText={() => [
+          `${business.name} — ${title}`,
+          `${date} · ${hours}`,
+          till.openedBy ? `Opened by ${till.openedBy}` : "",
+        ].filter(Boolean).join("\n")}
+      />
+    </Sheet>
   );
 }
 
@@ -1421,7 +1535,7 @@ export function ScheduleScreen(props: ScheduleProps) {
   const [filter, setFilter] = useState<Filter>(sharedSchedule && !sharedSchedule.bookingId ? "open" : "day");
   const [sharing, setSharing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(sharedSchedule?.bookingId ?? null);
-  const [editing, setEditing] = useState<Booking | "new" | "bulk" | null>(null);
+  const [editing, setEditing] = useState<"new" | "bulk" | null>(null);
   const bookings = useMemo(
     () => [...(state.bookings ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
     [state.bookings],
@@ -1454,7 +1568,6 @@ export function ScheduleScreen(props: ScheduleProps) {
   const monthNet = monthDone.reduce((sum, b) => sum + bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net, 0);
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
-  const openBooking = openId ? bookings.find((b) => b.id === openId) : undefined;
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const leaderboardButton = useRef<HTMLButtonElement>(null);
   const scheduleScroll = useRef<number | null>(null);
@@ -1567,7 +1680,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         filter={filter}
         showDates={filter !== "day"}
         salesOf={salesOf}
-        onOpen={(booking) => setOpenId(booking.id)}
+        onOpen={setOpenId}
         onAdd={me?.owner && filter === "day" ? () => setEditing("new") : undefined}
         online={props.online}
       />
@@ -1581,21 +1694,15 @@ export function ScheduleScreen(props: ScheduleProps) {
           onClose={() => setSharing(false)}
         />
       )}
-      {openBooking && (
-        <BookingSheet
-          booking={openBooking}
-          props={props}
-          sales={salesOf(openBooking)}
-          onEdit={() => {
-            setEditing(openBooking);
-            setOpenId(null);
-          }}
+      {openId && (
+        <ShiftDetailsSheet
+          {...props}
+          bookingId={openId}
           onClose={() => setOpenId(null)}
         />
       )}
       {editing && (
         <BookingEditor
-          booking={editing === "new" || editing === "bulk" ? undefined : editing}
           bulk={editing === "bulk"}
           props={props}
           defaultDay={selected < today ? today : selected}

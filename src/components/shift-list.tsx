@@ -1,12 +1,11 @@
-import { useMemo, useState } from "react";
-import { FileText, Plus } from "lucide-react";
+import { useMemo } from "react";
+import { Plus } from "lucide-react";
 import { shiftTotals } from "@/lib/domain";
-import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen, startProblem } from "@/lib/team";
+import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
-import { ReportSheet } from "./report";
 import { Avatar } from "./team";
-import { formatMoney, Money, Sheet } from "./ui";
+import { formatMoney, Money } from "./ui";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -40,14 +39,13 @@ export function DrawerDifference({ value, currency }: { value: number; currency:
 type ShiftEntry = Booking | Shift;
 type ShiftFilter = "day" | "open" | "mine";
 
-function ShiftCard({ entry, booking, till, state, sales, onOpen, onReport }: {
+function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
   entry: ShiftEntry;
   booking?: Booking;
   till?: Shift;
   state: RegisterState;
   sales?: number;
-  onOpen?: () => void;
-  onReport: () => void;
+  onOpen: () => void;
 }) {
   const business = state.business!;
   const { time } = useShiftFormats(business.timeZone);
@@ -57,15 +55,13 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen, onReport }: {
   const end = scheduled ? entry.endsAt : entry.closedAt;
   const now = Date.now();
   const closed = till ? Boolean(till.closedAt) : Boolean(end && Date.parse(end) <= now);
-  const report = closed ? "Shift’s report" : till || (booking && !startProblem(booking, business.timeZone, now)) ? "Report so far" : null;
   const mine = booking?.staff.some((s) => s.memberId === state.me?.memberId);
   const open = booking ? seatsOpen(booking) : 0;
   const profit = scheduled && closed && sales !== undefined ? bookingProfit({ ...entry, sales }) : null;
   const currency = shiftCurrency(till, business);
-  const Body = onOpen ? "button" : "div";
   return (
     <article className={"card booking" + (closed ? " past" : "")}>
-      <Body type={onOpen ? "button" : undefined} className="booking-body" onClick={onOpen} aria-haspopup={onOpen ? "dialog" : undefined}>
+      <button type="button" className="booking-body" onClick={onOpen} aria-haspopup="dialog">
         <span className="booking-time">
           <span className="strong">{time.format(new Date(start))}</span>
           {end && <span className="label">{time.format(new Date(end))}</span>}
@@ -98,14 +94,7 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen, onReport }: {
           </span>
         )}
         {!closed && open > 0 && !mine && <span className="pill">Open</span>}
-      </Body>
-      {report && (
-        <div className="booking-footer">
-          <button type="button" className="btn secondary small block" aria-haspopup="dialog" onClick={onReport}>
-            <FileText size={16} /> {report}
-          </button>
-        </div>
-      )}
+      </button>
     </article>
   );
 }
@@ -116,11 +105,10 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
   filter?: ShiftFilter;
   showDates?: boolean;
   salesOf?: (booking: Booking) => number | undefined;
-  onOpen?: (booking: Booking) => void;
+  onOpen: (id: string) => void;
   onAdd?: () => void;
   online?: boolean;
 }) {
-  const [reportId, setReportId] = useState<string | null>(null);
   const business = state.business!;
   const zone = business.timeZone;
   const { day } = useShiftFormats(zone);
@@ -128,9 +116,6 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
   const tills = new Map(state.shifts.flatMap((till) => till.bookingId ? [[till.bookingId, till] as const] : []));
   if (state.shift?.bookingId) tills.set(state.shift.bookingId, state.shift);
   const groupDate = (entry: ShiftEntry) => "startsAt" in entry ? entry.startsAt : entry.closedAt ?? entry.openedAt;
-  const reportEntry = entries.find((entry) => entry.id === reportId);
-  const reportBooking = reportEntry && "startsAt" in reportEntry ? reportEntry : undefined;
-  const reportTill = reportEntry && ("startsAt" in reportEntry ? tills.get(reportEntry.id) : reportEntry);
   return (
     <>
       <p className="sr-only" role="status">{entries.length} {entries.length === 1 ? "shift" : "shifts"} shown</p>
@@ -151,8 +136,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
                 till={till}
                 state={state}
                 sales={scheduled ? salesOf?.(entry) : undefined}
-                onOpen={scheduled && onOpen ? () => onOpen(entry) : undefined}
-                onReport={() => setReportId(entry.id)}
+                onOpen={() => onOpen(entry.id)}
               />
             </div>
           );
@@ -179,13 +163,6 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
           </div>
         )}
       </div>
-      {reportTill ? (
-        <ReportSheet shift={reportTill} state={state} business={business} onDismiss={() => setReportId(null)} />
-      ) : reportBooking && (
-        <Sheet title={`${bookingTitle(reportBooking)} report`} onClose={() => setReportId(null)}>
-          <p className="muted">No till report is available for this shift.</p>
-        </Sheet>
-      )}
     </>
   );
 }

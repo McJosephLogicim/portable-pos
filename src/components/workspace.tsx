@@ -7,7 +7,7 @@ import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
-import { ScheduleScreen, ScheduledShiftSheet } from "./schedule";
+import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
 import { Account, Setup } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
@@ -871,7 +871,7 @@ export function Workspace() {
         />
       )}
       {tillBooking && state?.business && (
-        <ScheduledShiftSheet
+        <ShiftDetailsSheet
           key={state.business.id + ":" + tillBooking}
           bookingId={tillBooking}
           state={state}

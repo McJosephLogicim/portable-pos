@@ -28,7 +28,7 @@ async function seedTill(page: Page, withShifts: boolean) {
           const second = booking("Garden", "2026-11-21T02:00:00Z", "2026-11-21T08:00:00Z");
           const future = booking("Evening", "2026-11-21T07:00:00Z", "2026-11-21T12:00:00Z");
           const yesterday = booking("Overnight", "2026-11-20T15:30:00Z", "2026-11-21T05:00:00Z");
-          const closed = booking("Closed market", "2026-11-21T01:00:00Z", "2026-11-21T07:00:00Z");
+          const closed = booking("Closed market", "2026-11-21T01:00:00Z", "2026-11-21T03:00:00Z");
           const past = { ...shift, id: "past", number: 2, bookingId: closed.id, openedAt: closed.startsAt, closedAt: "2026-11-21T02:00:00Z", difference: 0 };
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = shift;
@@ -44,14 +44,23 @@ async function seedTill(page: Page, withShifts: boolean) {
   await page.reload();
 }
 
-test("Till shows the shared shift cards and links only after confirmation", async ({ page }) => {
+test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
   await seedTill(page, true);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   const today = page.getByRole("article").filter({ hasText: "Atrium" });
-  await expect(today.getByRole("button", { name: "Report so far", exact: true })).toBeVisible();
-  await expect(page.getByRole("article").filter({ hasText: "Closed market" }).getByRole("button", { name: "Shift’s report" })).toBeVisible();
-  await expect(page.getByRole("article").filter({ hasText: "Evening" }).getByRole("button")).toHaveCount(1);
+  await expect(today.getByRole("button")).toHaveCount(1);
   const todayCard = await today.innerText();
+  const details = page.getByRole("dialog", { name: "Atrium", exact: true });
+  await today.getByRole("button", { name: /Atrium/ }).click();
+  const actions = details.getByRole("group", { name: "Shift actions" }).getByRole("button");
+  await expect(actions).toHaveText(["Share", "Report", "Delete"]);
+  await actions.getByText("Share", { exact: true }).click();
+  const share = page.getByRole("dialog", { name: "Share this shift" });
+  await expect(share.getByText(/View shift:/)).toBeVisible();
+  await share.getByRole("button", { name: "Close", exact: true }).click();
+  await details.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("dialog", { name: "Delete shift?" }).getByRole("button", { name: "Cancel" }).click();
+  await details.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await page.getByRole("button", { name: /Not on a shift yet/ }).click();
@@ -59,42 +68,71 @@ test("Till shows the shared shift cards and links only after confirmation", asyn
   await expect(shifts.getByRole("article")).toHaveCount(2);
   const choice = shifts.getByRole("article").filter({ hasText: "Atrium" });
   expect(await choice.innerText()).toBe(todayCard);
-  await choice.getByRole("button", { name: "Report so far", exact: true }).click();
+  await choice.getByRole("button", { name: /Atrium/ }).click();
+  await expect(actions).toHaveText(["Share", "Report", "Delete"]);
+  await details.getByRole("button", { name: "Report", exact: true }).click();
   const emptyReport = page.getByRole("dialog", { name: "Atrium report", exact: true });
   await expect(emptyReport.getByText("No till report is available for this shift.")).toBeVisible();
   await emptyReport.getByRole("button", { name: "Close", exact: true }).click();
 
-  await choice.getByRole("button", { name: /Atrium/ }).click();
+  await details.getByRole("button", { name: "Add till", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: "Add till to this shift?" });
   await expect(confirmation.getByText("Atrium", { exact: true })).toBeVisible();
   await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await details.getByRole("button", { name: "Close", exact: true }).click();
   await shifts.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("button", { name: /Not on a shift yet/ })).toBeVisible();
 
   await page.getByRole("button", { name: /Not on a shift yet/ }).click();
   await choice.getByRole("button", { name: /Atrium/ }).click();
+  await details.getByRole("button", { name: "Add till", exact: true }).click();
   await confirmation.getByRole("button", { name: "Add till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
-  await today.getByRole("button", { name: "Report so far" }).click();
+  await today.getByRole("button", { name: /Atrium/ }).click();
+  await details.getByRole("button", { name: "Report", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Shift 3 report" })).toBeVisible();
 });
 
-test("Past shifts opens reports from shared cards, including tills without bookings", async ({ page }) => {
+test("Past shift cards open details for both scheduled and unscheduled tills", async ({ page }) => {
   await seedTill(page, true);
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await page.getByRole("button", { name: /Past shifts/ }).click();
   const past = page.getByRole("dialog", { name: "Past shifts" });
-  await expect(past.getByRole("button", { name: "Shift’s report", exact: true })).toHaveCount(2);
-  await past.getByRole("article").filter({ hasText: "Closed market" }).getByRole("button", { name: "Shift’s report" }).click();
+  await expect(past.getByRole("article")).toHaveCount(2);
+  await past.getByRole("button", { name: /Closed market/ }).click();
+  const scheduled = page.getByRole("dialog", { name: "Closed market", exact: true });
+  await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report", "Delete"]);
+  await scheduled.getByRole("button", { name: "Report", exact: true }).click();
   const report = page.getByRole("dialog", { name: "Shift 2 report" });
   await expect(report).toBeVisible();
   await report.getByRole("button", { name: "Close", exact: true }).click();
-  await past.getByRole("article").filter({ hasText: "Shift 1" }).getByRole("button", { name: "Shift’s report" }).click();
+  await scheduled.getByRole("button", { name: "Close", exact: true }).click();
+  await past.getByRole("button", { name: /Shift 1/ }).click();
+  const unscheduled = page.getByRole("dialog", { name: "Shift 1", exact: true });
+  await expect(unscheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report"]);
+  await unscheduled.getByRole("button", { name: "Report", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Shift 1 report" })).toBeVisible();
+});
+
+test("Leaderboard Share keeps its accessible name when the visible label collapses", async ({ page }) => {
+  await seedTill(page, true);
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  await page.getByRole("button", { name: "Leaderboard", exact: true }).click();
+  await page.getByRole("combobox", { name: "Leaderboard category" }).selectOption("place");
+  const share = page.getByRole("button", { name: "Share", exact: true });
+  const label = share.getByText("Share", { exact: true });
+  await page.setViewportSize({ width: 320, height: 844 });
+  await expect(label).toHaveCSS("clip-path", "inset(50%)");
+  await share.click();
+  const sheet = page.getByRole("dialog", { name: "Share places leaderboard" });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: "Close", exact: true }).click();
+  await page.setViewportSize({ width: 768, height: 844 });
+  await expect(label).toHaveCSS("clip-path", "none");
 });
 
 test("The Till Shifts sheet reuses the Today empty state and its Add action", async ({ page }) => {

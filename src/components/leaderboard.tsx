@@ -113,8 +113,8 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
           <ArrowLeft size={19} aria-hidden="true" />
         </button>
         <h1 ref={heading} tabIndex={-1} className={`headline grow ${styles.heading}`}>Leaderboard</h1>
-        <button type="button" className={`btn secondary ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
-          <Share2 size={16} aria-hidden="true" /> Share
+        <button type="button" className={`btn secondary responsive-icon ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
+          <Share2 size={16} aria-hidden="true" /> <span className="button-label">Share</span>
         </button>
       </header>
 

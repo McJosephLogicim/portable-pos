@@ -10,12 +10,14 @@ export function CopyButton({
   disabled,
   label = "Copy",
   description,
+  compactOnMobile,
   onError,
 }: {
   text: string;
   disabled?: boolean;
   label?: string;
   description?: string;
+  compactOnMobile?: boolean;
   onError: (message: string) => void;
 }) {
   const [copiedText, setCopiedText] = useState("");
@@ -42,13 +44,13 @@ export function CopyButton({
     <>
       <button
         type="button"
-        className="btn secondary"
+        className={"btn secondary" + (compactOnMobile ? " responsive-icon" : "")}
         disabled={disabled || !text || copying}
         title={description}
         aria-description={description}
         onClick={() => void copy()}
       >
-        <Icon size={17} aria-hidden="true" /> {copied ? "Copied" : label}
+        <Icon size={17} aria-hidden="true" /> <span className="button-label">{copied ? "Copied" : label}</span>
       </button>
       <span className="sr-only" role="status">{copied ? "Copied to clipboard" : ""}</span>
     </>
@@ -144,6 +146,7 @@ export function ImageShareSheet({
               text={text}
               disabled={sharing}
               description="Copy as text"
+              compactOnMobile
               onError={(message) => {
                 setCopyError(message);
                 if (message && details.current) {
@@ -152,9 +155,11 @@ export function ImageShareSheet({
                 }
               }}
             />
-            <button type="button" className="btn" disabled={!image || sharing} onClick={() => void shareImage()}>
-              {canShare ? <Share2 size={17} /> : <Download size={17} />}
-              {unavailable ? "Image unavailable" : !image ? "Preparing…" : sharing ? "Opening…" : canShare ? "Share" : "Save"}
+            <button type="button" className="btn responsive-icon" disabled={!image || sharing} onClick={() => void shareImage()}>
+              {canShare ? <Share2 size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
+              <span className="button-label">
+                {unavailable ? "Image unavailable" : !image ? "Preparing…" : sharing ? "Opening…" : canShare ? "Share" : "Save"}
+              </span>
             </button>
           </div>
         </div>

@@ -313,6 +313,23 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   margin-left: auto;
   font-weight: 500;
 }
+@media (max-width: 400px) {
+  .btn.responsive-icon {
+    position: relative;
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 0;
+  }
+  .btn.responsive-icon .button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 .round {
   width: 44px;
   height: 44px;
@@ -430,6 +447,9 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
 }
 button.list-row:not(.sell-option):active {
   opacity: 0.6;
+}
+.list-row.danger {
+  color: var(--danger);
 }
 .list-row .chev {
   color: var(--ink-tertiary);
@@ -1812,9 +1832,6 @@ button.booking-body:active {
 }
 .card.booking.past {
   background: rgb(255 255 255 / 0.6);
-}
-.booking-footer {
-  padding: 0 18px 14px;
 }
 .booking-meta {
   flex-wrap: wrap;
