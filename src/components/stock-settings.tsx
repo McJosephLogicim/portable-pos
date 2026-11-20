@@ -608,7 +608,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const addMenu = !select.on && (
     <AddMenu
       singleLabel={`Add a ${itemNoun}`}
-          blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
+      blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
       onSingle={() => setEditing("new")}
       onBulk={() => setAddingBulk(true)}
     />
