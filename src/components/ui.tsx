@@ -322,6 +322,27 @@ export function PhotoPicker({
   );
 }
 
+/*
+ * Focus rings are for keyboard users. Browsers mostly agree, but Safari also rings buttons that
+ * get focus from a script or a dialog after a tap. Track how the person last interacted, and
+ * let CSS hide rings (html[data-input="touch"]) until they press a key.
+ */
+let usingKeyboard = false;
+if (typeof window !== "undefined") {
+  const mark = (keyboard: boolean) => {
+    usingKeyboard = keyboard;
+    document.documentElement.dataset.input = keyboard ? "keyboard" : "touch";
+  };
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) mark(true);
+    },
+    true,
+  );
+  window.addEventListener("pointerdown", () => mark(false), true);
+}
+
 /** Bottom sheet on phones, centered dialog on wide screens. Uses the native dialog for focus. */
 export function Sheet({
   title,
@@ -346,16 +367,21 @@ export function Sheet({
     const node = ref.current;
     const trigger = document.activeElement;
     node?.showModal();
+    // showModal focuses the first button (often Edit or Close), and Safari rings it. Focus the
+    // sheet itself instead, so nothing looks selected; Tab still moves into it from there.
+    node?.focus({ preventScroll: true });
     return () => {
       node?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected)
-        trigger.focus();
+      // Hand focus back only to keyboard users; after a tap it would ring the button behind.
+      if (usingKeyboard && trigger instanceof HTMLElement && trigger.isConnected)
+        trigger.focus({ preventScroll: true });
     };
   }, []);
   return (
     <dialog
       ref={ref}
       className="sheet"
+      tabIndex={-1}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
