@@ -6,7 +6,7 @@ import { reportText, shiftReport } from "@/lib/report";
 import { reportImage } from "@/lib/report-image";
 import type { Business, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
-import { buzz, errorText, facesOf, formatMoney, Sheet } from "./ui";
+import { buzz, DoneCheck, errorText, facesOf, formatMoney, Money, Sheet } from "./ui";
 
 /** The end-of-shift report: a picture to send to the group chat, or the same as text. */
 export function ReportSheet({
@@ -14,12 +14,14 @@ export function ReportSheet({
   state,
   business,
   title,
+  justClosed = false,
   onDismiss,
 }: {
   shift: Shift;
   state: RegisterState;
   business: Business;
   title?: string;
+  justClosed?: boolean;
   onDismiss: () => void;
 }) {
   const currency = shiftCurrency(shift, business);
@@ -128,6 +130,17 @@ export function ReportSheet({
         <p className="alert" role="alert">
           {error}
         </p>
+      )}
+      {justClosed && (
+        <div className="hero shift-complete">
+          <DoneCheck />
+          <div className="stack gap-4">
+            <span className="hero-label">
+              {report.sales.count} {report.sales.count === 1 ? "sale" : "sales"} recorded
+            </span>
+            <Money value={report.sales.total} currency={currency} className="big-num" />
+          </div>
+        </div>
       )}
       <div className="report-preview">
         {url ? <img src={url} alt={`Shift ${shift.number} report`} /> : <div className="report-wait">Making the picture…</div>}

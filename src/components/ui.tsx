@@ -577,12 +577,13 @@ export function Switch({
 }
 
 export function DoneCheck({ small = false }: { small?: boolean }) {
-  const size = small ? 13 : 34;
+  const size = small ? 16 : 24;
   return (
     <span className={"done-check" + (small ? " small" : "")} aria-hidden="true">
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <path
           d="M5 12.5l4.2 4.2L19 7"
+          pathLength={1}
           stroke="currentColor"
           strokeWidth="2.4"
           strokeLinecap="round"

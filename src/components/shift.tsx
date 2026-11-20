@@ -697,7 +697,7 @@ export function ShiftScreen({
   const [closing, setClosing] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
-  const [detail, setDetail] = useState<string | null>(null);
+  const [detail, setDetail] = useState<{ id: string; justClosed?: boolean } | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
   const [report, setReport] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -728,7 +728,7 @@ export function ShiftScreen({
   ]
     .filter((s) => s.closedAt)
     .sort((a, b) => b.number - a.number);
-  const detailShift = detail ? history.find((s) => s.id === detail) : undefined;
+  const detailShift = detail ? history.find((s) => s.id === detail.id) : undefined;
   const time = new Intl.DateTimeFormat("en", {
     timeZone: business.timeZone,
     hour: "numeric",
@@ -999,7 +999,7 @@ export function ShiftScreen({
             {history.map((s) => {
               const t = shiftTotals(s, state.sales);
               return (
-                <button key={s.id} type="button" className="list-row past-shift-row" onClick={() => setDetail(s.id)} aria-haspopup="dialog">
+                <button key={s.id} type="button" className="list-row past-shift-row" onClick={() => setDetail({ id: s.id })} aria-haspopup="dialog">
                   <span className="well past-shift-icon">
                     <Wallet size={18} strokeWidth={1.8} />
                   </span>
@@ -1028,7 +1028,8 @@ export function ShiftScreen({
           currency={currency}
           onClose={async (closing, pin) => {
             await onClose(closing, pin);
-            setDetail(shift.id);
+            buzz.success();
+            setDetail({ id: shift.id, justClosed: true });
           }}
           onDismiss={() => setClosing(false)}
         />
@@ -1051,6 +1052,7 @@ export function ShiftScreen({
           shift={detailShift}
           state={state}
           business={business}
+          justClosed={detail?.justClosed}
           title={detailShift.closedAt ? `Shift ${detailShift.number} closed` : undefined}
           onDismiss={() => setDetail(null)}
         />
