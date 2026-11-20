@@ -262,28 +262,27 @@ export function PhotoPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [removing, setRemoving] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const title = label[0].toUpperCase() + label.slice(1);
   return (
     <div className={"photo-pick " + size}>
       <button
         type="button"
         className={"photo-slot" + (value ? " has" : "")}
-        aria-label={value ? "Change " + label : "Add " + label}
+        aria-label={value ? (size === "small" ? "View " : "Change ") + label : "Add " + label}
         aria-busy={busy || undefined}
         disabled={busy || disabled}
         onClick={() => {
           buzz.tap();
-          input.current?.click();
+          // A small photo opens large first, with Change and Remove under it.
+          if (size === "small" && value) setViewing(true);
+          else input.current?.click();
         }}
       >
         {value ? <img src={value} alt="" /> : <Camera size={size === "large" ? 26 : 18} strokeWidth={1.6} />}
         {busy && <span className="photo-busy" aria-hidden="true" />}
       </button>
       <span className="sr-only" role="status">{busy ? "Saving photo…" : ""}</span>
-      {size === "small" && value && !busy && (
-        <button type="button" className="photo-clear" aria-label={"Remove " + label} disabled={disabled} onClick={() => setRemoving(true)}>
-          <X size={16} aria-hidden="true" />
-        </button>
-      )}
       {size === "large" && (
         <span className="stack gap-4 grow">
           <span className="strong">
@@ -326,12 +325,49 @@ export function PhotoPicker({
           }
         }}
       />
+      {viewing && value && (
+        <Sheet
+          title={title}
+          onClose={() => setViewing(false)}
+          footer={
+            <div className="grid-2">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={disabled}
+                onClick={() => {
+                  setViewing(false);
+                  void Promise.resolve(onChange(undefined)).catch((err) => {
+                    const message = errorText(err);
+                    setError(message);
+                    onError?.(message);
+                  });
+                }}
+              >
+                Remove
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={disabled}
+                onClick={() => {
+                  // The file picker must open inside the tap, before the sheet closes.
+                  input.current?.click();
+                  setViewing(false);
+                }}
+              >
+                Change
+              </button>
+            </div>
+          }
+        >
+          <img src={value} alt={title} className={"photo-full" + (face ? " face" : "")} />
+        </Sheet>
+      )}
       {removing && (
         <ConfirmSheet
           title={`Remove ${label}?`}
-          detail={face && size === "small"
-            ? "Your profile photo will be removed from shifts and reports."
-            : "The image will be cleared when you save."}
+          detail="The image will be cleared when you save."
           confirmLabel="Remove"
           onClose={() => setRemoving(false)}
           onConfirm={() => onChange(undefined)}

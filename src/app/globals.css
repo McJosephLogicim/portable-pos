@@ -2351,19 +2351,11 @@ button.list-row:not(.sell-option):active:not(:disabled),
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-.photo-clear {
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink-secondary);
-  display: grid;
-  place-items: center;
-  padding: 0;
-}
-.photo-clear:active:not(:disabled) {
-  background: var(--surface-muted);
+.photo-full.face {
+  aspect-ratio: 1;
+  max-width: 360px;
+  margin: 0 auto;
+  object-fit: cover;
 }
 .photo-full {
   width: 100%;
@@ -3646,4 +3638,28 @@ html {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+/* ---------- not synced ---------- */
+/* A sale still only on this phone: one small mark in the line, never its own row. */
+.sync-mark {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 5px;
+  color: var(--ink-tertiary);
+}
+
+/* Settings rows: the title wraps instead of cutting off; a long value gives way first. */
+.list-row .row-title.wrap {
+  flex: 1 1 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  /* Never narrower than its longest word, so words wrap whole. */
+  min-width: auto;
+}
+.list-row .row-title.wrap + .record-end {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
 }

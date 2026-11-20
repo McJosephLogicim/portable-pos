@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CloudOff } from "lucide-react";
 import type { Business, Sale, Shift } from "@/lib/types";
 import { errorText, Money, Sheet, useProof, usePin } from "./ui";
 
@@ -87,8 +88,8 @@ export function ReceiptBody({
           {receiptNumber(shift.number, sale.sequence)} · {created}
         </p>
         {pending && (
-          <p className="label row gap-6" style={{ justifyContent: "center" }}>
-            <span className="dot" /> Saved on this phone, syncs when online
+          <p className="label">
+            <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-hidden="true" /> Not synced
           </p>
         )}
         {sale.reversedAt && (
