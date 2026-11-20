@@ -284,7 +284,8 @@ function OpenShift({
 }) {
   const business = state.business!;
   const currency = business.currency;
-  const readyBookings = isSimpleMode(business.settings) && !booking
+  const simple = isSimpleMode(business.settings);
+  const readyBookings = simple && !booking
     ? upcomingBookings(state).filter((b) => !startProblem(b, business.timeZone))
     : [];
   const [cash, setCash] = useState<CashValue>({});
@@ -303,11 +304,11 @@ function OpenShift({
   return (
     <div className="stack gap-18">
       <h1 className="headline">
-        Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span>
+        {simple ? "Open till" : <>Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span></>}
       </h1>
       {(tracked.length > 0 || checklist.length > 0) && (
         <div className="steps" role="list" aria-label="Before you open">
-          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash float</em></span>
+          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>{simple ? "Cash" : "Cash float"}</em></span>
           {tracked.length > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
           {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
         </div>
@@ -336,8 +337,8 @@ function OpenShift({
         </div>
       )}
       <div className="stack gap-10">
-        <p className="group-title">Cash float</p>
-        <CashCounter currency={currency} label="Float" onChange={setCash} totalOnly={isSimpleMode(business.settings)} />
+        {!simple && <p className="group-title">Cash float</p>}
+        <CashCounter currency={currency} label={simple ? "Starting cash" : "Float"} onChange={setCash} totalOnly={simple} />
       </div>
       {tracked.length > 0 && (
         <ShiftStockCount
@@ -435,13 +436,15 @@ function OpenShift({
         >
           {busy
             ? "Opening…"
-            : value === undefined
-              ? "Count the cash float"
-              : uncounted
-                ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
-                : unticked
-                  ? `Tick ${unticked} more ${unticked === 1 ? "step" : "steps"}`
-                  : `Open with ${formatMoney(value, currency)}`}
+            : simple
+              ? "Open till"
+              : value === undefined
+                ? "Count the cash float"
+                : uncounted
+                  ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
+                  : unticked
+                    ? `Tick ${unticked} more ${unticked === 1 ? "step" : "steps"}`
+                    : `Open with ${formatMoney(value, currency)}`}
         </button>
       </div>
       {photo?.image && (
