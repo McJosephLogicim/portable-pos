@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { inviteLink, readInviteCode } from "../src/lib/join-link";
+import { inviteLink, joinLink, readInviteCode } from "../src/lib/join-link";
 import { checkOpening, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import {
   rolesOf,
@@ -19,7 +19,9 @@ import {
 } from "../src/lib/team";
 import type { Booking, Me, Member, Product, Shift } from "../src/lib/types";
 import { readImage, readProof, saveImage } from "../src/server/images";
+import { invitePreview, shiftPreview } from "../src/server/link-preview";
 import { runCommand } from "../src/server/register";
+import { shiftNow } from "./schedule";
 
 const owner: Member = { id: "o", name: "Owner", email: "o@x.co", roles: ["cashier", "server"], rate: 0, owner: true, joined: true };
 const bea: Member = { id: "b", name: "Bea", email: "bea@x.co", roles: ["cashier"], rate: 70000, owner: false, joined: true };
@@ -386,6 +388,23 @@ test(
     const code = kimRow.inviteCode!;
     assert.ok(readInviteCode(code));
     await assert.rejects(runCommand({ id: randomUUID() }, { action: "acceptInvite", code: "zzzzzzzz" }), { status: 404 });
+    // Before sign-in, the link shows the business, who invited, and the name the invitee joins as.
+    const originalName = linkOnly.team!.find((m) => m.primaryOwner)!.name;
+    const preview = await invitePreview(code);
+    assert.equal(preview!.business.name, "Night stall");
+    assert.deepEqual(preview!.invite, { name: "Kim", owner: false, invitedBy: originalName });
+    assert.equal(JSON.stringify(preview).includes("40000"), false);
+    assert.equal(await invitePreview("zzzzzzzz"), null);
+    // A shared shift link shows when and where, never rent or who is on it.
+    const nightShift = await shiftNow(night, "9999");
+    const shiftCode = new URL(joinLink("https://pos.example.com", second, nightShift)).pathname.slice(3);
+    const seen = await shiftPreview(shiftCode);
+    assert.equal(seen!.business.name, "Night stall");
+    assert.equal(seen!.shift!.place, "Legazpi Park");
+    assert.deepEqual([seen!.shift!.seats, seen!.shift!.taken, seen!.shift!.timeZone], [2, 0, "Asia/Manila"]);
+    assert.equal("rent" in seen!.shift!, false);
+    assert.equal(await shiftPreview(shiftCode.slice(0, 3)), null);
+    await night({ action: "deleteBooking", bookingId: nightShift, pin: "9999" });
     // Someone already on the team opens it: they see the team, and the link stays for Kim.
     assert.equal((await bea({ action: "acceptInvite", code })).business!.id, second);
     const kimUser = { id: randomUUID(), email: null };
@@ -395,6 +414,7 @@ test(
     assert.equal(asKim.me!.owner, false);
     assert.equal((await runCommand(kimUser, { action: "bootstrap" })).business!.id, second);
     await assert.rejects(runCommand({ id: randomUUID() }, { action: "acceptInvite", code }), { status: 404 });
+    assert.equal(await invitePreview(code), null);
     const kimJoined = (await night({ action: "bootstrap" })).team!.find((m) => m.id === kimRow.id)!;
     assert.equal(kimJoined.joined, true);
     assert.equal(kimJoined.inviteCode, undefined);

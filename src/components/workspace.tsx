@@ -293,7 +293,7 @@ export function Workspace() {
         returnTo.searchParams.set("shifts", businessId);
         if (bookingId) returnTo.searchParams.set("shift", bookingId);
       }
-      const loginEntry: AccountEntry = kind === "register" ? REGISTER_ENTRY : { kind, returnTo: returnTo.href };
+      const loginEntry: AccountEntry = kind === "register" ? REGISTER_ENTRY : { kind, returnTo: returnTo.href, code: invite ?? (code ? shortLink : undefined) };
       let id: string | null = null;
       if (accountsEnabled) {
         const previous = localStorage.getItem(ACTIVE);

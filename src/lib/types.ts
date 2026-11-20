@@ -335,3 +335,18 @@ export interface RegisterState extends Bootstrap {
   pending: RegisterEvent[];
   deviceId: string;
 }
+
+/** What an /i/ or /j/ link shows before sign-in. */
+export interface LinkPreview {
+  business: { name: string; logo?: string; brand?: string };
+  invite?: { name: string; owner: boolean; invitedBy?: string };
+  shift?: {
+    startsAt: string;
+    endsAt: string;
+    timeZone: string;
+    place?: string;
+    event?: string;
+    seats: number;
+    taken: number;
+  };
+}
