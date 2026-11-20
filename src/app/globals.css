@@ -3678,3 +3678,120 @@ html {
 @media (prefers-reduced-motion: reduce) {
   .dot.syncing { animation: none; }
 }
+
+/* ---------- select mode (records.tsx) ---------- */
+/* Hold a row, or tap Select, to pick several. A bar takes the tab bar's place with what can be
+   done to all of them. */
+.btn.ghost.select-toggle {
+  flex: none;
+  margin-right: -8px;
+  color: var(--ink);
+}
+.record-row {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.record-row.selecting[aria-pressed="false"] {
+  color: inherit;
+}
+.record-row .tick {
+  margin-right: -2px;
+}
+:root[data-selecting] .tabbar {
+  display: none;
+}
+.select-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 31;
+  width: min(560px, calc(100% - 2 * var(--gutter)));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.16);
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
+}
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    :root:not([data-input="keyboard"]) .select-bar {
+      opacity: 0;
+      translate: 0 8px;
+    }
+  }
+}
+.select-bar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding-left: 6px;
+}
+.select-bar-top .btn {
+  margin-right: -4px;
+  color: var(--ink);
+}
+.select-bar .grid-2 {
+  gap: 8px;
+}
+.btn.secondary.danger-text {
+  color: var(--danger);
+}
+:root[data-keyboard] .select-bar {
+  display: none;
+}
+.page:has(.select-bar) {
+  padding-bottom: calc(var(--tabbar-space) + 96px);
+}
+/* Rows of a quick list: a name and a price each, like a short sheet of paper. */
+.quick-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 36px;
+  align-items: center;
+  gap: 8px;
+}
+.quick-row.label {
+  margin-bottom: -4px;
+  padding-left: 4px;
+}
+.quick-price .input {
+  padding-inline: 28px 10px;
+}
+.quick-price .prefix {
+  left: 12px;
+  font-size: 16px;
+}
+.quick-remove {
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  color: var(--ink-tertiary);
+}
+.list-more {
+  padding: 10px 0 12px;
+}
+@media (max-width: 360px) {
+  .quick-row {
+    grid-template-columns: minmax(0, 1fr) 80px 32px;
+    gap: 6px;
+  }
+  .quick-row > .input {
+    padding-inline: 12px;
+  }
+  .quick-price .input {
+    padding-inline: 24px 8px;
+  }
+  .quick-price .prefix {
+    left: 10px;
+  }
+  .quick-remove {
+    width: 32px;
+    height: 32px;
+  }
+}
