@@ -6,8 +6,9 @@ import { distanceKm } from "@/lib/team";
 import type { Place } from "@/lib/types";
 import { Sheet } from "./ui";
 
-/* Search and map tiles come from OpenStreetMap services that need no API key. */
+/* Search, reverse geocoding, and map tiles use OpenStreetMap data. */
 const SEARCH = "https://photon.komoot.io/api/";
+const REVERSE = new URL("/reverse", SEARCH);
 const TILE = (z: number, x: number, y: number) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 
 type Point = { lat: number; lon: number };
@@ -45,6 +46,26 @@ function toPlace(f: Feature): Place | null {
     .filter(Boolean)
     .join(", ");
   return { name, address: address || p.country, lat, lon };
+}
+
+async function placeAtPin(point: Point, signal: AbortSignal): Promise<Place> {
+  const url = new URL(REVERSE);
+  url.searchParams.set("lat", String(point.lat));
+  url.searchParams.set("lon", String(point.lon));
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("radius", "0.25");
+  url.searchParams.set("lang", "en");
+  try {
+    const response = await fetch(url, { signal });
+    if (response.ok) {
+      const data = (await response.json()) as { features: Feature[] };
+      const match = data.features[0] && toPlace(data.features[0]);
+      if (match) return { ...match, ...point };
+    }
+  } catch {
+    // The pin can still be used when reverse geocoding is unavailable.
+  }
+  return { name: `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`, ...point };
 }
 
 export function distanceText(km: number) {
@@ -187,12 +208,26 @@ export function LocationPicker({
   const [locateError, setLocateError] = useState("");
   const [results, setResults] = useState<Place[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [preview, setPreview] = useState<Place | null>(null);
-  const [picked, setPicked] = useState<Place | null>(null);
-  const moved = Boolean(preview && picked && (preview.lat !== picked.lat || preview.lon !== picked.lon));
+  const [selection, setSelection] = useState<{ origin: Point; pin: Point; place?: Place } | null>(null);
+  const [pinLabel, setPinLabel] = useState<{ pin: Point; place: Place } | null>(null);
+  const lookupPin = selection && !selection.place ? selection.pin : null;
+  const preview = selection?.place
+    ? { ...selection.place, ...selection.pin }
+    : lookupPin && pinLabel?.pin === lookupPin ? pinLabel.place : null;
+  const moved = selection && (selection.origin.lat !== selection.pin.lat || selection.origin.lon !== selection.pin.lon);
   const seq = useRef(0);
   const locationRequest = useRef(0);
   const center = here ?? zoneCenters[timeZone];
+
+  useEffect(() => {
+    if (!lookupPin) return;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
+    void placeAtPin(lookupPin, signal).then((place) => {
+      if (!controller.signal.aborted) setPinLabel({ pin: lookupPin, place });
+    });
+    return () => controller.abort();
+  }, [lookupPin]);
 
   useEffect(() => {
     const q = query.trim();
@@ -237,12 +272,11 @@ export function LocationPicker({
     return () => clearTimeout(timer);
   }, [query, center?.lat, center?.lon]);
 
-  function showPreview(place: Place) {
+  function showPreview(point: Point, place?: Place) {
     locationRequest.current += 1;
     setLocating(false);
     setLocateError("");
-    setPicked(place);
-    setPreview(place);
+    setSelection({ origin: point, pin: point, place });
   }
 
   function locate() {
@@ -258,7 +292,7 @@ export function LocationPicker({
         if (request !== locationRequest.current) return;
         const point = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setHere(point);
-        showPreview({ name: "My location", ...point });
+        showPreview(point);
       },
       (e) => {
         if (request !== locationRequest.current) return;
@@ -316,8 +350,8 @@ export function LocationPicker({
                 aria-selected={false}
                 className="place-row"
                 onClick={() => {
-                  if (p.lat === undefined) return onPick(p);
-                  showPreview(p);
+                  if (p.lat === undefined || p.lon === undefined) return onPick(p);
+                  showPreview({ lat: p.lat, lon: p.lon }, p.name === "My location" ? undefined : p);
                 }}
               >
                 <span className="ellipsis strong-ish">{p.name}</span>
@@ -347,27 +381,27 @@ export function LocationPicker({
           )}
         </div>
       </Sheet>
-      {preview && preview.lat !== undefined && preview.lon !== undefined && (
+      {selection && (
         <Sheet
           title="Map preview"
-          onClose={() => setPreview(null)}
+          onClose={() => setSelection(null)}
           help="Not quite right? Drag the map or tap the exact spot to move the pin."
           footer={
-            <button className="btn block" onClick={() => onPick(preview)}>
+            <button className="btn block" disabled={!preview} onClick={() => preview && onPick(preview)}>
               Use this location
             </button>
           }
         >
-          <div className="stack gap-4" style={{ textAlign: "center" }}>
+          <div className="stack gap-4" style={{ textAlign: "center" }} aria-live="polite">
             <p className="label">The shift will show up here</p>
-            <p className="strong">{preview.name}</p>
-            {preview.address && <p className="label">{preview.address}</p>}
+            <p className="strong">{preview?.name ?? "Finding the place…"}</p>
+            {preview?.address && <p className="label">{preview.address}</p>}
           </div>
           <MapPreview
-            lat={preview.lat}
-            lon={preview.lon}
+            lat={selection.pin.lat}
+            lon={selection.pin.lon}
             height={280}
-            onMove={(point) => setPreview({ ...preview, ...point })}
+            onMove={(pin) => setSelection({ ...selection, pin })}
           />
           {moved && (
             <p className="label" style={{ textAlign: "center" }}>

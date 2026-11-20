@@ -1143,7 +1143,7 @@ function BookingEditor({
                 }}
               />
               <MoneyField
-                label="Incentive each"
+                label="Incentive"
                 value={d.incentive}
                 onChange={(v) => set({ incentive: v })}
                 currency={currency}
