@@ -144,6 +144,7 @@ export function OrganizersPage(props: SettingsProps) {
   return (
     <SubPage
       title="Organizers"
+      help={<p>The bazaars and markets you join, and their events. You pick them when you schedule a shift, and the leaderboard ranks them. Add or remove them here.</p>}
       sentence={
         list.length ? (
           <>
@@ -183,7 +184,6 @@ export function OrganizersPage(props: SettingsProps) {
           text="Add them here, or type a new one while scheduling a shift."
         />
       )}
-      <p className="label">Organizers and events are picked when you schedule a shift. Remove them here.</p>
       {editing && (
         <OrganizerSheet
           organizer={editing === "new" ? undefined : editing}

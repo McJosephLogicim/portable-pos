@@ -320,6 +320,17 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   return (
     <SubPage
       title={prepOnly ? "Prep" : "Stock items"}
+      help={prepOnly ? (
+        <>
+          <p>Things you make ahead in batches, like syrups and creams. Enter what goes in and how much one batch makes, and you'll see what each unit costs.</p>
+          <p>Prep is counted at opening and closing like other stock. Already counting something you make? Open it in Stock items and choose <strong>Make it</strong>.</p>
+        </>
+      ) : (
+        <>
+          <p>What you buy and count when a shift opens and closes, like milk or ice. Menu items use them per sale, and an item sells out when its stock runs out.</p>
+          <p>New stock items are counted from the next shift. Things you make ahead are in Prep.</p>
+        </>
+      )}
       backLabel="Back to recipes"
       sentence={sentence}
       onBack={() => props.onPage(null)}
@@ -379,13 +390,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           })}
         </RecordGroup>
       )}
-      <p className="label">
-        {!props.online
-          ? `Connect to edit ${prepOnly ? "prep" : "stock items"}.`
-          : prepOnly
-            ? "Already counting something you make? Open it in Stock items and choose Make it."
-            : "New stock items are counted from the next shift. Things you make ahead are in Prep."}
-      </p>
+      {!props.online && <p className="label">Connect to edit {prepOnly ? "prep" : "stock items"}.</p>}
       {editing && (
         <StockSheet
           stockItems={list}
