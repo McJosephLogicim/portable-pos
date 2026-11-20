@@ -12,7 +12,9 @@ import {
   filterOptions,
   matchesFilter,
   saleFacets,
+  shiftFacet,
   shiftKey,
+  type Facet,
   type FilterKey,
   type FilterOption,
   type SalesFilter,
@@ -54,6 +56,14 @@ export function SalesScreen({
     [state.shifts, state.shift],
   );
   const bookings = useMemo(() => new Map<string, Booking>((state.bookings ?? []).map((b) => [b.id, b])), [state.bookings]);
+  const shiftFacets = useMemo(() => {
+    const facets = new Map<string, Facet>();
+    for (const till of shifts.values()) {
+      const facet = shiftFacet(till, till.bookingId ? bookings.get(till.bookingId) : undefined);
+      facets.set(facet.value, facet);
+    }
+    return facets;
+  }, [shifts, bookings]);
   const all = useMemo(
     () =>
       state.sales
@@ -61,7 +71,7 @@ export function SalesScreen({
         .map((sale) => ({ sale, facets: saleFacets(sale, shifts, bookings) })),
     [state.sales, shifts, bookings],
   );
-  const options = useMemo(() => filterOptions(all, filter), [all, filter]);
+  const options = useMemo(() => filterOptions(all, filter, shiftFacets), [all, filter, shiftFacets]);
   const pending = new Set(state.pending.map((e) => e.id));
   const mine = Boolean(shift);
   const canReverse = Boolean(online && mine && state.pending.length === 0);
@@ -262,6 +272,7 @@ export function SalesScreen({
           all={all}
           menu={state.menu}
           shifts={shifts}
+          shiftFacets={shiftFacets}
           filter={filter}
           zone={business.timeZone}
           onApply={(next) => {
@@ -310,6 +321,7 @@ function FilterSheet({
   all,
   menu,
   shifts,
+  shiftFacets,
   filter,
   zone,
   onApply,
@@ -318,13 +330,14 @@ function FilterSheet({
   all: Parameters<typeof filterOptions>[0];
   menu: Product[];
   shifts: Map<string, Shift>;
+  shiftFacets: ReadonlyMap<string, Facet>;
   filter: SalesFilter;
   zone: string;
   onApply: (filter: SalesFilter) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<SalesFilter>(filter);
-  const options = useMemo(() => filterOptions(all, draft), [all, draft]);
+  const options = useMemo(() => filterOptions(all, draft, shiftFacets), [all, draft, shiftFacets]);
   const photos = useMemo(() => {
     const images = new Map(menu.map((item) => [item.id, item.image]));
     // Older receipts can contain items that have since been removed from the menu.

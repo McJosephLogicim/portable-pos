@@ -22,16 +22,13 @@ export function CashCounter({
   onChange,
   initial,
   label,
-  totalOnly = false,
 }: {
   currency: string;
   onChange: (value: CashValue) => void;
   initial?: CashCount;
   label: string;
-  totalOnly?: boolean;
 }) {
-  const [selectedMode, setMode] = useState<"count" | "total">("count");
-  const mode = totalOnly ? "total" : selectedMode;
+  const [mode, setMode] = useState<"count" | "total">("count");
   const [qty, setQty] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(initial ?? {}).map(([k, v]) => [k, String(v)])),
   );
@@ -155,16 +152,14 @@ export function CashCounter({
 
   return (
     <div className="stack gap-14">
-      {!totalOnly && (
-        <div className="segmented" role="group" aria-label="How to count">
-          <button type="button" aria-pressed={mode === "count"} onClick={() => setMode("count")}>
-            Coins and bills
-          </button>
-          <button type="button" aria-pressed={mode === "total"} onClick={() => setMode("total")}>
-            Type the total
-          </button>
-        </div>
-      )}
+      <div className="segmented" role="group" aria-label="How to count">
+        <button type="button" aria-pressed={mode === "count"} onClick={() => setMode("count")}>
+          Coins and bills
+        </button>
+        <button type="button" aria-pressed={mode === "total"} onClick={() => setMode("total")}>
+          Type the total
+        </button>
+      </div>
       {mode === "total" ? (
         <MoneyField label={label} value={text} onChange={setText} currency={currency} big />
       ) : (

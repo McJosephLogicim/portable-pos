@@ -47,63 +47,39 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
   await page.reload();
 }
 
-test("Simple Sell points to Till, which shows a single cash field and opens without a booking", async ({ page }) => {
-  await closedTill(page);
-  await expect(page.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Starting cash", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Open till", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Till", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
-  await expect(page.getByText("Cash float", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Float", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("textbox")).toHaveCount(1);
-  const open = page.getByRole("button", { name: "Open till", exact: true });
-  await expect(open).toBeDisabled();
-  await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("0");
-  await expect(open).toBeEnabled();
-  await open.click();
-  await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
-});
+for (const mode of ["simple", "advanced"] as const) {
+  test(`${mode} requires a scheduled shift before opening the till`, async ({ page }) => {
+    await closedTill(page, mode);
+    await expect(page.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open till", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Till", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
+    await expect(page.getByText("Nothing scheduled", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open till", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Starting cash", exact: true })).toHaveCount(0);
+  });
 
-test("Simple Till still requires configured stock counts and checklist", async ({ page }) => {
-  await closedTill(page, "simple", true);
-  await page.getByRole("button", { name: "Open till", exact: true }).click();
-  await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
-  const open = page.getByRole("button", { name: "Open till", exact: true });
-  await expect(open).toBeDisabled();
-  await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
-  await expect(open).toBeDisabled();
-  await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
-  await expect(open).toBeEnabled();
-});
-
-test("Advanced still asks for a scheduled shift", async ({ page }) => {
-  await closedTill(page, "advanced");
-  await expect(page.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing scheduled", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Open till", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing scheduled", { exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Starting cash", exact: true })).toHaveCount(0);
-});
-
-test("Advanced opening uses one cash label and keeps stock and checklist requirements", async ({ page }) => {
-  await closedTill(page, "advanced", true, true);
-  await page.getByRole("button", { name: "Open till", exact: true }).click();
-  await page.getByRole("button", { name: /^Opening test/ }).click();
-  await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
-  await expect(page.getByText("Cash float", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Float", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
-  await page.getByRole("button", { name: "Type the total", exact: true }).click();
-  await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
-  await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
-  const open = page.getByRole("button", { name: "Open till", exact: true });
-  await expect(open).toBeDisabled();
-  await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
-  await expect(open).toBeDisabled();
-  await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
-  await expect(open).toBeEnabled();
-  await open.click();
-  await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
-});
+  test(`${mode} uses the same cash, stock and checklist flow for a scheduled shift`, async ({ page }) => {
+    await closedTill(page, mode, true, true);
+    await page.getByRole("button", { name: "Open till", exact: true }).click();
+    await page.getByRole("button", { name: /^Opening test/ }).click();
+    await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
+    await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Type the total", exact: true }).click();
+    await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
+    await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
+    const open = page.getByRole("button", { name: "Open till", exact: true });
+    await expect(open).toBeDisabled();
+    await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
+    await expect(open).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
+    await expect(open).toBeEnabled();
+    await open.click();
+    await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
+    await page.getByRole("button", { name: "Till", exact: true }).click();
+    await page.getByRole("button", { name: "Count drawer and close", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Coins and bills", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Type the total", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Cash on hand", exact: true })).toBeVisible();
+  });
+}

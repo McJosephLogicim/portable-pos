@@ -4,7 +4,6 @@ import { useState } from "react";
 import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
 import type { Booking, Business, Expense, RegisterState, Shift, StockItem } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
-import { isSimpleMode } from "@/lib/settings";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
@@ -150,21 +149,15 @@ function OpenShift({
   online,
   onOpen,
   onBack,
-  onSelectBooking,
 }: {
   state: RegisterState;
-  booking?: Booking;
+  booking: Booking;
   online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
   onBack: () => void;
-  onSelectBooking: (bookingId: string) => void;
 }) {
   const business = state.business!;
   const currency = business.currency;
-  const simple = isSimpleMode(business.settings);
-  const readyBookings = simple && !booking
-    ? upcomingBookings(state).filter((b) => !startProblem(b, business.timeZone))
-    : [];
   const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -188,31 +181,19 @@ function OpenShift({
           {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
         </div>
       )}
-      {booking && (
-        <div className="stack gap-10">
-          <div className="between section-head">
-            <p className="group-title">Shift</p>
-            <button type="button" className="link small-link" onClick={onBack}>
-              Change
-            </button>
-          </div>
-          <div className="card card-list">
-            <BookingRow booking={booking} zone={business.timeZone} />
-          </div>
-        </div>
-      )}
-      {readyBookings.length > 0 && (
-        <div className="stack gap-10">
-          <p className="group-title">Scheduled shift (optional)</p>
-          <div className="card card-list">
-            {readyBookings.map((b) => (
-              <BookingRow key={b.id} booking={b} zone={business.timeZone} onClick={() => onSelectBooking(b.id)} />
-            ))}
-          </div>
-        </div>
-      )}
       <div className="stack gap-10">
-        <CashCounter currency={currency} label="Starting cash" onChange={setCash} totalOnly={simple} />
+        <div className="between section-head">
+          <p className="group-title">Shift</p>
+          <button type="button" className="link small-link" onClick={onBack}>
+            Change
+          </button>
+        </div>
+        <div className="card card-list">
+          <BookingRow booking={booking} zone={business.timeZone} />
+        </div>
+      </div>
+      <div className="stack gap-10">
+        <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
         <ShiftStockCount
@@ -297,7 +278,7 @@ function OpenShift({
                 ...(cash.count ? { openingCount: cash.count } : {}),
                 stock: Object.fromEntries(tracked.map((p) => [p.id, countOf(counts[p.id])!])),
                 checked,
-                ...(booking ? { bookingId: booking.id } : {}),
+                bookingId: booking.id,
               });
               if (origin) celebrate(origin);
               else buzz.success();
@@ -396,7 +377,7 @@ function CloseSheet({
       </div>
       <div className="stack gap-10">
         <p className="group-title">Cash on hand</p>
-        <CashCounter currency={currency} label="Cash on hand" onChange={setCash} totalOnly={isSimpleMode(state.business?.settings)} />
+        <CashCounter currency={currency} label="Cash on hand" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
         <ShiftStockCount
@@ -545,11 +526,9 @@ export function ShiftScreen({
   const [allStock, setAllStock] = useState(false);
   const [allPayments, setAllPayments] = useState(false);
   const business = state.business!;
-  const simple = isSimpleMode(business.settings);
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
   const startingBooking = starting ? upcomingBookings(state).find((b) => b.id === starting) : undefined;
-  const opening = simple ? state.menu.length > 0 : Boolean(startingBooking);
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
@@ -796,7 +775,7 @@ export function ShiftScreen({
             </div>
         </>
       ) : (
-        opening ? (
+        startingBooking ? (
           <OpenShift
             state={state}
             booking={startingBooking}
@@ -806,7 +785,6 @@ export function ShiftScreen({
               setStarting(null);
             }}
             onBack={() => setStarting(null)}
-            onSelectBooking={setStarting}
           />
         ) : (
           <NoShift state={state} onStart={setStarting} onSchedule={onSchedule} onGoMenu={onGoMenu} />

@@ -349,6 +349,6 @@ test(
     // and apply the same rule when a Simple till selects a scheduled shift.
     await cmd({ action: "mode", mode: "simple", pin });
     await assert.rejects(open(soon), /already closed/);
-    assert.equal((await open()).shift!.bookingId, undefined);
+    await assert.rejects(open(), /Pick a scheduled shift/);
   },
 );

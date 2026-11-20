@@ -5,7 +5,6 @@ import { changeMenuItem, checkClosing, checkOpening, updateShiftMenu } from "../
 import {
   currencyDigits,
   defaultSettings,
-  isSimpleMode,
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
@@ -248,27 +247,25 @@ export async function runCommand(
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        const bookingId = cmd.bookingId ?? null;
-        ensure(bookingId || isSimpleMode(settings), "Pick a scheduled shift to start. Add one on Shifts first.");
-        if (bookingId) {
-          const [booking] = await tx
-            .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
-            .from(bookings)
-            .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
-          ensure(booking, "That scheduled shift was removed.", 404);
-          const [closed] = await tx
-            .select({ id: shifts.id })
-            .from(shifts)
-            .where(and(
-              eq(shifts.businessId, business.id),
-              eq(shifts.bookingId, bookingId),
-              isNotNull(shifts.closedAt),
-            ))
-            .limit(1);
-          ensure(!closed, "This shift already closed. Add a new one on Shifts.", 409);
-          const problem = startProblem(booking, business.timeZone);
-          ensure(!problem, problem ?? "", 409);
-        }
+        const { bookingId } = cmd;
+        ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
+        const [booking] = await tx
+          .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+          .from(bookings)
+          .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
+        ensure(booking, "That scheduled shift was removed.", 404);
+        const [closed] = await tx
+          .select({ id: shifts.id })
+          .from(shifts)
+          .where(and(
+            eq(shifts.businessId, business.id),
+            eq(shifts.bookingId, bookingId),
+            isNotNull(shifts.closedAt),
+          ))
+          .limit(1);
+        ensure(!closed, "This shift already closed. Add a new one on Shifts.", 409);
+        const problem = startProblem(booking, business.timeZone);
+        ensure(!problem, problem ?? "", 409);
         const { mode: _mode, ...checkoutSettings } = withoutStockCosts(settings);
         await tx.insert(shifts).values({
           stock: Object.keys(stock).length ? stock : null,

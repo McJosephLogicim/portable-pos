@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { eq } from "drizzle-orm";
 import { makeSale } from "../src/lib/domain";
 import type { RegisterEvent, Tender } from "../src/lib/types";
 import { authenticatedOwner } from "../src/server/auth";
 import { getDb } from "../src/server/db";
+import { shifts } from "../src/server/schema";
 import { historyPage } from "../src/server/snapshot";
 import { runCommand } from "../src/server/register";
 import { shiftNow } from "./schedule";
@@ -57,7 +59,7 @@ test(
 );
 
 test(
-  "a business can switch modes and open a Simple till without a scheduled shift",
+  "a business can switch modes and needs a scheduled shift to open in either mode",
   { skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database." },
   async () => {
     process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
@@ -82,11 +84,13 @@ test(
       settings: { ...initial.business!.settings, receiptNote: "Thank you" },
     });
     assert.equal(staleSettings.business!.settings.mode, "simple");
+    await assert.rejects(cmd(open), /Pick a scheduled shift/);
 
-    const [first, retry] = await Promise.all([cmd(open), cmd(open)]);
+    const bookingId = await shiftNow(cmd, pin);
+    const scheduledOpen = { ...open, bookingId };
+    const [first, retry] = await Promise.all([cmd(scheduledOpen), cmd(scheduledOpen)]);
     const shift = first.shift!;
-    assert.equal(shift.bookingId, undefined);
-    assert.equal(first.bookings?.length, 0);
+    assert.equal(shift.bookingId, bookingId);
     assert.equal(retry.shift!.id, shift.id);
     assert.equal(shift.settings.receiptNote, "Thank you");
 
@@ -111,12 +115,19 @@ test(
     await cmd({ action: "setup", name: "Link test", currency: "USD", timeZone: "UTC", pin });
     await cmd({ action: "mode", mode: "simple", pin });
     await cmd({ action: "menu", menu: [{ id: "tea", name: "Tea", category: "", price: 250, groups: [] }], pin });
-    const { shift } = await cmd({ action: "open", openingCash: 0, deviceId });
+    const opening = { action: "open", openingCash: 0, deviceId, bookingId: await shiftNow(cmd, pin) };
+    const openLegacyTill = async () => {
+      const { shift } = await cmd(opening);
+      // Recreate a till opened before the scheduled shift requirement.
+      await getDb().update(shifts).set({ bookingId: null }).where(eq(shifts.id, shift!.id));
+      return shift!;
+    };
+    const shift = await openLegacyTill();
     const sale = makeSale({
-      id: randomUUID(), shift: shift!, sequence: 1, soldOut: [], tender: "cash", received: 250,
-      cart: [{ productId: "tea", quantity: 1, optionIds: [] }], createdAt: shift!.openedAt,
+      id: randomUUID(), shift, sequence: 1, soldOut: [], tender: "cash", received: 250,
+      cart: [{ productId: "tea", quantity: 1, optionIds: [] }], createdAt: shift.openedAt,
     });
-    await cmd({ action: "sync", deviceId, events: [{ type: "sale", id: sale.id, shiftId: shift!.id, sale }] });
+    await cmd({ action: "sync", deviceId, events: [{ type: "sale", id: sale.id, shiftId: shift.id, sale }] });
 
     const booking = {
       id: randomUUID(), startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString(),
@@ -125,21 +136,21 @@ test(
     const other = { ...booking, id: randomUUID() };
     await cmd({ action: "booking", booking, pin });
     await cmd({ action: "booking", booking: other, pin });
-    const link = { action: "linkBooking", shiftId: shift!.id, bookingId: booking.id };
+    const link = { action: "linkBooking", shiftId: shift.id, bookingId: booking.id };
     await assert.rejects(cmd({ ...link, shiftId: randomUUID() }), { status: 409 });
     await assert.rejects(cmd({ ...link, bookingId: randomUUID() }), { status: 404 });
     const [linked, retried] = await Promise.all([cmd(link), cmd(link)]);
-    assert.equal(linked.shift!.id, shift!.id);
+    assert.equal(linked.shift!.id, shift.id);
     assert.equal(retried.shift!.bookingId, booking.id);
     assert.equal(linked.sales[0].id, sale.id);
     assert.equal(linked.bookings!.find((entry) => entry.id === booking.id)!.sales, 250);
     await assert.rejects(cmd({ ...link, bookingId: other.id }), { status: 409 });
 
-    await cmd({ action: "close", shiftId: shift!.id, countedCash: 250, deviceId, pin });
+    await cmd({ action: "close", shiftId: shift.id, countedCash: 250, deviceId, pin });
     await assert.rejects(cmd(link), { status: 409 });
-    const next = await cmd({ action: "open", openingCash: 0, deviceId });
+    const next = await openLegacyTill();
     await assert.rejects(cmd(link), { status: 409 });
-    await assert.rejects(cmd({ ...link, shiftId: next.shift!.id }), { status: 409 });
+    await assert.rejects(cmd({ ...link, shiftId: next.id }), { status: 409, message: "This shift already closed. Choose another shift." });
   },
 );
 

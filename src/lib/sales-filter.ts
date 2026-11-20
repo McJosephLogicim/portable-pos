@@ -1,5 +1,6 @@
 import type { Booking, Sale, Shift } from "./types";
 import { countFilterOptions, matchesFilters, type FilterSelection } from "./filters";
+import { bookingTitle } from "./team";
 
 /** The ways the Sales page can narrow its list. Values within one are "any of"; across them, "all of". */
 export type FilterKey = "shift" | "event" | "organizer" | "place" | "item" | "payment";
@@ -27,8 +28,12 @@ export function shiftKey(shift: Shift) {
   return shift.bookingId ?? "till:" + shift.id;
 }
 
-function bookingName(b: Booking) {
-  return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";
+export function shiftFacet(shift: Shift, booking?: Booking): Facet {
+  return {
+    value: shiftKey(shift),
+    label: booking ? bookingTitle(booking) : "Shift " + shift.number,
+    at: booking?.startsAt ?? shift.openedAt,
+  };
 }
 
 /** Everything a sale can be filtered by. */
@@ -42,9 +47,7 @@ export function saleFacets(
   const items = new Map<string, Facet>();
   for (const line of sale.lines) items.set(line.productId, { value: line.productId, label: line.name });
   return {
-    shift: till
-      ? [{ value: shiftKey(till), label: b ? bookingName(b) : "Shift " + till.number, at: b?.startsAt ?? till.openedAt }]
-      : [],
+    shift: till ? [shiftFacet(till, b)] : [],
     event: b?.event ? [{ value: b.event.id, label: b.event.name }] : [],
     organizer: b?.organizer ? [{ value: b.organizer.id, label: b.organizer.name }] : [],
     place: b?.place ? [{ value: b.place.name, label: b.place.name }] : [],
@@ -75,11 +78,21 @@ export interface FilterOption extends Facet {
 export function filterOptions(
   all: { facets: Record<FilterKey, Facet[]> }[],
   filter: SalesFilter,
+  shiftFacets?: ReadonlyMap<string, Facet>,
 ): Record<FilterKey, FilterOption[]> {
   const out = {} as Record<FilterKey, FilterOption[]>;
   const rows = all.map(({ facets }) => facets);
   for (const key of filterKeys) {
-    out[key] = countFilterOptions(rows, filter, key).sort((a, b) =>
+    const options = countFilterOptions(rows, filter, key);
+    if (key === "shift") {
+      const counted = new Set(options.map((option) => option.value));
+      for (const value of filter.shift ?? []) {
+        if (counted.has(value)) continue;
+        const facet = shiftFacets?.get(value) ?? { value, label: "Unavailable" };
+        options.push({ ...facet, count: 0 });
+      }
+    }
+    out[key] = options.sort((a, b) =>
       key === "shift" ? (b.at ?? "").localeCompare(a.at ?? "") : b.count - a.count || a.label.localeCompare(b.label),
     );
   }

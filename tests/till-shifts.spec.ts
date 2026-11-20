@@ -1,13 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
+import { demoBootstrap } from "../src/lib/demo";
+import { makeSale } from "../src/lib/domain";
 import type { Booking, RegisterState } from "../src/lib/types";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
-async function seedTill(page: Page, withShifts: boolean) {
+async function seedTill(page: Page, withShifts: boolean, withPastSale = false) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
-  await page.evaluate(async (withShifts) => {
+  const demo = demoBootstrap("test-device");
+  const espresso = demo.menu.find((item) => item.name === "Espresso")!;
+  const sales = withPastSale ? [makeSale({
+    id: "past-sale", shift: { ...demo.shift!, id: "past" }, sequence: 1, soldOut: [],
+    tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
+    cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
+  })] : [];
+  await page.evaluate(async ({ withShifts, sales }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -24,7 +33,7 @@ async function seedTill(page: Page, withShifts: boolean) {
             id: name, place: { name }, startsAt, endsAt, organizer: null, event: null,
             seats: 1, staff: [], quota: 0, incentive: 0,
           });
-          const first = booking("Atrium", "2026-11-21T03:00:00Z", "2026-11-21T09:00:00Z");
+          const first = { ...booking("Atrium", "2026-11-21T03:00:00Z", "2026-11-21T09:00:00Z"), id: "booking-1" };
           const second = booking("Garden", "2026-11-21T02:00:00Z", "2026-11-21T08:00:00Z");
           const future = booking("Evening", "2026-11-21T07:00:00Z", "2026-11-21T12:00:00Z");
           const yesterday = booking("Overnight", "2026-11-20T15:30:00Z", "2026-11-21T05:00:00Z");
@@ -34,18 +43,19 @@ async function seedTill(page: Page, withShifts: boolean) {
           state.shift = shift;
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
           state.shifts = withShifts ? [shift, past, unscheduled] : [shift];
+          state.sales = sales;
           store.put(state, "demo-register-v2");
         };
         tx.oncomplete = () => { db.close(); resolve(); };
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, withShifts);
+  }, { withShifts, sales });
   await page.reload();
 }
 
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
-  await seedTill(page, true);
+  await seedTill(page, true, true);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   const today = page.getByRole("article").filter({ hasText: "Atrium" });
   await expect(today.getByRole("button")).toHaveCount(1);
@@ -88,6 +98,15 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await details.getByRole("button", { name: "Add till", exact: true }).click();
   await confirmation.getByRole("button", { name: "Add till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
+  await page.getByRole("button", { name: "Sales", exact: true }).click();
+  const activeShift = page.getByRole("button", { name: "Remove shift Atrium", exact: true });
+  await expect(activeShift).toBeVisible();
+  await page.getByRole("button", { name: "Filters · 1", exact: true }).click();
+  const filters = page.getByRole("dialog", { name: "Filter sales" });
+  await expect(filters.getByRole("button", { name: /Atrium.*0/ })).toHaveAttribute("aria-pressed", "true");
+  await filters.getByRole("button", { name: "Close", exact: true }).click();
+  await activeShift.click();
+  await expect(page.getByRole("button", { name: /Receipt .* Espresso/ })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();

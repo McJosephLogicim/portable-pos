@@ -5,7 +5,7 @@ import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmo
 import { demoPlan } from "./demo-plan";
 import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
-import { currencyDigits, defaultSettings, isSimpleMode, mergeShiftSettings } from "./settings";
+import { currencyDigits, defaultSettings, mergeShiftSettings } from "./settings";
 import type {
   Bootstrap,
   Product,
@@ -137,16 +137,13 @@ export function demoAction(
       const checklist = business.settings.checklist ?? [];
       const stock = checkOpening(state.menu, business.settings.stockItems, checklist, input.stock, input.checked);
       const openingCount = checkCount(input.openingCount, input.openingCash);
-      if (input.bookingId) {
-        const booking = state.bookings?.find((b) => b.id === input.bookingId);
-        if (!booking) throw Error("That scheduled shift was removed.");
-        if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
-          throw Error("This shift already closed. Add a new one on Shifts.");
-        const problem = startProblem(booking, business.timeZone);
-        if (problem) throw Error(problem);
-      } else if (!isSimpleMode(business.settings)) {
-        throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
-      }
+      if (!input.bookingId) throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
+      const booking = state.bookings?.find((b) => b.id === input.bookingId);
+      if (!booking) throw Error("That scheduled shift was removed.");
+      if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
+        throw Error("This shift already closed. Add a new one on Shifts.");
+      const problem = startProblem(booking, business.timeZone);
+      if (problem) throw Error(problem);
       const { mode: _mode, ...checkoutSettings } = business.settings;
       const shift: Shift = {
         ...newShift(
@@ -160,7 +157,7 @@ export function demoAction(
         ...(Object.keys(stock).length ? { stock } : {}),
         ...(openingCount ? { openingCount } : {}),
         openedBy: state.me?.name,
-        ...(input.bookingId ? { bookingId: input.bookingId } : {}),
+        bookingId: booking.id,
         checklist: checklist.map((c) => c.text),
       };
       return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [] };
