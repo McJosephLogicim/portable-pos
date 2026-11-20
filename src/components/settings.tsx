@@ -57,6 +57,8 @@ export type SettingsInput = {
   currency: string;
   timeZone: string;
   settings: Settings;
+  /** What the open shift has left now, set on purpose, by stock item id. Sales take from it from then on. */
+  stockNow?: Record<string, number>;
 };
 
 export type SettingsPage =
@@ -261,7 +263,8 @@ export function useCommit(props: EditorProps) {
     run,
     menu: (menu: Product[], label: string, stock?: Record<string, number>) =>
       run((pin) => props.onMenu(menu, pin, stock), label),
-    settings: (patch: Partial<Settings>, label: string) => run((pin) => props.onSave(input(patch), pin), label),
+    settings: (patch: Partial<Settings>, label: string, stockNow?: Record<string, number>) =>
+      run((pin) => props.onSave({ ...input(patch), ...(stockNow ? { stockNow } : {}) }, pin), label),
   };
 }
 

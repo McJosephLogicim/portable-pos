@@ -1,6 +1,6 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
-import { changeMenuItem, checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu, type MenuItemChange } from "./domain";
+import { changeMenuItem, checkClosing, checkOpening, setShiftStock, shiftTotals, stockReplay, updateShiftMenu, type MenuItemChange } from "./domain";
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
@@ -114,6 +114,8 @@ export type OwnerAction =
       currency: string;
       timeZone: string;
       settings: Settings;
+      /** What the open shift has left now, set on purpose, by stock item id. */
+      stockNow?: Record<string, number>;
       pin: string;
     }
   | {
@@ -240,10 +242,13 @@ export function demoAction(
       checkPrepRecipes(input.settings.stockItems);
       const problem = batchIngredientProblem(state.menu, input.settings.stockItems);
       if (problem) throw Error(problem);
-      const shift = state.shift && {
+      const merged = state.shift && {
         ...state.shift,
         settings: mergeShiftSettings(state.shift.settings, input.settings),
       };
+      const shift = merged && (input.stockNow
+        ? setShiftStock(merged, input.settings.stockItems, input.stockNow)
+        : merged);
       return {
         ...state,
         business: {
@@ -288,7 +293,7 @@ export function demoAction(
       const shift = state.shift;
       const closingStock = checkClosing(shift, input.closingStock);
       const closingCount = checkCount(input.closingCount, input.countedCash);
-      const left = stockLeft(shift, state.sales);
+      const { used } = stockReplay(shift, state.sales);
       const closed: Shift = {
         ...shift,
         countedCash: input.countedCash,
@@ -298,8 +303,8 @@ export function demoAction(
         closedAt: new Date().toISOString(),
         ...(closingStock ? { closingStock } : {}),
         ...(closingCount ? { closingCount } : {}),
-        ...(shift.stock
-          ? { usedStock: Object.fromEntries(Object.entries(shift.stock).map(([id, n]) => [id, round(n - left[id])])) }
+        ...(Object.keys(used).length
+          ? { usedStock: Object.fromEntries(Object.entries(used).map(([id, n]) => [id, round(n)])) }
           : {}),
       };
       return {

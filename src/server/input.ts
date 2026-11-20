@@ -152,6 +152,7 @@ const settings = z.object({
         id: key,
         name: z.string().trim().min(1).max(60),
         unit: z.string().trim().min(1).max(16),
+        onHand: z.number().min(0).max(1_000_000).optional(),
         purchase: z.object({
           price: amount,
           quantity: z.number().min(0.001).max(1_000_000),
@@ -313,6 +314,8 @@ const command = z.discriminatedUnion("action", [
     currency: z.string().regex(/^[A-Z]{3}$/),
     timeZone: z.string().min(1).max(100),
     settings,
+    /** What the open shift has left now, set on purpose, by stock item id. */
+    stockNow: counts.optional(),
     pin,
   }),
   z.object({

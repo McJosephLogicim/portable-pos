@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { makeSale, priceLines, shiftTotals, stockLeft, totalLines } from "../lib/domain";
+import { makeSale, priceLines, shiftTotals, stockReplay, totalLines } from "../lib/domain";
 import type { Shift } from "../lib/types";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
@@ -45,9 +45,9 @@ export async function closingFigures(tx: Transaction, shift: Shift, countedCash:
   const sold = (await tx.select().from(sales).where(eq(sales.shiftId, shift.id))).map(presentSale);
   const spent = (await tx.select().from(expenses).where(eq(expenses.shiftId, shift.id))).map(presentExpense);
   const { expectedCash } = shiftTotals(shift, sold, spent);
-  const left = stockLeft(shift, sold);
-  const usedStock = shift.stock
-    ? Object.fromEntries(Object.entries(shift.stock).map(([id, n]) => [id, Math.round((n - left[id]) * 1000) / 1000]))
+  const { used } = stockReplay(shift, sold);
+  const usedStock = Object.keys(used).length
+    ? Object.fromEntries(Object.entries(used).map(([id, n]) => [id, Math.round(n * 1000) / 1000]))
     : null;
   return { difference: countedCash - expectedCash, usedStock };
 }

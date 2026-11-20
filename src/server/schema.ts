@@ -25,6 +25,7 @@ import type {
   Settings,
   ShiftSettings,
   Tender,
+  StockSet,
 } from "../lib/types";
 
 export const register = pgSchema("portable_pos");
@@ -81,6 +82,7 @@ export const shifts = register
       openingCount: jsonb("opening_count").$type<Record<string, number>>(),
       closingCount: jsonb("closing_count").$type<Record<string, number>>(),
       usedStock: jsonb("used_stock").$type<Record<string, number>>(),
+      stockSets: jsonb("stock_sets").$type<StockSet[]>(),
     },
     (t) => [
       unique().on(t.businessId, t.number),

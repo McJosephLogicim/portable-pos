@@ -239,7 +239,7 @@ test(
 
     const openingStock = { bread: 2, crumbs: 50 };
     await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: [] }), /checklist/);
-    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: {}, checked: ["float"] }), /Count/);
+    await assert.rejects(o({ action: "open", deviceId, openingCash: 0, stock: {}, checked: ["float"] }), /Count the Pandesal/);
     const opened = await o({ action: "open", deviceId, openingCash: 0, stock: openingStock, checked: ["float"], bookingId: id });
     const shift = opened.shift!;
     assert.equal(shift.menu[0].costing, undefined);

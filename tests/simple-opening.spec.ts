@@ -20,7 +20,7 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
         get.onsuccess = () => {
           const state = get.result as RegisterState;
           state.business!.settings.mode = mode;
-          state.business!.settings.stockItems = requirements ? [{ id: "milk", name: "Fresh milk", unit: "L" }] : [];
+          state.business!.settings.stockItems = requirements ? [{ id: "milk", name: "Fresh milk", unit: "L", onHand: 6 }] : [];
           state.business!.settings.checklist = requirements ? [{ id: "qr", text: "Put out the QR stand" }] : [];
           state.menu = state.menu.filter((item) => item.name === "Espresso");
           state.shift = null;
@@ -71,9 +71,13 @@ for (const mode of ["simple", "advanced"] as const) {
     await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
     const open = page.getByRole("button", { name: "Open till", exact: true });
     await expect(open).toBeDisabled();
-    await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
-    await expect(open).toBeDisabled();
+    // Counting stock is optional: the saved starting amount shows, and the checklist is what's left.
+    await expect(page.getByText("6 L", { exact: true })).toBeVisible();
     await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
+    await expect(open).toBeEnabled();
+    await page.getByRole("switch", { name: "Count stock and prep", exact: true }).click();
+    await expect(page.getByText("Expected 6 L", { exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
     await expect(open).toBeEnabled();
     await open.click();
     await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();

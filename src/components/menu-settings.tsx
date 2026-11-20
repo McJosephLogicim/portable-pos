@@ -246,12 +246,11 @@ export function ItemSheet({
     ? stockDrafts.filter((u, i) => {
         if (!u.name.trim()) return false;
         const item = stockForUse(u, availableStock);
-        if (item ? counted.includes(item.id) : deductFromStock || !canCreateStock) return false;
+        if (item ? counted.includes(item.id) || item.onHand !== undefined : deductFromStock || !canCreateStock) return false;
         // The same stock item typed twice is asked once.
         return stockDrafts.findIndex((o) => o.name.trim().toLocaleLowerCase() === u.name.trim().toLocaleLowerCase()) === i;
       })
     : [];
-  const useCountsReady = uncountedUses.every((u) => countOf(useCounts[u.key]) !== undefined);
   const [price, setPrice] = useState(product ? priceText(product.price, currency) || "0" : "");
   let sellingPrice: number | undefined;
   if (price) {
@@ -389,7 +388,7 @@ export function ItemSheet({
       editing={Boolean(product)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()) && useCountsReady)}
+      canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()))}
       onSave={save}
       removeLabel="Remove from menu"
       removeDetail={product && (liveShift
@@ -473,7 +472,12 @@ export function ItemSheet({
         )}
         {uncountedUses.length > 0 && (
           <div className="stack gap-8">
-            <span className="field-label">How much do you have now?</span>
+            <span className="field-label row gap-6">
+              How much do you have now?
+              <Explain title="How much do you have now?">
+                Optional. Enter it and sales take from it from now on. Leave it blank and it isn't tracked this shift.
+              </Explain>
+            </span>
             <div>
               {uncountedUses.map((u) => (
                 <StockCount
@@ -486,9 +490,7 @@ export function ItemSheet({
             </div>
           </div>
         )}
-        {uncountedUses.length > 0 && (
-          <p className="label">The till didn't count {uncountedUses.length === 1 ? "this" : "these"} at opening. It counts from now and asks for what's left at closing.</p>
-        )}
+
         {askCount && (
           <label className="field">
             <span>How many do you have now?</span>

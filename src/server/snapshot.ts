@@ -37,6 +37,7 @@ export function presentShift(
     ...(row.openingCount ? { openingCount: row.openingCount } : {}),
     ...(row.closingCount ? { closingCount: row.closingCount } : {}),
     ...(row.usedStock ? { usedStock: row.usedStock } : {}),
+    ...(row.stockSets?.length ? { stockSets: row.stockSets } : {}),
     ...(row.openedBy ? { openedBy: row.openedBy } : {}),
   };
 }
