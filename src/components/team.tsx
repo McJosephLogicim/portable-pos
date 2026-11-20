@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { joinLink } from "@/lib/join-link";
+import { useEffect, useRef, useState } from "react";
+import { inviteLink } from "@/lib/join-link";
 import { Banknote, Check, ChevronRight, HandPlatter, Link, Plus, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
@@ -85,10 +85,45 @@ export function RolePicker({
   );
 }
 
+/** A pending person's invite link, ready to send in the group chat. */
+function InviteLink({ name, url }: { name: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="notice">
+      <span className="grow stack">
+        <span className="field-head">
+          Invite link
+          <Explain title="Invite link">
+            Send it to {name.split(/\s+/)[0] || "them"}. Whoever opens it and signs in joins the team as {name}, with any email. It works once.
+          </Explain>
+        </span>
+        <span className="label ellipsis">{url.replace(/^https?:\/\//, "")}</span>
+      </span>
+      <button
+        type="button"
+        className="btn small secondary"
+        onClick={async () => {
+          try {
+            if (navigator.share) await navigator.share({ title: "Join the team on Portable POS", url });
+            else {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+            }
+          } catch {
+            /* the person closed the share sheet */
+          }
+        }}
+      >
+        {copied ? <Check size={15} /> : <Link size={15} />} {copied ? "Copied" : "Share"}
+      </button>
+    </div>
+  );
+}
+
 function MemberSheet({
   member,
   canChangeAccess,
-  businessId,
+  link,
   currency,
   onSave,
   onResend,
@@ -97,7 +132,8 @@ function MemberSheet({
 }: {
   member?: Member;
   canChangeAccess: boolean;
-  businessId: string;
+  /** A pending invite's link. */
+  link?: string;
   currency: string;
   onSave: (input: { name: string; email: string; rate: number; owner?: boolean; photo?: string | null }) => Promise<boolean>;
   onResend?: () => Promise<boolean>;
@@ -111,7 +147,6 @@ function MemberSheet({
   const [owner, setOwner] = useState(member?.owner ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
   async function run(fn: () => Promise<boolean>) {
     setBusy(true);
     setError("");
@@ -123,7 +158,7 @@ function MemberSheet({
       setBusy(false);
     }
   }
-  const valid = name.trim() && (member || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
+  const valid = name.trim() && (member || !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   return (
     <Sheet
       title={member ? member.name : "Invite someone"}
@@ -146,7 +181,7 @@ function MemberSheet({
               )
             }
           >
-            {busy ? "Saving…" : member ? "Save" : "Send invite"}
+            {busy ? "Saving…" : member ? "Save" : email.trim() ? "Send invite" : "Create invite link"}
           </button>
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
@@ -161,6 +196,7 @@ function MemberSheet({
         </>
       }
     >
+      {link && member && <InviteLink name={member.name} url={link} />}
       {member && (
         <div className="card card-pad">
           <PhotoPicker face value={photo} onChange={setPhoto} label="profile photo" />
@@ -184,9 +220,9 @@ function MemberSheet({
               <span>Email they sign in with</span>
             ) : (
               <span className="field-head">
-                Email they sign in with
+                Email (optional)
                 <Explain title="Their email">
-                  They can use their existing Portable POS account and keep any businesses they already own.
+                  Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own.
                 </Explain>
               </span>
             )}
@@ -227,29 +263,6 @@ function MemberSheet({
           body: <p>What they earn each time they join a shift. You can change it for a single shift when you schedule it. They pick cashier or server on each shift.</p>,
         }}
       />
-      {onResend && (
-        <div className="notice">
-          <span className="grow">They join by signing in with the invited email.</span>
-          <button
-            type="button"
-            className="btn small secondary"
-            onClick={async () => {
-              const url = joinLink(location.origin, businessId);
-              try {
-                if (navigator.share) await navigator.share({ title: "Portable POS", url });
-                else {
-                  await navigator.clipboard.writeText(url);
-                  setCopied(true);
-                }
-              } catch {
-                /* the person closed the share sheet */
-              }
-            }}
-          >
-            {copied ? <Check size={15} /> : <Link size={15} />} {copied ? "Copied" : "Share link"}
-          </button>
-        </div>
-      )}
       {error && (
         <p className="alert" role="alert">
           {error}
@@ -263,6 +276,16 @@ export function TeamPage(props: SettingsProps) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
   const [editing, setEditing] = useState<Member | "new" | null>(null);
+  // After an invite, open the new person so their link is ready to share.
+  const invited = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!invited.current) return;
+    const added = team.find((m) => !invited.current!.has(m.id) && !m.joined);
+    if (added) {
+      invited.current = null;
+      setEditing(added);
+    }
+  }, [team]);
   const withPin = usePin();
   const sorted = [...team].sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name));
   const waiting = team.filter((m) => !m.joined).length;
@@ -321,7 +344,7 @@ export function TeamPage(props: SettingsProps) {
                   {m.name}
                 </span>
                 <span className="label ellipsis">
-                  {m.joined ? (m.owner ? "Owner" : m.email) : "Invite pending for " + m.email}
+                  {m.joined ? (m.owner ? "Owner" : m.email) : m.email ? "Invite pending for " + m.email : "Invite link not used yet"}
                 </span>
               </span>
               {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
@@ -332,14 +355,19 @@ export function TeamPage(props: SettingsProps) {
       )}
       {editing && (
         <MemberSheet
+          key={editing === "new" ? "new" : editing.id}
           member={editing === "new" ? undefined : editing}
           canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
-          businessId={business.id}
+          link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
           currency={business.currency}
-          onClose={() => setEditing(null)}
+          onClose={() => setEditing((current) => (current === editing ? null : current))}
           onSave={(input) =>
             editing === "new"
-              ? act({ action: "invite", ...input })
+              ? ((invited.current = new Set(team.map((m) => m.id))),
+                act({ action: "invite", ...input }).then((done) => {
+                  if (!done) invited.current = null;
+                  return done;
+                }))
               : act(
                   { action: "member", memberId: editing.id, name: input.name, rate: input.rate, owner: input.owner },
                   "Saved " + input.name,
@@ -351,7 +379,7 @@ export function TeamPage(props: SettingsProps) {
                 )
           }
           onResend={
-            editing === "new" || editing.joined || props.demo
+            editing === "new" || editing.joined || !editing.email || props.demo
               ? undefined
               : () => act({ action: "invite", name: editing.name, email: editing.email, rate: editing.rate })
           }

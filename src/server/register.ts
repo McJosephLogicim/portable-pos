@@ -20,7 +20,7 @@ import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, members, sales, shifts } from "./schema";
 import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
-import { listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
+import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const ownerActions = ["menu", "settings", "mode", ...ownerPlanActions];
 const pinActions = ["reverse", "close", ...ownerActions];
@@ -102,10 +102,11 @@ export async function runCommand(
         else ensure(owns, "This account is already on a team. Add your own business from Settings.", 409);
       }
     }
+    if (cmd.action === "acceptInvite") await acceptInvite(tx, actor, cmd.code);
     // The business is the write lock for its register. Independent sellers never
     // block each other. Snapshots are taken while the same lock is still held.
     const access = await resolveAccess(tx, actor);
-    if (cmd.action === "bootstrap" || cmd.action === "setup")
+    if (cmd.action === "bootstrap" || cmd.action === "setup" || cmd.action === "acceptInvite")
       return snapshot(access);
     ensure(access, "Create your business first.", 404);
     const { business, member } = access;
@@ -330,9 +331,10 @@ export async function runCommand(
     }
     return snapshot(access);
   });
-  if (cmd.action === "invite" && data.business) {
+  if (cmd.action === "invite" && data.business && cmd.email.trim()) {
     const email = normalEmail(cmd.email);
-    return { ...data, inviteDelivery: await sendInvitationEmail(data.business, email) };
+    const code = data.team?.find((m) => normalEmail(m.email) === email)?.inviteCode;
+    return { ...data, inviteDelivery: await sendInvitationEmail(data.business, email, code) };
   }
   return data;
 }

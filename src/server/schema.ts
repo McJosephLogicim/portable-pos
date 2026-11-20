@@ -159,9 +159,12 @@ export const members = register
       businessId: uuid("business_id")
         .references(() => businesses.id)
         .notNull(),
-      // Null until the invited person signs in with the invited email.
+      // Null until the invited person signs in with the invited email or opens their invite link.
       userId: uuid("user_id"),
+      // Empty when the owner invited them by link only.
       email: text().notNull(),
+      // The code in a pending invite's /i/ link. Cleared once someone joins with it.
+      inviteCode: text("invite_code"),
       name: text().notNull(),
       roles: jsonb().$type<Role[]>().notNull(),
       rate: money("rate").default(0).notNull(),
@@ -174,7 +177,8 @@ export const members = register
       // A person can be on several businesses, once each.
       uniqueIndex("members_business_user").on(t.businessId, t.userId),
       index("members_user_index").on(t.userId),
-      uniqueIndex("members_email").on(t.businessId, sql`lower(${t.email})`),
+      uniqueIndex("members_email").on(t.businessId, sql`lower(${t.email})`).where(sql`${t.email} <> ''`),
+      uniqueIndex("members_invite_code").on(t.inviteCode),
     ],
   )
   .enableRLS();

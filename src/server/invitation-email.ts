@@ -1,9 +1,11 @@
-import { joinLink } from "../lib/join-link";
+import { inviteLink, joinLink } from "../lib/join-link";
 import type { Business, RegisterResponse } from "../lib/types";
 
 export async function sendInvitationEmail(
   business: Pick<Business, "id" | "name">,
   email: string,
+  /** The pending invite's code. Invites from before invite links fall back to the team link. */
+  code?: string,
 ): Promise<NonNullable<RegisterResponse["inviteDelivery"]>> {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.POS_INVITE_FROM;
@@ -12,7 +14,7 @@ export async function sendInvitationEmail(
 
   try {
     if (new URL(origin).protocol !== "https:") return "unavailable";
-    const link = joinLink(origin, business.id);
+    const link = code ? inviteLink(origin, code) : joinLink(origin, business.id);
     const businessName = business.name.replace(/\s+/g, " ").trim();
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -26,7 +28,9 @@ export async function sendInvitationEmail(
         subject: "You're invited to a team on Portable POS",
         text: [
           `You've been invited to join ${businessName} on Portable POS.`,
-          "Open the link and sign in with this email address. If you're new to Portable POS, create an account with this address and confirm it first.",
+          code
+            ? "Open the link and sign in. If you're new to Portable POS, create an account first."
+            : "Open the link and sign in with this email address. If you're new to Portable POS, create an account with this address and confirm it first.",
           link,
         ].join("\n\n"),
       }),

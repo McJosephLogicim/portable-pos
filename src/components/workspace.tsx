@@ -29,7 +29,7 @@ import {
   uploadProofs,
 } from "@/lib/register-store";
 import { applyTheme } from "@/lib/theme";
-import { matchCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "@/lib/join-link";
+import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "@/lib/join-link";
 import { isSimpleMode } from "@/lib/settings";
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
@@ -49,6 +49,24 @@ type JoinTarget =
   | { businessId: string; bookingId: string | null }
   | { code: NonNullable<ReturnType<typeof readJoinCode>> };
 const ACTIVE = "portable-pos-account";
+// An invite link waits here through sign-up and email confirmation.
+const INVITE = "portable-pos-invite";
+let openedInvite: string | null = null;
+function pendingInvite() {
+  try {
+    return openedInvite ?? readInviteCode(localStorage.getItem(INVITE));
+  } catch {
+    return openedInvite;
+  }
+}
+function forgetInvite() {
+  openedInvite = null;
+  try {
+    localStorage.removeItem(INVITE);
+  } catch {
+    /* storage is blocked */
+  }
+}
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
     return navigator.locks.request("portable-pos:" + name, action);
@@ -141,8 +159,34 @@ export function Workspace() {
       setBootError("");
       setSharedSchedule(null);
       setTab("sell");
-      localStorage.setItem(ACTIVE, id);
       try {
+        const invite = id !== DEMO && navigator.onLine ? pendingInvite() : null;
+        if (invite) {
+          // Join the team first, then open its register: their first, or one more on this phone.
+          const { userId } = parseKey(id);
+          let data;
+          try {
+            data = await api(userId, { action: "acceptInvite", code: invite });
+            forgetInvite();
+          } catch (e) {
+            if (e instanceof RequestFailure && e.status >= 400 && e.status < 500) {
+              forgetInvite();
+              setNotice(message(e));
+            } else throw e;
+          }
+          const joined = data?.business;
+          if (data && joined) {
+            const first = await loadRegister(userId);
+            const target = !first.business || first.business.id === joined.id ? userId : registerKey(userId, joined.id);
+            await locked("write-" + target, () => mergeServer(target, data));
+            joinTarget.current = { businessId: joined.id, bookingId: null };
+            setToast("You joined " + joined.name);
+            id = target;
+            active.current = id;
+            setKey(id);
+          }
+        }
+        localStorage.setItem(ACTIVE, id);
         let local = await loadRegister(id);
         if (id === DEMO && !local.business)
           local = await locked("write-" + id, async () => {
@@ -175,6 +219,19 @@ export function Workspace() {
     let alive = true;
     async function start() {
       const params = new URLSearchParams(location.search);
+      const invite = readInviteCode(params.get("invite"));
+      if (params.has("invite")) {
+        const url = new URL(location.href);
+        url.searchParams.delete("invite");
+        history.replaceState(null, "", url);
+      }
+      openedInvite = invite;
+      if (invite)
+        try {
+          localStorage.setItem(INVITE, invite);
+        } catch {
+          /* storage is blocked; the link still works if they are signed in */
+        }
       const businessId = params.get("shifts"),
         code = readJoinCode(params.get("j") ?? "");
       joinTarget.current = code
@@ -195,6 +252,10 @@ export function Workspace() {
         } catch (e) {
           if (alive) setNotice(message(e));
         }
+      }
+      if (alive && id === DEMO && invite) {
+        setNotice("Sign in or create an account to join the team.");
+        setAccount(true);
       }
       if (alive) await connect(id);
     }
@@ -331,6 +392,7 @@ export function Workspace() {
           setSyncErr("");
           if (input.action === "invite") {
             if (key === DEMO) setToast("Invitation saved in demo");
+            else if (!input.email.trim()) setToast("Invite link ready");
             else if (inviteDelivery === "sent") {
               setNotice("");
               setToast("Invitation email sent");
@@ -487,7 +549,7 @@ export function Workspace() {
         void switchBusiness(businessId).catch((e) => setNotice(message(e)));
       else {
         done();
-        setNotice("You're not on that team yet. Ask the owner to invite your email.");
+        setNotice("You're not on that team yet. Ask the owner for an invite link.");
       }
       return;
     }
