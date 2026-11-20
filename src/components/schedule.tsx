@@ -1,7 +1,6 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Menu } from "@base-ui/react/menu";
 import {
   CalendarDays,
   CalendarPlus,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
 import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
+import { OFFLINE } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
 import { slugId } from "@/lib/settings";
@@ -53,6 +53,7 @@ import type {
   Tag,
 } from "@/lib/types";
 import { SuggestInput } from "./combobox";
+import { AddMenu } from "./add-menu";
 import { ShiftSales } from "./insights";
 import { LeaderboardPage } from "./leaderboard";
 import { LiquidSegments } from "./liquid-segments";
@@ -1349,57 +1350,59 @@ function ShareSchedule({
   );
 }
 
-function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "new" | "bulk") => void }) {
-  const [keyboard, setKeyboard] = useState(false);
+function AddShiftMenu({ disabled, onAdd, className }: {
+  disabled: boolean;
+  onAdd: (mode: "new" | "bulk") => void;
+  className?: string;
+}) {
   return (
-    <Menu.Root
-      modal={false}
-      onOpenChange={(open, { event }) => {
-        if (!open) return;
-        buzz.tap();
-        setKeyboard(event instanceof KeyboardEvent || (event.type === "click" && "detail" in event && event.detail === 0));
-      }}
-    >
-      <Menu.Trigger className={`btn add-shift responsive-icon ${styles.addShift}`} disabled={disabled}>
-        <Plus size={18} aria-hidden="true" /> <span className="button-label">Add</span>
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner className="add-shift-positioner" align="end" sideOffset={8}>
-          <Menu.Popup className="add-shift-menu" data-keyboard={keyboard || undefined}>
-            <Menu.Item onClick={() => onAdd("new")}>
-              <CalendarPlus size={18} aria-hidden="true" /> Add a shift
-            </Menu.Item>
-            <Menu.Item onClick={() => onAdd("bulk")}>
-              <CalendarRange size={18} aria-hidden="true" /> Add bulk
-            </Menu.Item>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+    <AddMenu
+      singleLabel="Add a shift"
+      onSingle={() => onAdd("new")}
+      onBulk={() => onAdd("bulk")}
+      blockedReason={disabled && OFFLINE}
+      className={className}
+      SingleIcon={CalendarPlus}
+      BulkIcon={CalendarRange}
+    />
   );
 }
 
 /* ---------- screen ---------- */
 
-export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & { shiftId: string; onClose: () => void }) {
+export function TillShiftsSheet({ shiftId, onClose, onSchedule, ...props }: ScheduleProps & {
+  shiftId: string;
+  onClose: () => void;
+  onSchedule: () => void;
+}) {
   const { state, online, onAction, onSaved } = props;
   const zone = state.business!.timeZone;
   const now = Date.now();
   const today = dayOf(now, zone);
   const openShifts = upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
   const [selection, setSelection] = useState<{ bookingId: string; confirming?: boolean } | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<"new" | "bulk" | null>(null);
   const selected = openShifts.find((booking) => booking.id === selection?.bookingId);
 
   return (
     <>
-      <Sheet title="Shifts" onClose={onClose}>
+      <Sheet
+        title="Shifts"
+        onClose={onClose}
+        action={
+          <button type="button" className="btn secondary compact" onClick={() => {
+            onClose();
+            onSchedule();
+          }}>
+            Go to Shifts <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        }
+      >
         <ShiftList
           entries={openShifts}
           state={state}
           onOpen={(bookingId) => setSelection({ bookingId })}
-          onAdd={state.me?.owner ? () => setAdding(true) : undefined}
-          online={online}
+          emptyAction={state.me?.owner ? <AddShiftMenu disabled={!online} onAdd={setAdding} /> : undefined}
         />
       </Sheet>
       {selected && (
@@ -1425,7 +1428,7 @@ export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & 
           }}
         />
       )}
-      {adding && <BookingEditor props={props} defaultDay={today} onClose={() => setAdding(false)} />}
+      {adding && <BookingEditor props={props} bulk={adding === "bulk"} defaultDay={today} onClose={() => setAdding(null)} />}
     </>
   );
 }
@@ -1629,7 +1632,13 @@ export function ScheduleScreen(props: ScheduleProps) {
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && <AddShiftMenu disabled={!props.online} onAdd={setEditing} />}
+        {me?.owner && (
+          <AddShiftMenu
+            disabled={!props.online}
+            onAdd={setEditing}
+            className={`btn add-shift responsive-icon ${styles.addShift}`}
+          />
+        )}
       </div>
 
       {me?.owner && monthDone.length > 0 ? (
@@ -1682,8 +1691,6 @@ export function ScheduleScreen(props: ScheduleProps) {
         showDates={filter !== "day"}
         salesOf={salesOf}
         onOpen={setOpenId}
-        onAdd={me?.owner && filter === "day" ? () => setEditing("new") : undefined}
-        online={props.online}
       />
 
       {sharing && (

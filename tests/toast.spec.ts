@@ -9,7 +9,7 @@ async function removeItem(page: Page) {
   await page.getByRole("button", { name: "Account and settings" }).click();
   await page.getByRole("button", { name: /^Recipes/ }).click();
   await page.getByRole("button", { name: /^Menu items/ }).click();
-  await expect(page.getByRole("button", { name: "Add item", exact: true })).toHaveText("Add");
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveAttribute("aria-haspopup", "menu");
   await page.getByRole("button", { name: /^Espresso/ }).click();
   const remove = page.getByRole("button", { name: "Remove from menu", exact: true });
   await expect(remove).toHaveText("Remove");

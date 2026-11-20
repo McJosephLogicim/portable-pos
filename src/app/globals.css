@@ -1757,20 +1757,6 @@ button.list-row:not(.sell-option):active {
   background: var(--ink);
   color: var(--on-accent);
 }
-.item.add-tile {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--line-strong);
-}
-.add-plus {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius-sm);
-  margin-bottom: 8px;
-  display: grid;
-  place-items: center;
-  color: var(--ink-secondary);
-  border: 1.5px dashed #cfcfcf;
-}
 
 /* calendar */
 .calendar {
@@ -3163,7 +3149,7 @@ html {
   }
 }
 
-/* ---------- schedule actions ---------- */
+/* ---------- Add menus and schedule actions ---------- */
 .page-top.tight {
   gap: 8px;
 }
@@ -3172,10 +3158,13 @@ html {
   min-height: 44px;
   padding: 0;
 }
-.add-shift-positioner {
+.add-menu-trigger {
+  flex: none;
+}
+.add-menu-positioner {
   z-index: 40;
 }
-.add-shift-menu {
+.add-menu-popup {
   min-width: 156px;
   padding: 4px;
   border: 1px solid var(--line);
@@ -3187,18 +3176,18 @@ html {
     opacity var(--dur-fast) var(--ease-out),
     transform var(--dur-base) var(--ease-out);
 }
-.add-shift-menu[data-starting-style],
-.add-shift-menu[data-ending-style] {
+.add-menu-popup[data-starting-style],
+.add-menu-popup[data-ending-style] {
   opacity: 0;
   transform: scale(0.96);
 }
-.add-shift-menu[data-ending-style] {
+.add-menu-popup[data-ending-style] {
   transition-duration: var(--dur-fast);
 }
-.add-shift-menu[data-keyboard] {
+.add-menu-popup[data-keyboard] {
   transition: none;
 }
-.add-shift-menu [role="menuitem"] {
+.add-menu-popup [role="menuitem"] {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3209,7 +3198,7 @@ html {
   font-weight: 500;
   outline: none;
 }
-.add-shift-menu [data-highlighted] {
+.add-menu-popup [data-highlighted] {
   background: var(--surface-muted);
 }
 .schedule-text {

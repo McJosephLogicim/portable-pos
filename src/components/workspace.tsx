@@ -23,7 +23,7 @@ import {
   checkout,
   clearRegister,
   loadRegister,
-  logExpense,
+  logExpenses,
   mergeServer,
   removeExpense,
   saveCart,
@@ -546,10 +546,11 @@ export function Workspace() {
       setPending(false);
     }
   }
-  async function expense(input: ExpenseInput) {
+  async function expense(inputs: ExpenseInput[]) {
     if (!key) throw Error("Register unavailable.");
+    const by = state?.me?.name || undefined;
     await locked("write-" + key, async () =>
-      show(key, await logExpense(key, { ...input, by: state?.me?.name || undefined })),
+      show(key, await logExpenses(key, inputs.map((input) => ({ ...input, by })))),
     );
     void flush();
   }

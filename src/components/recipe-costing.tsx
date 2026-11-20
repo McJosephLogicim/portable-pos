@@ -8,7 +8,7 @@ import type { Business, Product } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
 import { Row, SubPage, useCommit } from "./settings";
 import { useRecordSave } from "./records";
-import { EmptyState, Explain, formatMoney, MoneyField } from "./ui";
+import { CategoryTabs, EmptyState, Explain, formatMoney, MoneyField } from "./ui";
 import styles from "./settings.module.css";
 import { blocked, OFFLINE } from "@/lib/reject";
 
@@ -25,7 +25,11 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
 }) {
   const { currency, settings } = business;
   const pricing = pricingRules(currency, settings.pricing);
-  const overview = menuCostingOverview(menu, settings.stockItems ?? [], pricing);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const categories = [...new Set(menu.map((item) => item.category.trim()).filter(Boolean))];
+  const category = selectedCategory && categories.includes(selectedCategory) ? selectedCategory : null;
+  const shown = category ? menu.filter((item) => item.category.trim() === category) : menu;
+  const overview = menuCostingOverview(shown, settings.stockItems ?? [], pricing);
   const money = (value: number | undefined) => value === undefined ? "—" : formatMoney(Math.round(value), currency);
   const rulesRow = (
     <div className="card card-list">
@@ -42,9 +46,12 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
     <>
       {menu.length ? (
         <>
+          {categories.length > 0 && (
+            <CategoryTabs label="Menu categories" categories={categories} value={category} onChange={setSelectedCategory} />
+          )}
           <dl className="card card-pad costing-grid costing-summary" aria-label="Menu cost summary">
             <div className={styles.primaryMetric}><dt>Avg. gross margin</dt><dd>{asPercent(overview.averageMargin)}</dd></div>
-            <div><dt>Items costed</dt><dd>{overview.costed} of {menu.length}</dd></div>
+            <div><dt>Items costed</dt><dd>{overview.costed} of {shown.length}</dd></div>
             <div><dt>Avg. cost per serving</dt><dd>{money(overview.averageCost)}</dd></div>
             <div><dt>Avg. cost % of price</dt><dd>{asPercent(overview.averageCostRatio)}</dd></div>
           </dl>

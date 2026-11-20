@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, Pencil, Search, Trash2, X } from "lucide-react";
 import { buzz, CategoryTabs, ConfirmSheet, EmptyState, errorText, Sheet } from "./ui";
 import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 import { blocked, refusal, type Reason } from "@/lib/reject";
@@ -11,23 +11,6 @@ import { blocked, refusal, type Reason } from "@/lib/reject";
  * and organizers. A page lists them in white cards. Tapping a row opens a sheet that edits
  * that one thing and saves it right away. The same sheet, empty, adds a new one.
  */
-
-export function RecordAdd({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  /** Why it can't add right now; true means offline. */
-  disabled?: boolean | Reason;
-}) {
-  return (
-    <button className="btn" aria-label={label} {...blocked(refusal(disabled))} onClick={onClick}>
-      <Plus size={18} /> Add
-    </button>
-  );
-}
 
 /** Lists this long get a search field. */
 export const SEARCH_FROM = 6;

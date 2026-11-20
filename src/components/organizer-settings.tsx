@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { Plus, Ticket, Trash2 } from "lucide-react";
 import type { Organizer, Tag } from "@/lib/types";
+import { OFFLINE } from "@/lib/reject";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
 import { buzz, EmptyState } from "./ui";
+import { AddMenu } from "./add-menu";
+import { BulkNamesSheet } from "./bulk-add";
 import {
   matches,
   andText,
   namesText,
   plural,
-  RecordAdd,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -152,6 +154,7 @@ export function OrganizersPage(props: SettingsProps) {
   const bookings = props.state.bookings ?? [];
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Organizer | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const [query, setQuery] = useState("");
   const shown = list.filter((o) => matches(query, o.name, ...o.events.map((e) => e.name)));
   const events = list.reduce((n, o) => n + o.events.length, 0);
@@ -176,9 +179,16 @@ export function OrganizersPage(props: SettingsProps) {
           </>
         )
       }
+      sentenceAction={!select.on && (
+        <AddMenu
+          singleLabel="Add an organizer"
+          blockedReason={!canEdit ? OFFLINE : list.length >= 200 && "The list can hold up to 200 organizers."}
+          onSingle={() => setEditing("new")}
+          onBulk={() => setAddingBulk(true)}
+        />
+      )}
       onBack={() => props.onPage(null)}
     >
-      {!select.on && <RecordAdd label="Add organizer" disabled={!canEdit} onClick={() => setEditing("new")} />}
       <RecordSearch count={list.length} noun="organizers and events" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
         <RecordNoMatch query={query} onClear={() => setQuery("")} />
@@ -221,6 +231,28 @@ export function OrganizersPage(props: SettingsProps) {
               : `${names} and their events will be removed.`;
           }}
           onRemove={(ids) => save(list.filter((o) => !ids.includes(o.id)), "Removed " + plural(ids.length, "organizer"))}
+        />
+      )}
+      {addingBulk && (
+        <BulkNamesSheet
+          noun="organizer"
+          label="Organizer names, one per line"
+          maxLength={80}
+          limit={200 - list.length}
+          onClose={() => setAddingBulk(false)}
+          onSave={(names) => {
+            const used = [...taken];
+            const byName = new Set(list.map((organizer) => organizer.name.trim().toLocaleLowerCase()));
+            const added = names.map((name) => {
+              const key = name.toLocaleLowerCase();
+              if (byName.has(key)) throw Error(`“${name}” is already in the organizer list.`);
+              byName.add(key);
+              const id = slugId(name, used);
+              used.push(id);
+              return { id, name, events: [] };
+            });
+            return save([...list, ...added], "Added " + plural(added.length, "organizer"));
+          }}
         />
       )}
       {editing && (

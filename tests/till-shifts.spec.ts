@@ -79,7 +79,8 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
     await stock.getByRole("textbox", { name: /How many .* of Espresso/ }).fill("5");
   };
   const logExpense = async (label: string, amount: string, source: "Cash from the till" | "Own pocket", within: Page | Locator = page) => {
-    await within.getByRole("button", { name: /Log an expense/ }).click();
+    await within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Add an expense" }).click();
     const form = page.getByRole("dialog", { name: "Log an expense" });
     await form.getByRole("combobox", { name: "What for" }).fill(label);
     await form.getByRole("textbox", { name: "Amount" }).fill(amount);
@@ -114,11 +115,26 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await expect(drawer.getByText("₱80", { exact: true })).toBeVisible();
   await logExpense("Closing supplies", "10", "Cash from the till", closing);
   await expect(drawer.getByText("₱70", { exact: true })).toBeVisible();
+  await closing.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add bulk" }).click();
+  const batch = page.getByRole("dialog", { name: "Add expenses in bulk" });
+  for (const [label, amount, source] of [["Batch supplies", "5", "Cash from the till"], ["Batch fare", "10", "Own pocket"]]) {
+    await batch.getByRole("button", { name: "Add an expense" }).click();
+    const form = page.getByRole("dialog", { name: "Log an expense" });
+    await form.getByRole("combobox", { name: "What for" }).fill(label);
+    await form.getByRole("textbox", { name: "Amount" }).fill(amount);
+    await form.getByRole("button", { name: source, exact: true }).click();
+    await form.getByRole("button", { name: "Add to batch" }).click();
+    await expect(form).toBeHidden();
+  }
+  await batch.getByRole("button", { name: "Add 2 expenses", exact: true }).click();
+  await expect(batch).toBeHidden();
+  await expect(drawer.getByText("₱65", { exact: true })).toBeVisible();
   await removeExpense("Opening supplies", closing);
-  await expect(drawer.getByText("₱90", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("₱85", { exact: true })).toBeVisible();
 
   await closing.getByRole("button", { name: "Type the total" }).click();
-  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("90");
+  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("85");
   await closing.getByRole("button", { name: "Close shift and see report" }).click();
   const pin = page.getByRole("dialog", { name: "Owner PIN" });
   for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
@@ -127,6 +143,8 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toContainText("Closing supplies");
   await expect(report.locator("pre")).toContainText("Closing fare");
+  await expect(report.locator("pre")).toContainText("Batch supplies");
+  await expect(report.locator("pre")).toContainText("Batch fare");
   await expect(report.locator("pre")).not.toContainText("Opening supplies");
 });
 
@@ -153,6 +171,12 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await page.getByRole("button", { name: /Not on a shift yet/ }).click();
   const shifts = page.getByRole("dialog", { name: "Shifts", exact: true });
   await expect(shifts.getByRole("article")).toHaveCount(2);
+  await expect(shifts.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
+  await shifts.getByRole("button", { name: "Go to Shifts", exact: true }).click();
+  await expect(shifts).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Shifts", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /Not on a shift yet/ }).click();
   const choice = shifts.getByRole("article").filter({ hasText: "Atrium" });
   expect(await choice.innerText()).toBe(todayCard);
   await choice.getByRole("button", { name: /Atrium/ }).click();
@@ -237,14 +261,24 @@ test("Leaderboard Share keeps its accessible name when the visible label collaps
   await expect(label).toHaveCSS("clip-path", "none");
 });
 
-test("The Till Shifts sheet reuses the Today empty state and its Add action", async ({ page }) => {
+test("The Till Shifts sheet offers both Add actions in the empty state", async ({ page }) => {
   await seedTill(page, false);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
-  const empty = await page.locator(".empty.card").filter({ hasText: "Nothing scheduled" }).innerText();
+  const emptyText = await page.locator(".empty.card").filter({ hasText: "Nothing scheduled" }).locator(".empty-text").innerText();
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await page.getByRole("button", { name: /Not on a shift yet/ }).click();
   const shifts = page.getByRole("dialog", { name: "Shifts", exact: true });
-  expect(await shifts.locator(".empty.card").innerText()).toBe(empty);
-  await shifts.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "New shift", exact: true })).toBeVisible();
+  const empty = shifts.locator(".empty.card").filter({ hasText: "Nothing scheduled" });
+  await expect(empty.locator(".empty-text")).toHaveText(emptyText);
+  await expect(shifts.getByRole("button", { name: "Go to Shifts", exact: true })).toBeVisible();
+  await expect(shifts.getByRole("button", { name: "Add", exact: true })).toHaveCount(1);
+  const add = empty.getByRole("button", { name: "Add", exact: true });
+  await add.click();
+  await page.getByRole("menuitem", { name: "Add a shift" }).click();
+  const single = page.getByRole("dialog", { name: "New shift", exact: true });
+  await expect(single).toBeVisible();
+  await single.getByRole("button", { name: "Close" }).click();
+  await add.click();
+  await page.getByRole("menuitem", { name: "Add bulk" }).click();
+  await expect(page.getByRole("dialog", { name: "Add many shifts", exact: true })).toBeVisible();
 });

@@ -1,12 +1,11 @@
-import { useMemo } from "react";
-import { CalendarDays, Plus } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
+import { CalendarDays } from "lucide-react";
 import { shiftTotals } from "@/lib/domain";
 import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
 import { EmptyState, formatMoney, Money } from "./ui";
-import { blocked, OFFLINE } from "@/lib/reject";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -100,15 +99,14 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
   );
 }
 
-export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, onAdd, online }: {
+export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, emptyAction }: {
   entries: ShiftEntry[];
   state: RegisterState;
   filter?: ShiftFilter;
   showDates?: boolean;
   salesOf?: (booking: Booking) => number | undefined;
   onOpen: (id: string) => void;
-  onAdd?: () => void;
-  online?: boolean;
+  emptyAction?: ReactNode;
 }) {
   const business = state.business!;
   const zone = business.timeZone;
@@ -154,11 +152,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
                 ? "Open seats are yours to join."
                 : "Every upcoming shift is full."}
           >
-            {onAdd && (
-              <button type="button" className="btn secondary compact" {...blocked(!online && OFFLINE)} onClick={onAdd}>
-                <Plus size={16} /> Add
-              </button>
-            )}
+            {emptyAction}
           </EmptyState>
         )}
       </div>

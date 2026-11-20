@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Rows3, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2, X } from "lucide-react";
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
@@ -13,13 +13,15 @@ import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUse
 import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { MultiSelect } from "./multi-select";
+import { AddMenu } from "./add-menu";
+import { BulkRecordsSheet } from "./bulk-add";
 import { buzz, currencySymbol, EmptyState, Explain, formatMoney, Money, MoneyField, PhotoPicker, usePin } from "./ui";
 import {
+  fold,
   matches,
   andText,
   namesText,
   plural,
-  RecordAdd,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -30,12 +32,13 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { OFFLINE } from "@/lib/reject";
 
 /* ---------- shared pieces ---------- */
 
 type OptionDraft = { id: string; name: string; price: string };
 type GroupDraft = Omit<OptionGroup, "options"> & { options: OptionDraft[] };
+type ChoiceSource = Pick<Product, "id" | "name" | "category" | "groups">;
 
 /** "30" rather than "30.00", so a short price field shows the whole number. */
 const priceText = (minor: number, currency: string) => (minor ? amountText(minor, currency).replace(/\.0+$/, "") : "");
@@ -43,7 +46,7 @@ const priceText = (minor: number, currency: string) => (minor ? amountText(minor
 const blankOption = (): OptionDraft => ({ id: crypto.randomUUID(), name: "", price: "" });
 
 /** A choice's identity across the menu: the same name, kind and options. */
-function choiceKey(g: OptionGroup) {
+function choiceKey(g: Omit<OptionGroup, "id">) {
   return (
     (g.required ? "1" : "0") +
     g.name.trim().toLocaleLowerCase() +
@@ -53,7 +56,7 @@ function choiceKey(g: OptionGroup) {
 }
 
 /** Categories, choices and options already on the menu, so they're picked instead of retyped. */
-function reusable(menu: Product[], skip: string | undefined, currency: string) {
+function reusable(menu: ChoiceSource[], skip: string | undefined, currency: string) {
   const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
   const groups = new Map<string, { key: string; name: string; required: boolean; detail: string; options: { name: string; price: string }[] }>();
   const options = new Map<string, Suggestion & { price: string }>();
@@ -85,8 +88,25 @@ function reusable(menu: Product[], skip: string | undefined, currency: string) {
 }
 
 function parseOptions(options: OptionDraft[], currency: string) {
+  if (options.length > 64) throw Error("A choice can have up to 64 options.");
   if (!options.length || options.some((o) => !o.name.trim())) throw Error("Name every option, or remove the empty ones.");
   return options.map((o) => ({ id: o.id, name: o.name.trim(), price: parseMoney(o.price || "0", currency) }));
+}
+
+function draftChoices(groups: OptionGroup[], currency: string): GroupDraft[] {
+  return groups.map((group) => ({
+    ...group,
+    options: group.options.map((option) => ({ ...option, price: priceText(option.price, currency) })),
+  }));
+}
+
+function parseChoices(groups: GroupDraft[], currency: string): OptionGroup[] {
+  if (groups.length > 32) throw Error("An item can have up to 32 choices.");
+  return groups.map((group) => {
+    const name = group.name.trim();
+    if (!name) throw Error("Name each choice, like Size or Extras.");
+    return { ...group, name, options: parseOptions(group.options, currency) };
+  });
 }
 
 /** The options of one choice: a name, an extra price and a remove button each. */
@@ -144,10 +164,75 @@ function OptionRows({
           </button>
         </div>
       ))}
-      <button type="button" className="btn secondary compact" aria-label="Add option" onClick={() => onChange([...options, blankOption()])}>
+      <button type="button" className="btn secondary compact" aria-label="Add option" disabled={options.length >= 64} onClick={() => onChange([...options, blankOption()])}>
         <Plus size={16} /> Add
       </button>
     </div>
+  );
+}
+
+function ItemChoices({ groups, reuse, currency, onChange }: {
+  groups: GroupDraft[];
+  reuse: ReturnType<typeof reusable>;
+  currency: string;
+  onChange: (groups: GroupDraft[]) => void;
+}) {
+  function update(id: string, patch: Partial<GroupDraft>) {
+    onChange(groups.map((group) => group.id === id ? { ...group, ...patch } : group));
+  }
+  function add(required: boolean) {
+    onChange([...groups, { id: crypto.randomUUID(), name: "", required, options: [blankOption()] }]);
+  }
+  return (
+    <>
+      {groups.map((group) => (
+        <div className="card card-pad stack gap-12" key={group.id}>
+          <div className="between">
+            <span className="strong">{group.required ? "Pick one" : "Add-ons"}</span>
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => onChange(groups.filter((choice) => choice.id !== group.id))}
+            >
+              Remove
+            </button>
+          </div>
+          <SuggestInput
+            label="Choice name"
+            placeholder={group.required ? "e.g. Size" : "e.g. Extras"}
+            value={group.name}
+            newText="New choice"
+            suggestions={reuse.groups
+              .filter((choice) => choice.required === group.required && !groups.some((other) => other.name.trim() === choice.name && other.id !== group.id))
+              .map(({ key, name, detail }) => ({ key, name, detail }))}
+            onChange={(name) => update(group.id, { name })}
+            onPick={(pick) => {
+              const choice = reuse.groups.find((choice) => choice.key === pick.key)!;
+              buzz.tick();
+              update(group.id, {
+                name: choice.name,
+                options: choice.options.map((option) => ({ ...option, id: crypto.randomUUID() })),
+              });
+            }}
+          />
+          <OptionRows
+            options={group.options}
+            required={group.required}
+            currency={currency}
+            suggestions={reuse.options}
+            onChange={(options) => update(group.id, { options })}
+          />
+        </div>
+      ))}
+      <div className="grid-2">
+        <button type="button" className="btn secondary compact" disabled={groups.length >= 32} onClick={() => add(true)}>
+          <Plus size={16} /> Pick one
+        </button>
+        <button type="button" className="btn secondary compact" disabled={groups.length >= 32} onClick={() => add(false)}>
+          <Plus size={16} /> Add-ons
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -263,15 +348,8 @@ export function ItemSheet({
   const [category, setCategory] = useState(product?.category ?? startCategory);
   const [image, setImage] = useState(product?.image);
   const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
-  const [groups, setGroups] = useState<GroupDraft[]>(() =>
-    (product?.groups ?? []).map((g) => ({
-      ...g,
-      options: g.options.map((o) => ({ ...o, price: priceText(o.price, currency) })),
-    })),
-  );
+  const [groups, setGroups] = useState(() => draftChoices(product?.groups ?? [], currency));
   const { busy, error, run } = useRecordSave(onClose);
-  const setGroup = (id: string, fn: (g: GroupDraft) => GroupDraft) =>
-    setGroups((all) => all.map((g) => (g.id === id ? fn(g) : g)));
   const costRows = simple ? [] : batchEnabled
     ? stockUseRows(batchUses, batchItems)
     : mode === "uses" ? stockUseRows(uses, stockItems, costItems) : [];
@@ -341,10 +419,7 @@ export function ItemSheet({
 
   function save() {
     void run(async () => {
-      const saved = groups.map((g) => {
-        if (!g.name.trim()) throw Error("Name each choice, like Size or Extras.");
-        return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
-      });
+      const saved = parseChoices(groups, currency);
       const costing = simple ? product?.costing : readCosting();
       const editUses = !simple && mode === "uses";
       const { uses: picked, created } = deductFromStock
@@ -630,60 +705,7 @@ export function ItemSheet({
         </div>
       </SetupDetails>}
 
-      {groups.map((g) => (
-        <div className="card card-pad stack gap-12" key={g.id}>
-          <div className="between">
-            <span className="strong">{g.required ? "Pick one" : "Add-ons"}</span>
-            <button
-              type="button"
-              className="btn ghost small"
-              onClick={() => setGroups((all) => all.filter((x) => x.id !== g.id))}
-            >
-              Remove
-            </button>
-          </div>
-          <SuggestInput
-            label="Choice name"
-            placeholder={g.required ? "e.g. Size" : "e.g. Extras"}
-            value={g.name}
-            newText="New choice"
-            suggestions={reuse.groups
-              .filter((r) => r.required === g.required && !groups.some((x) => x.name.trim() === r.name && x.id !== g.id))
-              .map((r) => ({ key: r.key, name: r.name, detail: r.detail }))}
-            onChange={(name) => setGroup(g.id, (x) => ({ ...x, name }))}
-            onPick={(pick) => {
-              const r = reuse.groups.find((x) => x.key === pick.key)!;
-              buzz.tick();
-              setGroup(g.id, (x) => ({
-                ...x,
-                name: r.name,
-                options: r.options.map((o) => ({ id: crypto.randomUUID(), name: o.name, price: o.price })),
-              }));
-            }}
-          />
-          <OptionRows
-            options={g.options}
-            required={g.required}
-            currency={currency}
-            suggestions={reuse.options}
-            onChange={(options) => setGroup(g.id, (x) => ({ ...x, options }))}
-          />
-        </div>
-      ))}
-      <div className="grid-2">
-        {[true, false].map((required) => (
-          <button
-            key={String(required)}
-            type="button"
-            className="btn secondary compact"
-            onClick={() =>
-              setGroups((all) => [...all, { id: crypto.randomUUID(), name: "", required, options: [blankOption()] }])
-            }
-          >
-            <Plus size={16} /> {required ? "Pick one" : "Add-ons"}
-          </button>
-        ))}
-      </div>
+      <ItemChoices groups={groups} reuse={reuse} currency={currency} onChange={setGroups} />
     </RecordSheet>
   );
 }
@@ -734,6 +756,14 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
           {plural(menu.length, "item")} <span className="g">for sale.</span>
         </>
       )}
+      sentenceAction={!costingView && !selecting && (
+        <AddMenu
+          singleLabel="Add an item"
+          blockedReason={!props.online ? OFFLINE : menu.length >= 1000 && "The menu can hold up to 1,000 items."}
+          onSingle={() => setEditing("new")}
+          onBulk={() => setAdding(true)}
+        />
+      )}
       onBack={() => props.onPage(null)}
     >
       {costingView ? (
@@ -747,14 +777,6 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
         />
       ) : (
         <>
-          {!selecting && (
-            <div className="row gap-8">
-              <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
-              <button type="button" className="btn ghost" {...blocked(!props.online && OFFLINE)} onClick={() => setAdding(true)}>
-                <Rows3 size={16} /> Add several
-              </button>
-            </div>
-          )}
           {!menu.length && (
             <EmptyState
               icon={<LayoutGrid size={22} strokeWidth={1.6} />}
@@ -867,7 +889,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
           menu={menu}
           currency={business.currency}
           onClose={() => setAdding(false)}
-          onSave={(items) => commit.menu([...menu, ...items], "Added " + plural(items.length, "item"))}
+          onSave={(items) => commit.menu(items.reduce(saveMenuItem, menu), "Added " + plural(items.length, "item"))}
         />
       )}
       {bulkEdit && (
@@ -901,11 +923,42 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
 
 /* ---------- several items at once ---------- */
 
-type QuickRow = { id: string; name: string; price: string };
-const blankQuick = (): QuickRow => ({ id: crypto.randomUUID(), name: "", price: "" });
+type QuickRow = { id: string; name: string; price: string; groups: OptionGroup[] };
+const blankQuick = (): QuickRow => ({ id: crypto.randomUUID(), name: "", price: "", groups: [] });
+const startedQuickRow = (row: QuickRow) => Boolean(row.name.trim() || row.price.trim() || row.groups.length);
+
+function QuickChoicesSheet({ row, name, currency, menu, onSave, onClose }: {
+  row: QuickRow;
+  name: string;
+  currency: string;
+  menu: ChoiceSource[];
+  onSave: (groups: OptionGroup[]) => void;
+  onClose: () => void;
+}) {
+  const [groups, setGroups] = useState(() => draftChoices(row.groups, currency));
+  const reuse = useMemo(() => reusable(menu, row.id, currency), [menu, row.id, currency]);
+  const { busy, error, run } = useRecordSave(onClose);
+  return (
+    <RecordSheet
+      noun="choices"
+      title={`Choices for ${name}`}
+      editing
+      busy={busy}
+      error={error}
+      canSave
+      onSave={() => void run(async () => {
+        onSave(parseChoices(groups, currency));
+        return true;
+      })}
+      onClose={onClose}
+    >
+      <ItemChoices groups={groups} reuse={reuse} currency={currency} onChange={setGroups} />
+    </RecordSheet>
+  );
+}
 
 /** Type a list of names and prices, one item per line. A new line appears as the last one is filled. */
-function QuickAddSheet({
+export function QuickAddSheet({
   category: startCategory = "",
   menu,
   currency,
@@ -920,16 +973,21 @@ function QuickAddSheet({
 }) {
   const [rows, setRows] = useState<QuickRow[]>(() => [blankQuick()]);
   const [category, setCategory] = useState(startCategory);
+  const [choiceRowId, setChoiceRowId] = useState<string | null>(null);
   const { busy, error, run } = useRecordSave(onClose);
   const list = useRef<HTMLDivElement>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
-  const filled = rows.filter((r) => r.name.trim() || r.price.trim());
+  const filled = rows.filter(startedQuickRow);
+  const choiceRowIndex = rows.findIndex((row) => row.id === choiceRowId);
+  const choiceRow = rows[choiceRowIndex];
+  const savedIds = new Set(menu.map((item) => item.id));
+  const remaining = Math.max(0, 1000 - menu.length);
+  const exceedsLimit = filled.filter((row) => !savedIds.has(row.id)).length > remaining;
   const ready = filled.length > 0 && filled.every((r) => r.name.trim() && r.price.trim());
   function setRow(id: string, patch: Partial<QuickRow>) {
     setRows((all) => {
       const next = all.map((r) => (r.id === id ? { ...r, ...patch } : r));
-      const last = next.at(-1)!;
-      return last.name.trim() || last.price.trim() ? [...next, blankQuick()] : next;
+      return startedQuickRow(next.at(-1)!) ? [...next, blankQuick()] : next;
     });
   }
   function focus(index: number, field: "name" | "price") {
@@ -938,6 +996,7 @@ function QuickAddSheet({
     );
   }
   function save() {
+    if (!ready || exceedsLimit) return;
     void run(() =>
       onSave(
         filled.map((r) => {
@@ -949,112 +1008,145 @@ function QuickAddSheet({
           } catch {
             throw Error(`Check the price of ${name}.`);
           }
-          return { id: crypto.randomUUID(), name, category: category.trim(), price, groups: [] };
+          return { id: r.id, name, category: category.trim(), price, groups: r.groups };
         }),
       ),
     );
   }
   return (
-    <RecordSheet
-      noun="items"
-      title="Add several items"
-      help={
-        <>
-          <p>Each line becomes a menu item. A new line appears as you fill the last one.</p>
-          <p>Add photos, choices and stock later by tapping an item. New items go live on Sell right away.</p>
-        </>
-      }
-      editing={false}
-      busy={busy}
-      error={error}
-      canSave={ready}
-      saveText={filled.length ? "Add " + plural(filled.length, "item") : "Add"}
-      saveLabel={filled.length ? "Add " + plural(filled.length, "item") : "Add items"}
-      onSave={save}
-      onClose={onClose}
-    >
-      <div className="card card-pad stack gap-14">
-        <div className="field">
-          <span>Category</span>
-          <SuggestInput
-            label="Category for these items"
-            maxLength={60}
-            placeholder="None"
-            value={category}
-            newText="New category"
-            suggestions={categories.map((c) => ({
-              key: c,
-              name: c,
-              detail: plural(menu.filter((m) => m.category.trim() === c).length, "item"),
-            }))}
-            onChange={setCategory}
-          />
+    <>
+      <RecordSheet
+        noun="items"
+        title="Add menu items in bulk"
+        help={
+          <>
+            <p>Each line becomes a menu item. A new line appears as you fill the last one.</p>
+            <p>Open Choices below an item's name to add required picks or optional extras. Add photos and stock after saving.</p>
+            <p>New items go live on Sell right away.</p>
+          </>
+        }
+        editing={false}
+        busy={busy}
+        error={exceedsLimit ? `The menu can hold up to 1,000 items. You can add ${plural(remaining, "more item")}.` : error}
+        canSave={ready && !exceedsLimit}
+        saveText={filled.length ? "Add " + plural(filled.length, "item") : "Add"}
+        saveLabel={filled.length ? "Add " + plural(filled.length, "item") : "Add items"}
+        onSave={save}
+        onClose={onClose}
+      >
+        <div className="card card-pad stack gap-14">
+          <div className="field">
+            <span>Category</span>
+            <SuggestInput
+              label="Category for these items"
+              maxLength={60}
+              placeholder="None"
+              value={category}
+              newText="New category"
+              suggestions={categories.map((c) => ({
+                key: c,
+                name: c,
+                detail: plural(menu.filter((m) => m.category.trim() === c).length, "item"),
+              }))}
+              onChange={setCategory}
+            />
+          </div>
         </div>
-      </div>
-      <div className="card card-pad stack gap-10" ref={list}>
-        <div className="quick-row label">
-          <span>Name</span>
-          <span>Price</span>
-          <span />
+        <div className="card card-pad stack gap-10" ref={list}>
+          <div className="quick-row label">
+            <span>Name</span>
+            <span>Price</span>
+            <span />
+          </div>
+          {rows.map((r, i) => {
+            const last = i === rows.length - 1;
+            const name = r.name.trim();
+            const label = r.groups.length ? plural(r.groups.length, "choice") : "Choices";
+            return (
+              <div className="stack gap-4" key={r.id}>
+                <div className="quick-row">
+                  <input
+                    className="input"
+                    aria-label={`Item ${i + 1} name`}
+                    placeholder={i === 0 ? "e.g. Iced latte" : last ? "Next item" : ""}
+                    maxLength={80}
+                    enterKeyHint="next"
+                    autoComplete="off"
+                    data-row={i}
+                    data-field="name"
+                    value={r.name}
+                    onChange={(e) => setRow(r.id, { name: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      focus(i, "price");
+                    }}
+                  />
+                  <span className="money-input quick-price">
+                    <input
+                      className="input"
+                      aria-label={`Item ${i + 1} price`}
+                      inputMode="decimal"
+                      placeholder="0"
+                      enterKeyHint={last ? "done" : "next"}
+                      autoComplete="off"
+                      data-row={i}
+                      data-field="price"
+                      value={r.price}
+                      onChange={(e) => setRow(r.id, { price: e.target.value.replace(/[^\d.]/g, "") })}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (r.name.trim()) focus(i + 1, "name");
+                      }}
+                    />
+                    <span className="prefix">{currencySymbol(currency)}</span>
+                  </span>
+                  {last ? (
+                    <span aria-hidden="true" />
+                  ) : (
+                    <button
+                      type="button"
+                      className="round flat quick-remove"
+                      aria-label={`Remove item ${i + 1}`}
+                      onClick={() => setRows((all) => all.filter((x) => x.id !== r.id))}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                {(name || r.groups.length > 0) && (
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost compact"
+                      aria-haspopup="dialog"
+                      aria-label={`${label} for ${name || `item ${i + 1}`}`}
+                      disabled={busy}
+                      onClick={() => setChoiceRowId(r.id)}
+                    >
+                      <ListPlus size={16} aria-hidden="true" /> {label}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-        {rows.map((r, i) => {
-          const last = i === rows.length - 1;
-          return (
-            <div className="quick-row" key={r.id}>
-              <input
-                className="input"
-                aria-label={`Item ${i + 1} name`}
-                placeholder={i === 0 ? "e.g. Iced latte" : last ? "Next item" : ""}
-                maxLength={80}
-                enterKeyHint="next"
-                autoComplete="off"
-                data-row={i}
-                data-field="name"
-                value={r.name}
-                onChange={(e) => setRow(r.id, { name: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  focus(i, "price");
-                }}
-              />
-              <span className="money-input quick-price">
-                <input
-                  className="input"
-                  aria-label={`Item ${i + 1} price`}
-                  inputMode="decimal"
-                  placeholder="0"
-                  enterKeyHint={last ? "done" : "next"}
-                  autoComplete="off"
-                  data-row={i}
-                  data-field="price"
-                  value={r.price}
-                  onChange={(e) => setRow(r.id, { price: e.target.value.replace(/[^\d.]/g, "") })}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    if (r.name.trim()) focus(i + 1, "name");
-                  }}
-                />
-                <span className="prefix">{currencySymbol(currency)}</span>
-              </span>
-              {last ? (
-                <span aria-hidden="true" />
-              ) : (
-                <button
-                  type="button"
-                  className="round flat quick-remove"
-                  aria-label={`Remove item ${i + 1}`}
-                  onClick={() => setRows((all) => all.filter((x) => x.id !== r.id))}
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </RecordSheet>
+      </RecordSheet>
+      {choiceRow && (
+        <QuickChoicesSheet
+          row={choiceRow}
+          name={choiceRow.name.trim() || `item ${choiceRowIndex + 1}`}
+          currency={currency}
+          menu={[...menu, ...rows.flatMap(({ id, name, groups }) =>
+            groups.length && name.trim() ? [{ id, name: name.trim(), category, groups }] : [],
+          )]}
+          onSave={(groups) => setRow(choiceRow.id, { groups })}
+          onClose={() => setChoiceRowId(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -1224,12 +1316,14 @@ function useMenuOptions(menu: Product[]) {
 function CategorySheet({
   category,
   menu,
+  staging,
   onSave,
   onRemove,
   onClose,
 }: {
   category?: { name: string; items: Product[] };
   menu: Product[];
+  staging?: boolean;
   onSave: (name: string, ids: string[]) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
@@ -1253,6 +1347,8 @@ function CategorySheet({
       busy={busy}
       error={error}
       canSave={Boolean(name.trim() && picked.length)}
+      saveText={staging ? "Add to batch" : undefined}
+      saveLabel={staging ? "Add to batch" : undefined}
       onSave={() => void run(() => onSave(name.trim(), picked))}
       onRemove={onRemove}
       onClose={onClose}
@@ -1288,6 +1384,7 @@ export function CategoriesPage(props: RecipesProps) {
   const commit = useCommit(props);
   const list = categoriesOf(menu);
   const [editing, setEditing] = useState<(typeof list)[number] | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const [query, setQuery] = useState("");
   const shown = list.filter((c) => matches(query, c.name, ...c.items.map((p) => p.name)));
   const loose = menu.filter((p) => !p.category.trim()).length;
@@ -1309,11 +1406,16 @@ export function CategoriesPage(props: RecipesProps) {
           </>
         )
       }
+      sentenceAction={!select.on && (
+        <AddMenu
+          singleLabel="Add a category"
+          blockedReason={!props.online ? OFFLINE : !menu.length && "Add a menu item first."}
+          onSingle={() => setEditing("new")}
+          onBulk={() => setAddingBulk(true)}
+        />
+      )}
       onBack={() => props.onPage(null)}
     >
-      {!select.on && (
-        <RecordAdd label="Add category" disabled={!props.online || (!menu.length && "Add a menu item first.")} onClick={() => setEditing("new")} />
-      )}
       <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
         <RecordNoMatch query={query} onClear={() => setQuery("")} />
@@ -1367,6 +1469,38 @@ export function CategoriesPage(props: RecipesProps) {
           {props.online ? "" : "Connect to edit categories."}
         </p>
       )}
+      {addingBulk && (
+        <BulkRecordsSheet<{ name: string; ids: string[] }>
+          noun="category"
+          nouns="categories"
+          singleLabel="Add a category"
+          nameOf={(category) => category.name}
+          onClose={() => setAddingBulk(false)}
+          onSave={(categories) => {
+            const menuIds = new Set(menu.map((item) => item.id));
+            if (categories.some(({ ids }) => ids.some((id) => !menuIds.has(id))))
+              throw Error("The menu changed. Remove and re-add any category with missing items.");
+            const next = categories.reduce((current, { name, ids }) => withCategory(current, "", name, ids), menu);
+            return commit.menu(next, "Added " + plural(categories.length, "category", "categories"));
+          }}
+          editor={({ rows, add, close }) => {
+            const assigned = new Set(rows.flatMap(({ ids }) => ids));
+            return (
+              <CategorySheet
+                menu={menu.filter((item) => !assigned.has(item.id))}
+                staging
+                onClose={close}
+                onSave={async (name, ids) => {
+                  if ([...list, ...rows].some((category) => fold(category.name) === fold(name)))
+                    throw Error("That category already exists.");
+                  add({ name, ids });
+                  return true;
+                }}
+              />
+            );
+          }}
+        />
+      )}
       {editing && (
         <CategorySheet
           category={editing === "new" ? undefined : editing}
@@ -1393,6 +1527,11 @@ export function CategoriesPage(props: RecipesProps) {
 
 /* ---------- choices ---------- */
 
+const choiceKinds = [
+  { title: "Pick one", required: true, empty: "No Pick one choices yet" },
+  { title: "Add-ons", required: false, empty: "No add-ons yet" },
+];
+
 interface Choice {
   key: string;
   name: string;
@@ -1418,6 +1557,8 @@ function ChoiceSheet({
   choice,
   menu,
   currency,
+  defaultRequired = true,
+  staging,
   onSave,
   onRemove,
   onClose,
@@ -1425,12 +1566,14 @@ function ChoiceSheet({
   choice?: Choice;
   menu: Product[];
   currency: string;
+  defaultRequired?: boolean;
+  staging?: boolean;
   onSave: (group: Omit<OptionGroup, "id">, ids: string[]) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(choice?.name ?? "");
-  const [required, setRequired] = useState(choice?.required ?? true);
+  const [required, setRequired] = useState(choice?.required ?? defaultRequired);
   const [options, setOptions] = useState<OptionDraft[]>(() =>
     choice ? choice.options.map((o) => ({ id: o.id, name: o.name, price: priceText(o.price, currency) })) : [blankOption()],
   );
@@ -1445,6 +1588,8 @@ function ChoiceSheet({
       busy={busy}
       error={error}
       canSave={Boolean(name.trim() && picked.length)}
+      saveText={staging ? "Add to batch" : undefined}
+      saveLabel={staging ? "Add to batch" : undefined}
       onSave={() =>
         void run(() => onSave({ name: name.trim(), required, options: parseOptions(options, currency) }, picked))
       }
@@ -1498,42 +1643,52 @@ function ChoiceSheet({
   );
 }
 
+function applyChoice(menu: Product[], group: Omit<OptionGroup, "id">, ids: string[], key?: string) {
+  const selected = new Set(ids);
+  return menu.map((p) => {
+    const at = key ? p.groups.findIndex((g) => choiceKey(g) === key) : -1;
+    if (!selected.has(p.id)) return at < 0 ? p : { ...p, groups: p.groups.filter((_, i) => i !== at) };
+    const old = at >= 0 ? p.groups[at] : undefined;
+    const next: OptionGroup = {
+      ...group,
+      id: old?.id ?? crypto.randomUUID(),
+      // Keep option ids that still exist, so carts and sold-out marks keep pointing at them.
+      options: group.options.map((o) => ({
+        ...o,
+        id: old?.options.find((x) => x.name.toLocaleLowerCase() === o.name.toLocaleLowerCase())?.id ?? crypto.randomUUID(),
+      })),
+    };
+    return { ...p, groups: at >= 0 ? p.groups.map((g, i) => (i === at ? next : g)) : [...p.groups, next] };
+  });
+}
+
 export function ChoicesPage(props: RecipesProps) {
   const business = props.state.business!;
   const menu = props.state.menu;
   const commit = useCommit(props);
   const list = choicesOf(menu);
   const [editing, setEditing] = useState<Choice | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<string | null>(null);
+  const activeKind = choiceKinds.find(({ title }) => title === tab);
+  const inTab = activeKind ? list.filter((choice) => choice.required === activeKind.required) : list;
   const optionsText = (c: Choice) =>
     c.options.map((o) => o.name + (o.price ? " +" + formatMoney(o.price, business.currency) : "")).join(", ");
-  const shown = list.filter((c) => matches(query, c.name, optionsText(c), ...c.items.map((p) => p.name)));
-  const kinds = [
-    { title: "Pick one", items: shown.filter((c) => c.required) },
-    { title: "Add-ons", items: shown.filter((c) => !c.required) },
-  ].filter((k) => k.items.length);
+  const shown = inTab.filter((c) => matches(query, c.name, optionsText(c), ...c.items.map((p) => p.name)));
+  const kinds = choiceKinds.map(({ title, required }) => ({
+    title,
+    items: shown.filter((choice) => choice.required === required),
+  })).filter(({ items }) => items.length);
   const select = useRecordSelect(list.map((c) => c.key));
-
-  function apply(group: Omit<OptionGroup, "id">, ids: string[]) {
-    const key = editing && editing !== "new" ? editing.key : null;
-    const selected = new Set(ids);
-    return menu.map((p) => {
-      const at = key ? p.groups.findIndex((g) => choiceKey(g) === key) : -1;
-      const wanted = selected.has(p.id);
-      if (!wanted) return at < 0 ? p : { ...p, groups: p.groups.filter((_, i) => i !== at) };
-      const old = at >= 0 ? p.groups[at] : undefined;
-      const next: OptionGroup = {
-        ...group,
-        id: old?.id ?? crypto.randomUUID(),
-        // Keep option ids that still exist, so carts and sold-out marks keep pointing at them.
-        options: group.options.map((o) => ({
-          ...o,
-          id: old?.options.find((x) => x.name.toLocaleLowerCase() === o.name.toLocaleLowerCase())?.id ?? crypto.randomUUID(),
-        })),
-      };
-      return { ...p, groups: at >= 0 ? p.groups.map((g, i) => (i === at ? next : g)) : [...p.groups, next] };
-    });
-  }
+  const addMenu = !select.on && menu.length > 0 && (
+    <AddMenu
+      singleLabel="Add a choice"
+      blockedReason={!props.online && OFFLINE}
+      onSingle={() => setEditing("new")}
+      onBulk={() => setAddingBulk(true)}
+    />
+  );
 
   return (
     <SubPage
@@ -1557,15 +1712,24 @@ export function ChoicesPage(props: RecipesProps) {
           </>
         )
       }
+      sentenceAction={inTab.length > 0 && addMenu}
       onBack={() => props.onPage(null)}
     >
-      {!select.on && (
-        <RecordAdd label="Add choice" disabled={!props.online || (!menu.length && "Add a menu item first.")} onClick={() => setEditing("new")} />
+      <RecordSearch
+        count={list.length}
+        noun="choices"
+        query={query}
+        onQuery={setQuery}
+        filters={{ label: "Choice types", options: choiceKinds.map(({ title }) => title), value: tab, onChange: setTab }}
+      />
+      {inTab.length > 0 && !shown.length && (
+        <RecordNoMatch query={query} onClear={() => {
+          setQuery("");
+          setTab(null);
+        }} />
       )}
-      <RecordSearch count={list.length} noun="choices" query={query} onQuery={setQuery} />
-      {list.length > 0 && !shown.length && <RecordNoMatch query={query} onClear={() => setQuery("")} />}
       {kinds.map((k) => (
-        <RecordGroup key={k.title} title={k.title}>
+        <RecordGroup key={k.title} title={activeKind ? undefined : k.title}>
           {k.items.map((c) => (
             <RecordRow
               key={c.key}
@@ -1584,16 +1748,21 @@ export function ChoicesPage(props: RecipesProps) {
           ))}
         </RecordGroup>
       ))}
-      {!list.length && (
+      {!inTab.length && (
         <EmptyState
           icon={<ListPlus size={22} strokeWidth={1.6} />}
-          title={menu.length ? "No choices yet" : "Add menu items first"}
+          title={menu.length ? activeKind?.empty ?? "No choices yet" : "Add menu items first"}
           text={
-            menu.length
-              ? "A Pick one choice like Size, or Add-ons like an extra shot. Pick the items that offer it."
-              : "Choices are asked when an item is added to the order."
+            !menu.length ? "Choices are asked when an item is added to the order."
+              : activeKind?.required === true ? "Add a required choice like size or milk."
+              : activeKind?.required === false ? "Add an optional extra like a shot or a topping."
+              : "Set up a choice and pick the menu items that offer it."
           }
-        />
+        >
+          {menu.length ? addMenu : (
+            <button type="button" className="btn compact" onClick={() => props.onPage("menu")}>Go to Menu Items</button>
+          )}
+        </EmptyState>
       )}
       {select.on && (
         <RecordSelectBar
@@ -1612,13 +1781,52 @@ export function ChoicesPage(props: RecipesProps) {
         />
       )}
       {!props.online && <p className="label">Connect to edit choices.</p>}
+      {addingBulk && (
+        <BulkRecordsSheet<{ group: Omit<OptionGroup, "id">; ids: string[] }>
+          noun="choice"
+          singleLabel="Add a choice"
+          nameOf={({ group }) => group.name}
+          onClose={() => setAddingBulk(false)}
+          onSave={(choices) => {
+            const menuIds = new Set(menu.map((item) => item.id));
+            if (choices.some(({ ids }) => ids.some((id) => !menuIds.has(id))))
+              throw Error("The menu changed. Remove and re-add any choice with missing items.");
+            const next = choices.reduce((current, { group, ids }) => applyChoice(current, group, ids), menu);
+            const full = next.find((item) => item.groups.length > 32);
+            if (full) throw Error(`${full.name} can have up to 32 choices.`);
+            return commit.menu(next, "Added " + plural(choices.length, "choice"));
+          }}
+          editor={({ rows, add, close }) => (
+            <ChoiceSheet
+              menu={menu}
+              currency={business.currency}
+              defaultRequired={activeKind?.required}
+              staging
+              onClose={close}
+              onSave={async (group, ids) => {
+                const key = choiceKey(group);
+                if (list.some((choice) => choice.key === key) || rows.some((row) => choiceKey(row.group) === key))
+                  throw Error("That choice already exists.");
+                add({ group, ids });
+                return true;
+              }}
+            />
+          )}
+        />
+      )}
       {editing && (
         <ChoiceSheet
           choice={editing === "new" ? undefined : editing}
           menu={menu}
           currency={business.currency}
+          defaultRequired={activeKind?.required}
           onClose={() => setEditing(null)}
-          onSave={(group, ids) => commit.menu(apply(group, ids), (editing === "new" ? "Added " : "Saved ") + group.name)}
+          onSave={(group, ids) =>
+            commit.menu(
+              applyChoice(menu, group, ids, editing === "new" ? undefined : editing.key),
+              (editing === "new" ? "Added " : "Saved ") + group.name,
+            )
+          }
           onRemove={
             editing === "new"
               ? undefined

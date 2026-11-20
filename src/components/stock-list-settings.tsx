@@ -1,46 +1,61 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, Plus, Tag, Truck } from "lucide-react";
-import { matchesFilters, type FilterFacets, type FilterSelection } from "@/lib/filters";
+import { Boxes, Tag, Truck } from "lucide-react";
 import { editStockList, stockListFields, stockListKey, stockListsOf } from "@/lib/stock-lists";
 import type { StockListField } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
-import { RecordFilters } from "./filter-controls";
+import { AddMenu } from "./add-menu";
+import { BulkNamesSheet } from "./bulk-add";
 import { matches, namesText, plural, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { SubPage, useCommit } from "./settings";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { EmptyState } from "./ui";
+import { OFFLINE } from "@/lib/reject";
 
 const groups = [
   { field: "category", Icon: Tag },
   { field: "kind", Icon: Boxes },
   { field: "supplier", Icon: Truck },
 ] as const;
-const listFilterNames = { list: "List", usage: "Usage" };
-type ListFilter = keyof typeof listFilterNames;
+function StockListPicker({ field, onChange }: {
+  field: StockListField;
+  onChange: (field: StockListField) => void;
+}) {
+  return (
+    <label className="field">
+      <span>List</span>
+      <select className="select" value={field} onChange={(event) => onChange(event.target.value as StockListField)}>
+        {groups.map(({ field }) => <option key={field} value={field}>{stockListFields[field].title}</option>)}
+      </select>
+    </label>
+  );
+}
 
-function StockListSheet({ field, name, usedBy, onSave, onClose }: {
+function StockListSheet({ field: initialField, name, usedBy, onSave, onClose }: {
   field: StockListField;
   name?: string;
   usedBy: string[];
-  onSave: (value: string) => Promise<boolean>;
+  onSave: (field: StockListField, value: string) => Promise<boolean>;
   onClose: () => void;
 }) {
+  const [field, setField] = useState(initialField);
   const { noun, maxLength, placeholder } = stockListFields[field];
   const [draft, setDraft] = useState(name ?? "");
   const { busy, error, run } = useRecordSave(onClose);
   return (
     <RecordSheet
       noun={noun}
+      title={name ? undefined : "New list entry"}
       editing={Boolean(name)}
       busy={busy}
       error={error}
-      canSave={Boolean(draft.trim()) && draft.trim() !== name}
-      onSave={() => void run(() => onSave(draft.trim()))}
-      onRemove={name && !usedBy.length ? () => onSave("") : undefined}
+      canSave={Boolean(draft.trim()) && draft.trim() !== name && draft.trim().length <= maxLength}
+      onSave={() => void run(() => onSave(field, draft.trim()))}
+      onRemove={name && !usedBy.length ? () => onSave(field, "") : undefined}
       onClose={onClose}
     >
-      <div className="card card-pad">
+      <div className="card card-pad stack gap-14">
+        {!name && <StockListPicker field={field} onChange={setField} />}
         <label className="field">
           <span>Name</span>
           <input className="input" autoFocus={!name} maxLength={maxLength} placeholder={placeholder} value={draft} onChange={(event) => setDraft(event.target.value)} />
@@ -56,57 +71,78 @@ export function StockListsPage(props: RecipesProps) {
   const commit = useCommit(props);
   const lists = stockListsOf(settings);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<FilterSelection<ListFilter>>({});
+  const [tab, setTab] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ field: StockListField; name?: string } | null>(null);
+  const [bulkField, setBulkField] = useState<StockListField | null>(null);
+  const activeField = groups.find(({ field }) => stockListFields[field].title === tab)?.field;
   function usedBy(field: StockListField, name?: string) {
     if (!name) return [];
     return (settings.stockItems ?? []).filter((item) =>
       stockListKey(item.details?.[field]) === stockListKey(name),
     ).map((item) => item.name);
   }
-  const entries = groups.flatMap(({ field }) => lists[field].map((name) => {
-    const items = usedBy(field, name);
-    const list = stockListFields[field].title;
-    const usage = items.length ? "In use" : "Unused";
-    const facets: FilterFacets<ListFilter> = {
-      list: [{ value: list, label: list }],
-      usage: [{ value: usage, label: usage }],
-    };
-    return { field, name, items, facets };
-  }));
-  const searched = entries.filter(({ name, items }) => matches(query, name, ...items));
-  const shown = searched.filter(({ facets }) => matchesFilters(facets, filter));
-  const narrow = Boolean(query.trim() || filter.usage?.length);
+  const count = Object.values(lists).reduce((sum, entries) => sum + entries.length, 0);
+  const visibleGroups = groups
+    .filter(({ field }) => !activeField || field === activeField)
+    .map(({ field, Icon }) => ({
+      field,
+      Icon,
+      shown: lists[field].map((name) => ({ name, items: usedBy(field, name) }))
+        .filter(({ name, items }) => matches(query, name, ...items)),
+    }));
+  const hasEntries = activeField ? lists[activeField].length > 0 : count > 0;
+  const noMatch = hasEntries && visibleGroups.every(({ shown }) => !shown.length);
+
+  function addMenu(field?: StockListField) {
+    return (
+      <AddMenu
+        singleLabel={field ? `Add a ${stockListFields[field].noun}` : "Add a list entry"}
+        blockedReason={!props.online && OFFLINE}
+        onSingle={() => setEditing({ field: field ?? "category" })}
+        onBulk={() => setBulkField(field ?? "category")}
+      />
+    );
+  }
 
   return (
     <SubPage
       title="Stock lists"
       backLabel="Back to recipes"
       sentence={<>Reuse prep categories, <span className="g">stock types and suppliers.</span></>}
+      sentenceAction={hasEntries && addMenu(activeField)}
       help={<p>Add names here or type a new one when you save a prep or stock item. To remove a name, first change any items using it.</p>}
       onBack={() => props.onPage(null)}
     >
-      <RecordSearch count={entries.length} noun="stock lists" query={query} onQuery={setQuery} alwaysSearch={entries.length > 0} />
-      <RecordFilters
+      <RecordSearch
+        count={count}
         noun="stock lists"
-        label="Filter by list or usage…"
-        names={listFilterNames}
-        rows={entries.map(({ facets }) => facets)}
-        searched={searched.map(({ facets }) => facets)}
-        filter={filter}
-        onChange={setFilter}
+        query={query}
+        onQuery={setQuery}
+        alwaysSearch={count > 0}
+        filters={{
+          label: "Stock lists",
+          options: groups.map(({ field }) => stockListFields[field].title),
+          value: tab,
+          onChange: setTab,
+        }}
       />
-      {narrow && !shown.length && <RecordNoMatch query={query} onClear={() => {
+      {noMatch && <RecordNoMatch query={query} onClear={() => {
         setQuery("");
-        setFilter({});
+        setTab(null);
       }} />}
-      {groups.map(({ field, Icon }) => {
-        const { title, noun } = stockListFields[field];
-        const names = shown.filter((entry) => entry.field === field);
-        if ((filter.list?.length && !filter.list.includes(title)) || (narrow && !names.length)) return null;
+      {visibleGroups.map(({ field, Icon, shown }) => {
+        const { title } = stockListFields[field];
+        if (!lists[field].length && (!hasEntries || !query.trim())) {
+          return (
+            <EmptyState key={field} icon={<Icon size={22} />} title={`No ${title.toLocaleLowerCase()} yet`}>
+              {addMenu(field)}
+            </EmptyState>
+          );
+        }
+        if (!shown.length) return null;
         return (
-          <RecordGroup key={field} title={title}>
-            {names.map(({ name, items }) => (
+          <RecordGroup key={field} title={activeField ? undefined : title}>
+            {shown.map(({ name, items }) => (
               <RecordRow
                 key={stockListKey(name)}
                 disabled={!props.online}
@@ -117,22 +153,36 @@ export function StockListsPage(props: RecipesProps) {
                 end={plural(items.length, "item")}
               />
             ))}
-            <button type="button" className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing({ field })}>
-              <span className="well"><Plus size={18} /></span>
-              <span className="grow row-title">Add</span>
-            </button>
           </RecordGroup>
         );
       })}
       {!props.online && <p className="label">Connect to edit stock lists.</p>}
+      {bulkField && (
+        <BulkNamesSheet
+          noun="list entry"
+          nouns="list entries"
+          label="Names, one per line"
+          maxLength={stockListFields[bulkField].maxLength}
+          onClose={() => setBulkField(null)}
+          onSave={(names) => {
+            const next = names.reduce((current, name) => ({
+              ...current,
+              ...editStockList(current, bulkField, undefined, name),
+            }), settings);
+            return commit.settings({ stockLists: next.stockLists }, "Added " + plural(names.length, "list entry", "list entries"));
+          }}
+        >
+          <StockListPicker field={bulkField} onChange={setBulkField} />
+        </BulkNamesSheet>
+      )}
       {editing && (
         <StockListSheet
           field={editing.field}
           name={editing.name}
           usedBy={usedBy(editing.field, editing.name)}
           onClose={() => setEditing(null)}
-          onSave={(value) => commit.settings(
-            editStockList(settings, editing.field, editing.name, value),
+          onSave={(field, value) => commit.settings(
+            editStockList(settings, field, editing.name, value),
             value ? (editing.name ? "Saved " : "Added ") + value : "Removed " + editing.name,
           )}
         />

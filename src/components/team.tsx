@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { inviteLink } from "@/lib/join-link";
-import { Banknote, ChevronRight, HandPlatter, Plus, Trash2, UserPlus } from "lucide-react";
+import { Banknote, ChevronRight, HandPlatter, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
-import { matches, RecordNoMatch, RecordSearch } from "./records";
+import { AddMenu } from "./add-menu";
+import { BulkNamesSheet } from "./bulk-add";
+import { matches, RecordNoMatch, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { CopyButton } from "./share";
 import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 import { blocked, OFFLINE } from "@/lib/reject";
@@ -388,9 +390,49 @@ export function TeamPage(props: SettingsProps) {
   );
 }
 
+function ChecklistStepSheet({ onAdd, onClose }: { onAdd: (text: string) => void; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const { busy, error, run } = useRecordSave(onClose);
+  const ready = Boolean(text.trim());
+  function save() {
+    if (!ready) return;
+    void run(async () => {
+      onAdd(text.trim());
+      return true;
+    });
+  }
+  return (
+    <RecordSheet
+      noun="checklist step"
+      editing={false}
+      busy={busy}
+      error={error}
+      canSave={ready}
+      onSave={save}
+      onClose={onClose}
+    >
+      <label className="field">
+        <span>Step</span>
+        <input
+          className="input"
+          maxLength={120}
+          placeholder="e.g. Count the cash float"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            save();
+          }}
+        />
+      </label>
+    </RecordSheet>
+  );
+}
+
 export function ChecklistPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props, "Save checklist", "Checklist saved");
-  const [text, setText] = useState("");
+  const [adding, setAdding] = useState<"single" | "bulk" | null>(null);
   const [photoError, setPhotoError] = useState("");
   const list = draft.settings.checklist ?? [];
   const [removing, setRemoving] = useState<(typeof list)[number] | null>(null);
@@ -400,12 +442,9 @@ export function ChecklistPage(props: SettingsProps) {
       ...current,
       settings: { ...current.settings, checklist: change(current.settings.checklist ?? []) },
     }));
-  function add() {
-    const value = text.trim();
-    if (!value || full) return;
-    const step = { id: crypto.randomUUID(), text: value };
-    update((steps) => steps.length < 30 ? [...steps, step] : steps);
-    setText("");
+  function add(names: string[]) {
+    const added = names.map((text) => ({ id: crypto.randomUUID(), text }));
+    update((steps) => [...steps, ...added]);
   }
   return (
     <SubPage
@@ -421,6 +460,14 @@ export function ChecklistPage(props: SettingsProps) {
             No checklist. <span className="g">Add what has to be ready before the first sale.</span>
           </>
         )
+      }
+      sentenceAction={
+        <AddMenu
+          singleLabel="Add a step"
+          blockedReason={full && "The checklist can hold up to 30 steps."}
+          onSingle={() => setAdding("single")}
+          onBulk={() => setAdding("bulk")}
+        />
       }
       onBack={() => props.onPage(null)}
     >
@@ -463,27 +510,22 @@ export function ChecklistPage(props: SettingsProps) {
         </div>
       )}
       {photoError && <p className="alert" role="alert">{photoError}</p>}
-      <div className="row gap-8">
-        <input
-          className="input grow"
-          maxLength={120}
-          aria-label="New step"
-          placeholder={list.length ? "Add a step" : "e.g. Count the cash float"}
-          value={text}
-          disabled={full}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            e.preventDefault();
-            add();
-          }}
-        />
-        <button type="button" className="btn secondary compact" onClick={add} {...blocked(full ? "The checklist can hold up to 30 steps." : !text.trim() && "Type the step first.")}>
-          Add
-        </button>
-      </div>
       {full && <p className="label">The checklist can hold up to 30 steps.</p>}
       {bar}
+      {adding === "single" && <ChecklistStepSheet onAdd={(name) => add([name])} onClose={() => setAdding(null)} />}
+      {adding === "bulk" && (
+        <BulkNamesSheet
+          noun="step"
+          label="Checklist steps, one per line"
+          maxLength={120}
+          limit={30 - list.length}
+          onClose={() => setAdding(null)}
+          onSave={async (names) => {
+            add(names);
+            return true;
+          }}
+        />
+      )}
       {removing && (
         <ConfirmSheet
           title="Remove checklist step?"

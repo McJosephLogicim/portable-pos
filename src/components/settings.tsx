@@ -14,7 +14,6 @@ import {
   Users,
   Coins,
   Percent,
-  Plus,
   Store,
   Ticket,
   Trash2,
@@ -36,6 +35,8 @@ import { plural, useRecordSave } from "./records";
 import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
 import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
+import { AddMenu } from "./add-menu";
+import { BulkRecordsSheet } from "./bulk-add";
 import {
   buzz,
   ConfirmSheet,
@@ -155,6 +156,7 @@ export function SetupDetails({ title, description, children, className = "", onO
 export function SubPage({
   title,
   sentence,
+  sentenceAction,
   onBack,
   backLabel = "Back to settings",
   help,
@@ -163,6 +165,8 @@ export function SubPage({
 }: {
   title: string;
   sentence?: ReactNode;
+  /** A primary action beside the page summary. */
+  sentenceAction?: ReactNode;
   onBack: () => void;
   backLabel?: string;
   /** A small action at the end of the title row, like Select. */
@@ -171,6 +175,7 @@ export function SubPage({
   help?: ReactNode;
   children: ReactNode;
 }) {
+  const summary = sentence && <p className={sentenceAction ? "headline grow" : "headline"}>{sentence}</p>;
   return (
     <div className="page">
       <div className="page-top">
@@ -183,7 +188,7 @@ export function SubPage({
         </div>
         {action}
       </div>
-      {sentence && <p className="headline">{sentence}</p>}
+      {sentenceAction ? <div className="between">{summary}{sentenceAction}</div> : summary}
       {children}
     </div>
   );
@@ -586,6 +591,7 @@ function BusinessPage(props: SettingsProps) {
 function MethodSheet({
   method,
   taken,
+  staging,
   onSave,
   onRemove,
   onClose,
@@ -593,6 +599,7 @@ function MethodSheet({
 }: {
   method?: PaymentMethod;
   taken: string[];
+  staging?: boolean;
   onSave: (m: PaymentMethod) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -623,7 +630,7 @@ function MethodSheet({
               onClose();
             }}
           >
-            {method ? "Done" : "Add"}
+            {method ? "Done" : staging ? "Add to batch" : "Add"}
           </button>
           {method && onRemove && (
             <button
@@ -702,6 +709,7 @@ function MethodSheet({
 function PaymentsPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
   const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const list = draft.settings.payments;
   const set = (payments: PaymentMethod[]) =>
     setDraft({ ...draft, settings: { ...draft.settings, payments } });
@@ -719,6 +727,14 @@ function PaymentsPage(props: SettingsProps) {
         <>
           {on} {on === 1 ? "way" : "ways"} to pay <span className="g">at checkout.</span>
         </>
+      }
+      sentenceAction={
+        <AddMenu
+          singleLabel="Add a payment method"
+          blockedReason={list.length >= 24 && "You can add up to 24 payment methods."}
+          onSingle={() => setEditing("new")}
+          onBulk={() => setAddingBulk(true)}
+        />
       }
       onBack={() => props.onPage(null)}
     >
@@ -760,9 +776,22 @@ function PaymentsPage(props: SettingsProps) {
           </div>
         ))}
       </div>
-      <button className="btn secondary" onClick={() => setEditing("new")}>
-        <Plus size={18} /> Add
-      </button>
+      {addingBulk && (
+        <BulkRecordsSheet<PaymentMethod>
+          noun="payment method"
+          singleLabel="Add a payment method"
+          limit={24 - list.length}
+          nameOf={(method) => method.name}
+          onClose={() => setAddingBulk(false)}
+          onSave={async (methods) => {
+            set([...list, ...methods]);
+            return true;
+          }}
+          editor={({ rows, add, close }) => (
+            <MethodSheet staging taken={[...list, ...rows].map((method) => method.id)} canRemove={false} onSave={add} onClose={close} />
+          )}
+        />
+      )}
       {editing && (
         <MethodSheet
           method={editing === "new" ? undefined : editing}
@@ -798,6 +827,7 @@ function DiscountSheet({
   discount,
   currency,
   taken,
+  staging,
   onSave,
   onRemove,
   onClose,
@@ -805,6 +835,7 @@ function DiscountSheet({
   discount?: Discount;
   currency: string;
   taken: string[];
+  staging?: boolean;
   onSave: (d: Discount) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -856,7 +887,7 @@ function DiscountSheet({
               onClose();
             }}
           >
-            {discount ? "Done" : "Add"}
+            {discount ? "Done" : staging ? "Add to batch" : "Add"}
           </button>
           {onRemove && (
             <button
@@ -956,6 +987,7 @@ function DiscountSheet({
 function DiscountsPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
   const [editing, setEditing] = useState<Discount | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const list = draft.settings.discounts;
   const set = (discounts: Discount[]) =>
     setDraft({ ...draft, settings: { ...draft.settings, discounts } });
@@ -980,6 +1012,14 @@ function DiscountsPage(props: SettingsProps) {
             No discounts <span className="g">at checkout.</span>
           </>
         )
+      }
+      sentenceAction={
+        <AddMenu
+          singleLabel="Add a discount"
+          blockedReason={list.length >= 24 && "You can add up to 24 discounts."}
+          onSingle={() => setEditing("new")}
+          onBulk={() => setAddingBulk(true)}
+        />
       }
       onBack={() => props.onPage(null)}
     >
@@ -1014,9 +1054,22 @@ function DiscountsPage(props: SettingsProps) {
           ))}
         </div>
       )}
-      <button className="btn secondary" onClick={() => setEditing("new")}>
-        <Plus size={18} /> Add
-      </button>
+      {addingBulk && (
+        <BulkRecordsSheet<Discount>
+          noun="discount"
+          singleLabel="Add a discount"
+          limit={24 - list.length}
+          nameOf={(discount) => discount.name}
+          onClose={() => setAddingBulk(false)}
+          onSave={async (discounts) => {
+            set([...list, ...discounts]);
+            return true;
+          }}
+          editor={({ rows, add, close }) => (
+            <DiscountSheet staging currency={draft.currency} taken={[...list, ...rows].map((discount) => discount.id)} onSave={add} onClose={close} />
+          )}
+        />
+      )}
       {editing && (
         <DiscountSheet
           discount={editing === "new" ? undefined : editing}

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ChevronRight, CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
+import { AddMenu } from "./add-menu";
+import { BulkRecordsSheet } from "./bulk-add";
 import { amountText, parseMoney, stockReplay } from "@/lib/domain";
 import { matchesFilters, type FilterFacets, type FilterSelection } from "@/lib/filters";
 import { currencyDigits } from "@/lib/settings";
@@ -20,7 +22,6 @@ import {
   andText,
   namesText,
   plural,
-  RecordAdd,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -52,6 +53,8 @@ export function StockSheet({
   stockItems = [],
   stockLists,
   prepOnly = false,
+  initialGroup,
+  staging = false,
   onSave,
   onRemove,
   onClose,
@@ -65,6 +68,8 @@ export function StockSheet({
   stockItems?: StockItem[];
   stockLists: Record<StockListField, string[]>;
   prepOnly?: boolean;
+  initialGroup?: string;
+  staging?: boolean;
   /** stockNow: what the open shift has left now, for amounts changed in this sheet. */
   onSave: (item: StockItem, stockNow?: Record<string, number>) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
@@ -84,8 +89,8 @@ export function StockSheet({
   }
   const [details, setDetails] = useState<StockItemDetails>(() => ({
     ...item?.details,
-    category: listName("category", item?.details?.category),
-    kind: listName("kind", item?.details?.kind),
+    category: listName("category", item?.details?.category ?? (prepOnly ? initialGroup : undefined)),
+    kind: listName("kind", item?.details?.kind ?? (prepOnly ? undefined : initialGroup)),
     supplier: listName("supplier", item?.details?.supplier),
   }));
   const [name, setName] = useState(item?.name ?? "");
@@ -194,6 +199,8 @@ export function StockSheet({
       busy={busy}
       error={error}
       canSave={Boolean(name.trim() && unit.trim())}
+      saveText={staging ? "Add to batch" : undefined}
+      saveLabel={staging ? "Add to batch" : undefined}
       onSave={() => void run(() => {
         if (!sameName(item?.name ?? "", name) && stockItems.some((stock) => stock.id !== item?.id && sameName(stock.name, name)))
           throw Error("A stock item already has that name. Open it in Stock items to change how it is costed.");
@@ -525,7 +532,7 @@ export function costGap(rows: ReturnType<typeof stockUseRows>, per: "batch" | "s
   }
 }
 
-const stockFilterNames = { category: "Prep category", kind: "Stock type", supplier: "Supplier", cost: "Cost", menu: "Menu use" };
+const stockFilterNames = { supplier: "Supplier", cost: "Cost", menu: "Menu use" };
 type StockFilter = keyof typeof stockFilterNames;
 
 /** Things sales take from, like a pack of strawberries or a kilo of ice. */
@@ -536,6 +543,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<StockItem | "new" | null>(null);
+  const [addingBulk, setAddingBulk] = useState(false);
   const [merging, setMerging] = useState(false);
   const mergeable = useMergeable(props.state);
   const rows = list.filter((item) => Boolean(item.prep) === prepOnly);
@@ -551,8 +559,13 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const legacy = prepOnly ? [] : stockModel([], menu).items;
   const count = rows.length + legacy.length;
   const [query, setQuery] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterSelection<StockFilter>>({});
+  const groupField = prepOnly ? "category" : "kind";
+  const groups = stockLists[groupField];
+  const tab = selectedGroup && groups.includes(selectedGroup) ? selectedGroup : null;
   const noun = prepOnly ? "prep" : "stock items";
+  const itemNoun = prepOnly ? "prep item" : "stock item";
   const select = useRecordSelect(rows.map((item) => item.id));
   /** The picked ones a remaining recipe still needs stay; the rest can go. */
   function removal(ids: string[]) {
@@ -566,18 +579,21 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
     const facet = (label?: string) => label ? [{ value: label, label }] : [];
     const detail = (field: StockListField) => {
       const key = stockListKey(item.details?.[field]);
-      return facet(stockLists[field].find((name) => stockListKey(name) === key));
+      return stockLists[field].find((name) => stockListKey(name) === key);
     };
+    const group = detail(groupField);
+    const supplier = prepOnly ? undefined : detail("supplier");
     const facets: FilterFacets<StockFilter> = {
-      ...(prepOnly ? { category: detail("category") } : { kind: detail("kind"), supplier: detail("supplier") }),
+      supplier: facet(supplier),
       cost: facet(rate === undefined ? "Not costed yet" : "Costed"),
       menu: facet(users.length ? "On the menu" : "Not on the menu"),
     };
-    return { item, users, rate, facets, legacy };
+    return { item, users, rate, facets, group, supplier, legacy };
   }
   const entries = [...rows.map((item) => entry(item)), ...legacy.map((item) => entry(item, true))];
-  const searched = entries.filter(({ item, users, facets }) => matches(
-    query, item.name, item.unit, item.details?.sku, facets.category?.[0]?.label, facets.kind?.[0]?.label, facets.supplier?.[0]?.label, ...users,
+  const inTab = tab ? entries.filter(({ group }) => group === tab) : entries;
+  const searched = inTab.filter(({ item, users, group, supplier }) => matches(
+    query, item.name, item.unit, item.details?.sku, group, supplier, ...users,
   ));
   const shown = searched.filter(({ facets }) => matchesFilters(facets, filter));
   const shownRows = shown.filter((row) => !row.legacy);
@@ -589,6 +605,14 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
     : count
       ? <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>
       : <>Nothing counted yet. <span className="g">Add what runs out, like milk or ice.</span></>;
+  const addMenu = !select.on && (
+    <AddMenu
+      singleLabel={`Add a ${itemNoun}`}
+          blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
+      onSingle={() => setEditing("new")}
+      onBulk={() => setAddingBulk(true)}
+    />
+  );
   return (
     <SubPage
       title={prepOnly ? "Prep" : "Stock items"}
@@ -606,14 +630,16 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       )}
       backLabel="Back to recipes"
       sentence={sentence}
+      sentenceAction={inTab.length > 0 && addMenu}
       onBack={() => props.onPage(null)}
     >
-      {!select.on && <div className="row gap-8">
-        <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || (list.length >= 100 && "A list holds up to 100 items.")} onClick={() => setEditing("new")} />
-        <button type="button" className="btn ghost" onClick={() => props.onPage("stock-lists")}>
-          <Tags size={16} /> Stock lists
-        </button>
-      </div>}
+      {!select.on && (
+        <div className="row">
+          <button type="button" className="btn ghost" onClick={() => props.onPage("stock-lists")}>
+            <Tags size={16} /> Stock lists
+          </button>
+        </div>
+      )}
       {!select.on && props.onMergeStock && mergeable.length > 0 && (
         <div className="card card-list">
           <button type="button" className="list-row" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setMerging(true)}>
@@ -637,30 +663,35 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           onClose={() => setMerging(false)}
         />
       )}
-      {count > 0 && (
-        <RecordSearch
-          count={count}
-          noun={noun}
-          query={query}
-          onQuery={setQuery}
-          alwaysSearch
-        />
-      )}
+      <RecordSearch
+        count={count}
+        noun={noun}
+        query={query}
+        onQuery={setQuery}
+        alwaysSearch={count > 0}
+        filters={groups.length ? {
+          label: stockListFields[groupField].title,
+          options: groups,
+          value: tab,
+          onChange: setSelectedGroup,
+        } : undefined}
+      />
       <RecordFilters
         noun={noun}
-        label={prepOnly ? "Filter by category, cost, menu use…" : "Filter by stock type, supplier, cost…"}
+        label={prepOnly ? "Filter by cost or menu use…" : "Filter by supplier, cost or menu use…"}
         names={stockFilterNames}
-        rows={entries.map(({ facets }) => facets)}
+        rows={inTab.map(({ facets }) => facets)}
         searched={searched.map(({ facets }) => facets)}
         filter={filter}
         onChange={setFilter}
       />
-      {count > 0 && !shownRows.length && !shownLegacy.length && (
+      {inTab.length > 0 && !shownRows.length && !shownLegacy.length && (
         <RecordNoMatch
           query={query}
           onClear={() => {
             setQuery("");
             setFilter({});
+            setSelectedGroup(null);
           }}
         />
       )}
@@ -689,14 +720,16 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           })}
         </RecordGroup>
       )}
-      {!count && (
+      {!inTab.length && (
         <EmptyState
           icon={prepOnly ? <CookingPot size={22} strokeWidth={1.6} /> : <Package size={22} strokeWidth={1.6} />}
-          title={prepOnly ? "Nothing made ahead yet" : "No stock items yet"}
-          text={prepOnly
+          title={tab ? `No ${itemNoun}s in ${tab}` : prepOnly ? "Nothing made ahead yet" : "No stock items yet"}
+          text={tab ? undefined : prepOnly
             ? "Syrups, creams and sauces you make in batches. Enter what goes in and how much it makes, and you'll see what each unit costs."
             : "Add one here, or right from a menu item while you set it up."}
-        />
+        >
+          {addMenu}
+        </EmptyState>
       )}
       {shownLegacy.length > 0 && (
         <RecordGroup title="Menu items counted themselves">
@@ -755,12 +788,50 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
         />
       )}
       {!props.online && <p className="label">Connect to edit {prepOnly ? "prep" : "stock items"}.</p>}
+      {addingBulk && (
+        <BulkRecordsSheet<StockItem>
+          noun={itemNoun}
+          singleLabel={`Add a ${itemNoun}`}
+          limit={100 - list.length}
+          nameOf={(item) => item.name}
+          onSave={(items) => {
+            const byId = new Map(list.map((item) => [item.id, item]));
+            for (const item of items) {
+              if (list.some((stock) => stock.id !== item.id && sameName(stock.name, item.name)))
+                throw Error(`“${item.name}” is already in Stock items.`);
+              byId.set(item.id, item);
+            }
+            const stockItems = [...byId.values()];
+            if (items.some((item) => item.prep?.uses.some((use) => !byId.has(use.stockId) || byId.get(use.stockId)?.prep)))
+              throw Error("An ingredient was removed or changed. Remove and re-add the affected prep item.");
+            return commit.settings(
+              { stockItems, stockLists: stockListsOf({ ...business.settings, stockItems }) },
+              "Added " + plural(items.length, itemNoun),
+            );
+          }}
+          onClose={() => setAddingBulk(false)}
+          editor={({ rows, add, close }) => (
+            <StockSheet
+              stockItems={[...list, ...rows]}
+              stockLists={stockListsOf({ ...business.settings, stockItems: [...list, ...rows] })}
+              currency={business.currency}
+              prepOnly={prepOnly}
+              initialGroup={tab ?? undefined}
+              staging
+              menu={menu}
+              onClose={close}
+              onSave={async (item) => { add(item); return true; }}
+            />
+          )}
+        />
+      )}
       {editing && (
         <StockSheet
           stockItems={list}
           stockLists={stockLists}
           currency={business.currency}
           prepOnly={prepOnly}
+          initialGroup={editing === "new" ? tab ?? undefined : undefined}
           item={editing === "new" ? undefined : editing}
           live={live}
           menu={menu}

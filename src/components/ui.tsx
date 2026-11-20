@@ -1162,7 +1162,7 @@ export function EmptyRow({ title, detail }: { title: string; detail?: string }) 
 
 /**
  * Category tabs, as on Sell: "All" then each category. Tapping the open tab goes back to All.
- * onNew adds a dashed Add button at the end.
+ * onNew adds a dashed New category button at the end.
  */
 export function CategoryTabs({
   label = "Categories",
@@ -1190,9 +1190,9 @@ export function CategoryTabs({
         </button>
       ))}
       {onNew && (
-        <button type="button" className="chip-new" aria-label="Add category" disabled={newDisabled} onClick={onNew}>
+        <button type="button" className="chip-new" disabled={newDisabled} onClick={onNew}>
           <Plus size={16} strokeWidth={2} aria-hidden />
-          Add
+          New category
         </button>
       )}
     </div>
