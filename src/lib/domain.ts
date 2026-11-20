@@ -8,6 +8,7 @@ import type {
   Sale,
   Shift,
   StockItem,
+  StockSet,
   Tender,
 } from "./types";
 
@@ -131,29 +132,57 @@ export function totalLines(lines: ReceiptLine[]) {
   return total;
 }
 
+/**
+ * Replay the shift's sales in order. A "Count it" menu item always comes off its count.
+ * A stock or prep item only comes off when there's enough of it: at zero, or too little
+ * for the sale, the sale goes ahead and nothing is taken. Setting a new amount mid-shift
+ * starts the item again from there.
+ */
+export function stockReplay(shift: Shift, sales: Sale[]) {
+  const left: Record<string, number> = { ...(shift.stock ?? {}) };
+  const used: Record<string, number> = Object.fromEntries(Object.keys(left).map((id) => [id, 0]));
+  /** What each item started from: the opening amount, or the first amount set mid-shift. */
+  const start: Record<string, number> = { ...left };
+  /** Stock items a sale found too little of since they were last set. */
+  const short = new Set<string>();
+  const model = shiftStock(shift);
+  const sold = sales
+    .filter((sale) => sale.shiftId === shift.id && !sale.reversedAt)
+    .map((sale) => ({ at: Date.parse(sale.createdAt), order: sale.sequence, sale }));
+  const sets = (shift.stockSets ?? []).map((set) => ({ at: Date.parse(set.at), order: -1, set }));
+  const events: ({ at: number; order: number } & ({ sale: Sale } | { set: StockSet }))[] = [...sold, ...sets];
+  events.sort((a, b) => a.at - b.at || a.order - b.order);
+  const snap = (n: number) => {
+    const rounded = round(n);
+    // Keep the precision of a per-serving fraction, snapping away floating-point drift.
+    return stockAmountFits(Math.abs(n - rounded), 0) ? rounded : n;
+  };
+  for (const event of events) {
+    if ("set" in event) {
+      left[event.set.stockId] = event.set.amount;
+      used[event.set.stockId] ??= 0;
+      start[event.set.stockId] ??= event.set.amount;
+      short.delete(event.set.stockId);
+      continue;
+    }
+    for (const line of event.sale.lines)
+      for (const { stockId, amount } of model.uses.get(line.productId) ?? []) {
+        if (!(stockId in left)) continue;
+        const need = line.quantity * amount;
+        if (!model.limits.has(stockId) && !stockAmountFits(need, left[stockId])) {
+          short.add(stockId);
+          continue;
+        }
+        left[stockId] = snap(left[stockId] - need);
+        used[stockId] = snap(used[stockId] + need);
+      }
+  }
+  return { left, used, start, short };
+}
+
 /** How much of each stock item is still on hand this shift. */
 export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
-  const left = { ...(shift.stock ?? {}) };
-  const model = shiftStock(shift);
-  const sold = new Map<string, number>();
-  for (const sale of sales) {
-    if (sale.shiftId !== shift.id || sale.reversedAt) continue;
-    for (const line of sale.lines) sold.set(line.productId, (sold.get(line.productId) ?? 0) + line.quantity);
-  }
-  const used = new Map<string, number>();
-  for (const [productId, quantity] of sold) {
-    for (const { stockId, amount } of model.uses.get(productId) ?? []) {
-      if (stockId in left) used.set(stockId, (used.get(stockId) ?? 0) + quantity * amount);
-    }
-  }
-  for (const [stockId, amount] of used) {
-    const start = left[stockId];
-    const remaining = start - amount;
-    // Keep the precision of a per-serving fraction, snapping away floating-point drift.
-    const rounded = round(remaining);
-    left[stockId] = stockAmountFits(Math.abs(remaining - rounded), 0) ? rounded : remaining;
-  }
-  return left;
+  return stockReplay(shift, sales).left;
 }
 
 /**
@@ -190,10 +219,11 @@ export function updateShiftMenu(
   for (const p of fresh) {
     if (p.uses?.length) {
       for (const use of p.uses) {
-        if (use.stockId in stock || !validCount(counts[use.stockId])) continue;
+        if (use.stockId in stock) continue;
         const item = stockItems.find((i) => i.id === use.stockId);
-        if (!item) continue;
-        stock[use.stockId] = counts[use.stockId];
+        const start = validCount(counts[use.stockId]) ? counts[use.stockId] : item?.onHand;
+        if (!item || !validCount(start)) continue;
+        stock[use.stockId] = start;
         if (!tracked.some((i) => i.id === item.id)) tracked.push({ id: item.id, name: item.name, unit: item.unit });
       }
     } else if (p.stock && !(p.id in stock)) stock[p.id] = validCount(counts[p.id]) ? counts[p.id] : 0;
@@ -204,11 +234,15 @@ export function updateShiftMenu(
   return { ...shift, menu: [...current, ...fresh], stock, settings };
 }
 
-function validCount(n: unknown): n is number {
+export function validCount(n: unknown): n is number {
   return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1_000_000 && round(n) === n;
 }
 
-/** Check what the opening screen sends: a count for every stock item and every checklist line ticked. */
+/**
+ * Check what the opening screen sends. Menu items set to "Count it" must be counted.
+ * Counting stock and prep items is optional: one left uncounted starts from the amount
+ * saved on it, and one with neither isn't tracked. Every checklist line must be ticked.
+ */
 export function checkOpening(
   menu: Product[],
   stockItems: StockItem[] | undefined,
@@ -217,25 +251,69 @@ export function checkOpening(
   checked: string[],
 ) {
   const { items } = stockModel(stockItems, menu);
-  for (const item of items)
-    if (!validCount(stock[item.id])) throw Error(`Count the ${item.name} before opening.`);
+  const opening: Record<string, number> = {};
+  const { limits } = stockModel(stockItems, menu);
+  for (const item of items) {
+    const counted = stock[item.id];
+    if (limits.has(item.id) && !validCount(counted)) throw Error(`Count the ${item.name} before opening.`);
+    if (counted !== undefined && !validCount(counted)) throw Error(`Check the count for ${item.name}.`);
+    const start = counted ?? item.onHand;
+    if (validCount(start)) opening[item.id] = start;
+  }
   if (checklist.some((c) => !checked.includes(c.id)))
     throw Error("Tick every line of the opening checklist.");
-  return Object.fromEntries(items.map((i) => [i.id, stock[i.id]]));
+  return opening;
 }
 
-/** Check the closing count: a number for every stock item the shift opened with. */
+/**
+ * Check the closing count. Menu items set to "Count it" must be counted. Stock and
+ * prep items are optional: only the ones counted are kept.
+ */
 export function checkClosing(shift: Shift, counted: Record<string, number> | undefined) {
-  const opened = Object.keys(shift.stock ?? {});
-  if (!opened.length) return undefined;
-  const { items } = shiftStock(shift);
-  for (const id of opened)
-    if (!validCount(counted?.[id]))
-      throw Error(`Count the ${items.find((i) => i.id === id)?.name ?? "stock"} left before closing.`);
-  return Object.fromEntries(opened.map((id) => [id, counted![id]]));
+  // Everything tracked: counted at opening, or set during the shift.
+  const opened = Object.keys(stockLeft(shift, []));
+  const { items, limits } = shiftStock(shift);
+  const kept: Record<string, number> = {};
+  for (const id of opened) {
+    const n = counted?.[id];
+    const name = items.find((i) => i.id === id)?.name ?? "stock";
+    if (n === undefined && limits.has(id)) throw Error(`Count the ${name} left before closing.`);
+    if (n === undefined) continue;
+    if (!validCount(n)) throw Error(`Check the count for ${name}.`);
+    kept[id] = n;
+  }
+  return Object.keys(kept).length ? kept : undefined;
 }
 
-/** Refuse an order that needs more of a stock item than is left. */
+/**
+ * Set how much of a stock item is on hand during a shift. Sales from now take from the
+ * new amount; earlier sales stay as they were. A stock item the shift wasn't tracking is
+ * tracked from now.
+ */
+export function setShiftStock(
+  shift: Shift,
+  stockItems: StockItem[] | undefined,
+  now: Record<string, number>,
+  at = new Date().toISOString(),
+) {
+  const ids = Object.keys(now).filter((id) => validCount(now[id]));
+  if (!ids.length) return shift;
+  const tracked = [...(shift.settings.stockItems ?? [])];
+  const sets: StockSet[] = [...(shift.stockSets ?? [])];
+  for (const id of ids) {
+    const item = stockItems?.find((i) => i.id === id);
+    if (!item) continue;
+    if (!tracked.some((i) => i.id === id)) tracked.push({ id: item.id, name: item.name, unit: item.unit });
+    sets.push({ stockId: id, amount: now[id], at });
+  }
+  return {
+    ...shift,
+    stockSets: sets,
+    settings: tracked.length === (shift.settings.stockItems?.length ?? 0) ? shift.settings : { ...shift.settings, stockItems: tracked },
+  };
+}
+
+/** Refuse an order that needs more of a "Count it" menu item than is left. Stock items never refuse one. */
 export function checkStock(
   shift: Pick<Shift, "menu" | "settings">,
   cart: { productId: string; quantity: number }[],
@@ -245,7 +323,7 @@ export function checkStock(
   const wanted = new Map<string, { amount: number; productId: string }>();
   for (const line of cart)
     for (const use of model.uses.get(line.productId) ?? [])
-      if (use.stockId in left) {
+      if (use.stockId in left && model.limits.has(use.stockId)) {
         const now = wanted.get(use.stockId);
         wanted.set(use.stockId, {
           amount: (now?.amount ?? 0) + line.quantity * use.amount,

@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
-import { changeMenuItem, checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
+import { changeMenuItem, checkClosing, checkOpening, setShiftStock, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
@@ -213,13 +213,18 @@ export async function runCommand(
       // receipt before this command, and anything removed stays in the snapshot switched
       // off, so receipts already priced on another path still validate.
       if (open) {
+        const settings = mergeShiftSettings(
+          open.settings ?? legacyShiftSettings(business.currency),
+          cmd.settings,
+        );
+        const next = cmd.stockNow
+          ? setShiftStock({ ...presentShift(open, business.currency), settings }, cmd.settings.stockItems, cmd.stockNow)
+          : undefined;
         await tx
           .update(shifts)
           .set({
-            settings: mergeShiftSettings(
-              open.settings ?? legacyShiftSettings(business.currency),
-              cmd.settings,
-            ),
+            settings: next?.settings ?? settings,
+            ...(next?.stockSets ? { stockSets: next.stockSets } : {}),
           })
           .where(eq(shifts.id, open.id));
       }

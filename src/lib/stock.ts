@@ -191,12 +191,12 @@ export function menuCostingOverview(menu: Product[], stock: StockItem[], pricing
 
 /** Cost sources belong to the owner and aren't needed to run the till. */
 export function withoutStockCosts<T extends Settings>(settings: T): T {
-  if (!settings.pricing && !settings.stockLists && !settings.stockItems?.some((item) => item.purchase || item.prep || item.details)) return settings;
+  if (!settings.pricing && !settings.stockLists && !settings.stockItems?.some((item) => item.purchase || item.prep || item.details || item.onHand !== undefined)) return settings;
   const till = { ...settings };
   delete till.pricing;
   delete till.stockLists;
   if (settings.stockItems)
-    till.stockItems = settings.stockItems.map(({ purchase: _, prep: _prep, details: _details, ...item }) => item);
+    till.stockItems = settings.stockItems.map(({ purchase: _, prep: _prep, details: _details, onHand: _onHand, ...item }) => item);
   return till;
 }
 
@@ -213,6 +213,11 @@ export function unitText(amount: number, unit: string) {
 export interface StockModel {
   items: StockItem[];
   uses: Map<string, StockUse[]>;
+  /**
+   * Menu items set to "Count it". Only these must be counted at opening and closing,
+   * and only these sell out. Stock and prep items never stop a sale.
+   */
+  limits: Set<string>;
 }
 
 /**
@@ -222,10 +227,12 @@ export interface StockModel {
 export function stockModel(items: StockItem[] | undefined, menu: Product[]): StockModel {
   const all = [...(items ?? [])];
   const uses = new Map<string, StockUse[]>();
+  const limits = new Set<string>();
   for (const p of menu) {
     if (p.uses?.length) uses.set(p.id, p.uses);
     else if (p.stock) {
       if (!all.some((i) => i.id === p.id)) all.push({ id: p.id, name: p.name, unit: "piece" });
+      limits.add(p.id);
       uses.set(p.id, [{ stockId: p.id, amount: 1 }]);
     }
   }
@@ -235,7 +242,7 @@ export function stockModel(items: StockItem[] | undefined, menu: Product[]): Sto
     if (kept.length) uses.set(id, kept);
     else uses.delete(id);
   }
-  return { items: all, uses };
+  return { items: all, uses, limits };
 }
 
 export function shiftStock(shift: Pick<Shift, "menu" | "settings">) {
@@ -253,7 +260,7 @@ export function canMake(model: StockModel, left: Record<string, number>, product
   if (!uses) return undefined;
   let most = Infinity;
   for (const u of uses) {
-    if (!(u.stockId in left)) continue;
+    if (!(u.stockId in left) || !model.limits.has(u.stockId)) continue;
     const available = Math.max(0, left[u.stockId]);
     const whole = Math.floor(available / u.amount);
     most = Math.min(most, stockAmountFits((whole + 1) * u.amount, available) ? whole + 1 : whole);

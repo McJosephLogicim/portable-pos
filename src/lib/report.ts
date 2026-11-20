@@ -1,6 +1,6 @@
 import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
-import { shiftTotals, stockLeft } from "./domain";
+import { shiftTotals, stockReplay } from "./domain";
 import { brandShareText } from "./share-brand";
 import { round, stockModel, unitText } from "./stock";
 import { bookingTitle, dayOf, seatsOpen, shiftRoleNames } from "./team";
@@ -109,17 +109,21 @@ export function shiftReport(
   const top = hours.reduce<{ label: string; total: number } | undefined>((a, b) => (!a || b.total > a.total ? b : a), undefined);
 
   const { items } = stockModel(shift.settings.stockItems, shift.menu);
-  const left = shift.menu.length ? stockLeft(shift, sales) : {};
-  const stock: StockRow[] = Object.entries(shift.stock ?? {}).map(([id, start]) => {
+  const replay = shift.menu.length
+    ? stockReplay(shift, sales)
+    : { left: { ...(shift.stock ?? {}) }, used: {} as Record<string, number>, start: { ...(shift.stock ?? {}) } };
+  const stock: StockRow[] = Object.keys(replay.left).map((id) => {
     const item = items.find((i) => i.id === id);
-    const used = shift.usedStock?.[id] ?? round(start - (left[id] ?? start));
+    // Tracked from mid-shift: it starts from the first amount set.
+    const start = replay.start[id] ?? 0;
+    const used = shift.usedStock?.[id] ?? round(replay.used[id] ?? 0);
     return {
       id,
       name: item?.name ?? "Stock item",
       unit: item?.unit ?? "piece",
       start,
       used,
-      expected: round(start - used),
+      expected: round(replay.left[id]),
       ...(shift.closingStock?.[id] !== undefined ? { counted: shift.closingStock[id] } : {}),
     };
   });

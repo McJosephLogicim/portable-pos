@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { CookingPot, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
-import { amountText, parseMoney } from "@/lib/domain";
+import { amountText, parseMoney, stockReplay } from "@/lib/domain";
 import { matchesFilters, type FilterFacets, type FilterSelection } from "@/lib/filters";
 import { currencyDigits } from "@/lib/settings";
 import { stockListFields, stockListKey, stockListsOf } from "@/lib/stock-lists";
-import { catalogSku, menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units } from "@/lib/stock";
+import { catalogSku, menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units, unitText } from "@/lib/stock";
+import { countOf, StockQuantityInput } from "./stock-count";
 import type { PricingRules, Product, StockItem, StockItemDetails, StockListField, StockPrep, StockPurchase, StockUse } from "@/lib/types";
 import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
@@ -44,6 +45,7 @@ export function unitSuggestions(stockItems: StockItem[] = []) {
 
 export function StockSheet({
   item,
+  live,
   currency,
   menu,
   stockItems = [],
@@ -54,17 +56,26 @@ export function StockSheet({
   onClose,
 }: {
   item?: StockItem;
+  /** The open shift's stock: what's left and what ran short. Absent with no shift open. */
+  live?: { left: Record<string, number>; short: Set<string> };
   currency: string;
   menu: Product[];
   /** Every stock item, whose units are offered. */
   stockItems?: StockItem[];
   stockLists: Record<StockListField, string[]>;
   prepOnly?: boolean;
-  onSave: (item: StockItem) => Promise<boolean>;
+  /** stockNow: what the open shift has left now, for amounts changed in this sheet. */
+  onSave: (item: StockItem, stockNow?: Record<string, number>) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
   const [itemId] = useState(() => item?.id ?? crypto.randomUUID());
+  const [startsWith, setStartsWith] = useState(item?.onHand === undefined ? "" : String(item.onHand));
+  const liveLeft = item && live && item.id in live.left ? round(Math.max(0, live.left[item.id])) : undefined;
+  const [leftNow, setLeftNow] = useState(liveLeft === undefined ? "" : String(liveLeft));
+  const [leftTouched, setLeftTouched] = useState(false);
+  /** Batches made this shift from this sheet, for prep. */
+  const [batches, setBatches] = useState(0);
   const generatedSku = catalogSku("stock", itemId);
   function listName(field: StockListField, value?: string) {
     const key = stockListKey(value);
@@ -153,6 +164,18 @@ export function StockSheet({
           ? "Enter how much you get for that price."
           : "Check the usable amount. It goes from 1 to 100%.";
 
+  const batchSize = Number(batchYield);
+  // A batch made this shift takes its ingredients off what the shift has left, when there's
+  // enough on record. Ingredients the shift doesn't track are left alone.
+  const batchTakes = batches && prepared && live
+    ? (item?.prep?.uses ?? []).flatMap((use) => {
+        const ingredient = ingredients.find((i) => i.id === use.stockId);
+        const before = live.left[use.stockId];
+        const need = round(use.amount * batches);
+        if (!ingredient || before === undefined || need > before) return [];
+        return [{ item: ingredient, need, after: round(before - need) }];
+      })
+    : [];
   return (
     <RecordSheet
       noun={prepOnly || item?.prep ? "prep item" : "stock item"}
@@ -160,8 +183,8 @@ export function StockSheet({
         <>
           <p>
             {prepared
-              ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
-              : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
+              ? "Set how much you have in stock. Sales of menu items that use it take from it, and menu items that use it pick up its cost."
+              : "Set how much you have in stock, then pick it on the menu items that use it. Each sale takes from it."}
           </p>
           <p>New names under {prepared ? "Recipe details" : "Purchasing details"} are added to Stock lists when you save.</p>
         </>
@@ -186,14 +209,21 @@ export function StockSheet({
           costUpdatedOn: details.costUpdatedOn || undefined,
           notes: details.notes?.trim() || undefined,
         };
+        const onHand = countOf(startsWith);
+        const now = leftTouched ? countOf(leftNow) : undefined;
+        if ((onHand ?? 0) > 1_000_000 || (now ?? 0) > 1_000_000) throw Error("Enter an amount up to 1,000,000.");
+        const stockNow: Record<string, number> = {};
+        if (now !== undefined) stockNow[itemId] = now;
+        for (const take of batchTakes) stockNow[take.item.id] = take.after;
         return onSave({
           id: itemId,
           name: name.trim(),
           unit: unit.trim(),
+          ...(onHand !== undefined ? { onHand } : {}),
           ...(purchase ? { purchase } : {}),
           ...(prepared ? { prep: readPrep() } : {}),
           ...(Object.values(savedDetails).some((value) => value !== undefined) ? { details: savedDetails } : {}),
-        });
+        }, Object.keys(stockNow).length ? stockNow : undefined);
       })}
       onRemove={onRemove}
       onClose={onClose}
@@ -230,6 +260,75 @@ export function StockSheet({
               <button type="button" aria-pressed={prepared} onClick={() => setPrepared(true)}>Make it</button>
             </div>
             {prepared && !item?.prep && <span className="label">Once saved, it moves to Prep.</span>}
+          </div>
+        )}
+      </div>
+      <div className="card card-pad stack gap-14">
+        <h3 className="strong">Stock</h3>
+        <label className="field">
+          <span className="field-head">
+            Each shift starts with{unit.trim() ? ` (${unit.trim()})` : ""}
+            <Explain title="Each shift starts with">
+              <p>What a shift starts with when it opens. Sales of menu items that use it take from it while there's enough. At zero, sales still go through.</p>
+              <p>Counting at opening replaces it for that shift only, and closing never changes it, so every booth and shift starts from this. Leave it blank if you don't keep track.</p>
+            </Explain>
+          </span>
+          <StockQuantityInput
+            className="input"
+            unit={unit.trim()}
+            placeholder="Not tracked"
+            value={startsWith}
+            onChange={setStartsWith}
+          />
+        </label>
+        {live && (
+          <div className="field">
+            <span className="field-head">
+              Left this shift{unit.trim() ? ` (${unit.trim()})` : ""}
+              <Explain title="Left this shift">
+                <p>What the open shift has left. Change it when you restock, and sales take from the new amount from then on. Earlier sales stay as they were.</p>
+                {prepared && <p>Made a batch? Tap + 1 batch. It adds what one batch makes and takes its ingredients off this shift's stock.</p>}
+              </Explain>
+            </span>
+            <div className="row gap-8">
+              <StockQuantityInput
+                className="input grow"
+                unit={unit.trim()}
+                aria-label="Left this shift"
+                placeholder="Not tracked"
+                value={leftNow}
+                onChange={(text) => {
+                  setLeftNow(text);
+                  setLeftTouched(true);
+                }}
+              />
+              {prepared && item?.prep && (
+                <button
+                  type="button"
+                  className="btn ghost compact"
+                  disabled={!(batchSize > 0)}
+                  onClick={() => {
+                    buzz.tap();
+                    setLeftNow(String(round((countOf(leftNow) ?? 0) + batchSize)));
+                    setLeftTouched(true);
+                    setBatches((n) => n + 1);
+                  }}
+                >
+                  <Plus size={16} /> 1 batch
+                </button>
+              )}
+            </div>
+            {batches > 0 && (
+              <span className="label">
+                {plural(batches, "batch", "batches")} made.{" "}
+                {batchTakes.length
+                  ? "Takes " + andText(batchTakes.map((t) => unitText(t.need, t.item.unit) + " of " + t.item.name), 3) + " from stock."
+                  : "No tracked ingredients to take from."}
+              </span>
+            )}
+            {item && live.short.has(item.id) && !leftTouched && (
+              <span className="label">Ran out. Sales go through without taking from it until you set more.</span>
+            )}
           </div>
         )}
       </div>
@@ -428,7 +527,7 @@ export function costGap(rows: ReturnType<typeof stockUseRows>, per: "batch" | "s
 const stockFilterNames = { category: "Prep category", kind: "Stock type", supplier: "Supplier", cost: "Cost", menu: "Menu use" };
 type StockFilter = keyof typeof stockFilterNames;
 
-/** Things counted when a shift opens and closes, like a pack of strawberries or a kilo of ice. */
+/** Things sales take from, like a pack of strawberries or a kilo of ice. */
 export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepOnly?: boolean }) {
   const business = props.state.business!;
   const list = business.settings.stockItems ?? [];
@@ -438,6 +537,14 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const [editing, setEditing] = useState<StockItem | "new" | null>(null);
   const rows = list.filter((item) => Boolean(item.prep) === prepOnly);
   const rates = stockCostRates(list);
+  const live = props.state.shift && !props.state.shift.closedAt ? stockReplay(props.state.shift, props.state.sales) : undefined;
+  function stockText(item: StockItem) {
+    if (live && item.id in live.left) {
+      const left = live.left[item.id];
+      return left <= 0 || live.short.has(item.id) ? "Ran out" : unitText(left, item.unit) + " left";
+    }
+    return item.onHand === undefined ? "" : "Starts with " + unitText(item.onHand, item.unit);
+  }
   const legacy = prepOnly ? [] : stockModel([], menu).items;
   const count = rows.length + legacy.length;
   const [query, setQuery] = useState("");
@@ -477,7 +584,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       ? <>{plural(count, "thing")} <span className="g">you make ahead, counted like stock.</span></>
       : <>Make it once, <span className="g">cost it per cup.</span></>
     : count
-      ? <>{plural(count, "thing")} <span className="g">you buy, counted when a shift opens and closes.</span></>
+      ? <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>
       : <>Nothing counted yet. <span className="g">Add what runs out, like milk or ice.</span></>;
   return (
     <SubPage
@@ -486,12 +593,12 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       help={prepOnly ? (
         <>
           <p>Things you make ahead in batches, like syrups and creams. Enter what goes in and how much one batch makes, and you'll see what each unit costs.</p>
-          <p>Prep is counted at opening and closing like other stock. Already counting something you make? Open it in Stock items and choose <strong>Make it</strong>.</p>
+          <p>Set how much you have on each one. Sales take from it like other stock, and counting at opening or closing is optional. Already tracking something you make? Open it in Stock items and choose <strong>Make it</strong>.</p>
         </>
       ) : (
         <>
-          <p>What you buy and count when a shift opens and closes, like milk or ice. Menu items use them per sale, and an item sells out when its stock runs out.</p>
-          <p>New stock items are counted from the next shift. Things you make ahead are in Prep.</p>
+          <p>What you buy, like milk or ice. Set how much you have on each one. Menu items take from them on each sale while there's enough. They never stop a sale.</p>
+          <p>Counting at opening or closing is optional and updates the amounts. Things you make ahead are in Prep.</p>
         </>
       )}
       backLabel="Back to recipes"
@@ -546,7 +653,10 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                   </span>
                 }
                 title={item.name}
-                detail={prepOnly && rate === undefined ? "Not costed yet" : users.length ? "Used by " + namesText(users, 1) : "Not on the menu yet"}
+                detail={[
+                  stockText(item),
+                  prepOnly && rate === undefined ? "Not costed yet" : users.length ? "Used by " + namesText(users, 1) : "Not on the menu yet",
+                ].filter(Boolean).join(" · ")}
                 end={rate === undefined ? item.unit : `${formatStockRate(rate, business.currency)} / ${item.unit}`}
               />
             );
@@ -626,9 +736,10 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           currency={business.currency}
           prepOnly={prepOnly}
           item={editing === "new" ? undefined : editing}
+          live={live}
           menu={menu}
           onClose={() => setEditing(null)}
-          onSave={(item) =>
+          onSave={(item, now) =>
             commit.settings(
               {
                 stockItems: list.some((i) => i.id === item.id)
@@ -637,6 +748,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                 stockLists: stockListsOf({ ...business.settings, stockItems: [...list, item] }),
               },
               (editing === "new" ? "Added " : "Saved ") + item.name,
+              now,
             )
           }
           onRemove={

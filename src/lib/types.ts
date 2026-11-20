@@ -104,6 +104,11 @@ export interface StockItem {
   name: string;
   /** piece, pack, kg… */
   unit: string;
+  /**
+   * What each shift starts with, in the item's unit, unless it's counted at opening.
+   * Shifts never change it, so booths and shifts don't overwrite each other.
+   */
+  onHand?: number;
   purchase?: StockPurchase;
   prep?: StockPrep;
   details?: StockItemDetails;
@@ -131,6 +136,12 @@ export interface StockPrep {
   uses: StockUse[];
   /** Optional additional cost for the entire batch in minor currency units. */
   extraBatchCost?: number;
+}
+export interface StockSet {
+  stockId: string;
+  amount: number;
+  /** ISO time it was set. */
+  at: string;
 }
 export interface StockUse {
   stockId: string;
@@ -174,6 +185,8 @@ export interface Shift {
   stock?: Record<string, number>;
   /** What was counted at closing, by stock item id. */
   closingStock?: Record<string, number>;
+  /** Amounts on hand set during the shift, in the order they were set. Sales after each one take from it. */
+  stockSets?: StockSet[];
   /** Coins and bills in the float, by denomination in minor units, like { "500": 15 }. */
   openingCount?: Record<string, number>;
   /** Coins and bills counted at closing, the same way. */

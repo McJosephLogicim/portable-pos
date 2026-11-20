@@ -156,21 +156,22 @@ test("batch deductions let the till sell the full yield and preserve the open sh
   };
   assert.equal(shift.menu[0].costing, undefined);
   const cart = (quantity: number) => [{ productId: product.id, optionIds: [], quantity }];
-  assert.equal(canMake(shiftStock(shift), shift.stock, product.id), 6);
-  assert.doesNotThrow(() => checkStock(shift, cart(6), shift.stock));
-  assert.throws(() => checkStock(shift, cart(7), shift.stock), /Only 6 more/);
+  // Stock items never sell a menu item out or refuse an order.
+  assert.equal(canMake(shiftStock(shift), shift.stock, product.id), undefined);
+  assert.doesNotThrow(() => checkStock(shift, cart(7), shift.stock));
   const sales = [];
-  for (let i = 1; i <= 6; i++) {
+  for (let i = 1; i <= 7; i++) {
     const left = stockLeft(shift, sales);
-    assert.equal(canMake(shiftStock(shift), left, product.id), 7 - i);
     sales.push(makeSale({
       id: crypto.randomUUID(), shift, sequence: i, cart: cart(1), createdAt: shift.openedAt,
       tender: "cash", received: 100, soldOut: [], stock: left,
     }));
+    // The full yield comes off, despite fractions; the 7th sale finds nothing left to take.
+    if (i === 6) assert.deepEqual(stockLeft(shift, sales), { juice: 0, spice: 0 });
   }
   assert.deepEqual(stockLeft(shift, sales), { juice: 0, spice: 0 });
-  const withReversal = [...sales.slice(0, -1), { ...sales[5], reversedAt: shift.openedAt }];
-  assert.equal(canMake(shiftStock(shift), stockLeft(shift, withReversal), product.id), 1);
+  const withReversal = [...sales.slice(0, 5), { ...sales[5], reversedAt: shift.openedAt }];
+  assert.ok(stockLeft(shift, withReversal).juice > 0.16);
   const next = updateShiftMenu(shift, [{ ...command.menu[0], uses: [{ stockId: "juice", amount: 0.5 }] }]);
   assert.deepEqual(next.menu[0].uses, shift.menu[0].uses);
 });

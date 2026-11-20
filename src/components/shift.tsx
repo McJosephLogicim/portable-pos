@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
-import type { Booking, Business, Expense, RegisterState, Shift, StockItem } from "@/lib/types";
-import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
+import type { Booking, Business, Expense, RegisterState, Shift } from "@/lib/types";
+import { parseMoney, shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
@@ -13,7 +13,7 @@ import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
 import { RecordEmpty } from "./records";
-import { countOf, ShiftStockCount } from "./stock-count";
+import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
@@ -161,23 +161,25 @@ function OpenShift({
   const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const tracked = stockModel(business.settings.stockItems, state.menu).items;
+  const { items: tracked, limits } = stockModel(business.settings.stockItems, state.menu);
   const checklist = business.settings.checklist ?? [];
+  const saved = Object.fromEntries(tracked.flatMap((i) => (i.onHand === undefined ? [] : [[i.id, i.onHand]])));
+  const [counting, setCounting] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<string[]>([]);
   const value = cash.amount;
-  const uncounted = tracked.filter((p) => countOf(counts[p.id]) === undefined).length;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
-  const ready = value !== undefined && !uncounted && !unticked;
+  const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
+  const ready = value !== undefined && !unticked && !uncounted;
   const celebrate = useCelebrate();
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
   return (
     <div className="stack gap-18">
       <h1 className="headline">Open till</h1>
-      {(tracked.length > 0 || checklist.length > 0) && (
+      {(limits.size > 0 || checklist.length > 0) && (
         <div className="steps" role="list" aria-label="Before you open">
           <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash</em></span>
-          {tracked.length > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
+          {limits.size > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
           {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
         </div>
       )}
@@ -196,11 +198,15 @@ function OpenShift({
         <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
-        <ShiftStockCount
+        <OptionalStockCount
           title="Opening stock"
+          help="Menu items set to Count it are always counted. Stock and prep items are optional: anything you don't count starts from the amount saved on it, and sales take from it either way."
           items={tracked}
+          required={limits}
           counts={counts}
-          uncounted={uncounted}
+          expected={saved}
+          on={counting}
+          onToggle={setCounting}
           onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
         />
       )}
@@ -276,7 +282,7 @@ function OpenShift({
               await onOpen({
                 openingCash: value!,
                 ...(cash.count ? { openingCount: cash.count } : {}),
-                stock: Object.fromEntries(tracked.map((p) => [p.id, countOf(counts[p.id])!])),
+                stock: countedOnly(tracked.filter((i) => counting || limits.has(i.id)), counts),
                 checked,
                 bookingId: booking.id,
               });
@@ -289,7 +295,11 @@ function OpenShift({
             }
           }}
         >
-          {busy ? "Opening…" : "Open till"}
+          {busy
+            ? "Opening…"
+            : uncounted && value !== undefined && !unticked
+              ? `Count ${uncounted} more ${uncounted === 1 ? "item" : "items"}`
+              : "Open till"}
         </button>
       </div>
       {photo?.image && (
@@ -317,16 +327,17 @@ function CloseSheet({
   onDismiss: () => void;
 }) {
   const [cash, setCash] = useState<CashValue>({});
+  const [counting, setCounting] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const withPin = usePin();
-  const { items } = shiftStock(shift);
-  const opened = Object.keys(shift.stock ?? {});
-  const tracked = items.filter((i) => opened.includes(i.id));
+  const { items, limits } = shiftStock(shift);
   const left = stockLeft(shift, state.sales);
+  const tracked = items.filter((i) => i.id in left);
   const counted = cash.amount;
-  const uncounted = tracked.filter((i) => countOf(counts[i.id]) === undefined).length;
+  const closingStock = countedOnly(tracked.filter((i) => counting || limits.has(i.id)), counts);
+  const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
   return (
     <Sheet
       title={`Close shift ${shift.number}`}
@@ -350,9 +361,7 @@ function CloseSheet({
                 const closing: CloseInput = {
                   countedCash: counted!,
                   ...(cash.count ? { closingCount: cash.count } : {}),
-                  ...(tracked.length
-                    ? { closingStock: Object.fromEntries(tracked.map((i) => [i.id, countOf(counts[i.id])!])) }
-                    : {}),
+                  ...(Object.keys(closingStock).length ? { closingStock } : {}),
                 };
                 if (await withPin((pin) => onClose(closing, pin))) onDismiss();
               } catch (e) {
@@ -365,7 +374,7 @@ function CloseSheet({
             {busy
               ? "Closing…"
               : uncounted
-                ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
+                ? `Count ${uncounted} more ${uncounted === 1 ? "item" : "items"}`
                 : "Close shift and see report"}
           </button>
         </div>
@@ -380,12 +389,15 @@ function CloseSheet({
         <CashCounter currency={currency} label="Cash on hand" onChange={setCash} />
       </div>
       {tracked.length > 0 && (
-        <ShiftStockCount
+        <OptionalStockCount
           title="Closing stock"
+          help="Menu items set to Count it are always counted. Stock and prep items are optional: anything you don't count is saved as what today's sales left, and the next shift starts from there."
           items={tracked}
+          required={limits}
           counts={counts}
-          uncounted={uncounted}
           expected={left}
+          on={counting}
+          onToggle={setCounting}
           onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
         />
       )}
@@ -532,7 +544,8 @@ export function ShiftScreen({
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
-  const remainingStock = shift ? Object.entries(stockLeft(shift, state.sales)) : [];
+  const replay = shift ? stockReplay(shift, state.sales) : undefined;
+  const remainingStock = replay ? Object.entries(replay.left) : [];
   const paymentMethods = totals?.methods.filter((m) => m.count) ?? [];
   const pastLabels = [...new Set([...expenses.map((e) => e.label), ...expenseIdeas])];
   const total = useCountUp(totals?.total ?? 0);
@@ -673,13 +686,14 @@ export function ShiftScreen({
               </button>
             </div>
           </div>
-          {shift.stock && Object.keys(shift.stock).length > 0 && (
+          {remainingStock.length > 0 && (
             <div className="stack gap-10">
               <p className="group-title">Stock left</p>
               <div className="card card-list">
                 {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
                   const item = shiftStock(shift).items.find((i) => i.id === id);
-                  const opened = shift.stock![id];
+                  const opened = replay!.start[id];
+                  const out = left <= 0 || replay!.short.has(id);
                   return (
                     <div className="list-row" key={id}>
                       <span className="grow stack">
@@ -688,8 +702,8 @@ export function ShiftScreen({
                           <i style={progressStyle(opened ? Math.max(0, left / opened) * 100 : 0)} />
                         </span>
                       </span>
-                      <span className={"num" + (left <= 0 ? " g" : "")}>
-                        {left <= 0 ? "Out" : `${unitText(left, item?.unit ?? "piece")} left`}
+                      <span className={"num" + (out ? " g" : "")}>
+                        {out ? "Ran out" : `${unitText(left, item?.unit ?? "piece")} left`}
                       </span>
                     </div>
                   );
