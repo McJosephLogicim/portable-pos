@@ -37,6 +37,7 @@ export interface Settings {
   checklist?: ChecklistItem[];
   /** Things counted at opening and closing. */
   stockItems?: StockItem[];
+  pricing?: PricingRules;
   /** The business logo, an image address. */
   logo?: string;
   /** Brand color as #rrggbb. Buttons, highlights and dark cards take it. */
@@ -85,6 +86,14 @@ export interface ProductCosting {
   /** Minor currency units for one serving. */
   laborPerServing?: number;
   otherPerServing?: number;
+  targetMargin?: number;
+  sku?: string;
+  notes?: string;
+}
+export interface PricingRules {
+  targetMargin: number;
+  /** Minor currency units. */
+  roundingIncrement: number;
 }
 /** Something counted at opening and closing, like a strawberry pack or a kilo of ice. */
 export interface StockItem {
@@ -94,6 +103,16 @@ export interface StockItem {
   unit: string;
   purchase?: StockPurchase;
   prep?: StockPrep;
+  details?: StockItemDetails;
+}
+export interface StockItemDetails {
+  sku?: string;
+  category?: string;
+  kind?: "ingredient" | "packaging" | "consumable";
+  packDescription?: string;
+  supplier?: string;
+  costUpdatedOn?: string;
+  notes?: string;
 }
 export interface StockPurchase {
   /** Cost of the whole pack, in minor currency units. */
@@ -113,6 +132,7 @@ export interface StockPrep {
 export interface StockUse {
   stockId: string;
   amount: number;
+  notes?: string;
 }
 export interface Expense {
   id: string;
@@ -214,6 +234,8 @@ export interface Member {
   /** Default pay for one shift, in minor units. */
   rate: number;
   owner: boolean;
+  /** The account that created the business. */
+  primaryOwner?: boolean;
   /** True once they signed in with the invited email. */
   joined: boolean;
   photo?: string;

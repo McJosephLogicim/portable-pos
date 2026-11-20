@@ -16,7 +16,7 @@ export interface Actor {
 type BusinessRow = typeof businesses.$inferSelect;
 type MemberRow = typeof members.$inferSelect;
 
-export function presentMember(row: MemberRow): Member {
+export function presentMember(row: MemberRow, primaryOwnerId: string): Member {
   return {
     id: row.id,
     name: row.name,
@@ -24,6 +24,7 @@ export function presentMember(row: MemberRow): Member {
     roles: row.roles,
     rate: row.rate,
     owner: row.owner,
+    ...(row.userId === primaryOwnerId ? { primaryOwner: true } : {}),
     joined: Boolean(row.userId),
     ...(row.photo ? { photo: row.photo } : {}),
   };
@@ -106,7 +107,7 @@ export async function listBusinesses(tx: Transaction, actor: Actor): Promise<Bus
 /**
  * Find the business this person is working in and lock it. Owners get a team row the
  * first time. An invited person joins the first time they sign in with that email.
- * Without a business id, the first business they own, or else the first they joined.
+ * Without a business id, prefer a business they created. Access changes don't switch registers.
  */
 export async function resolveAccess(
   tx: Transaction,
@@ -125,7 +126,7 @@ export async function resolveAccess(
     .from(members)
     .innerJoin(businesses, eq(businesses.id, members.businessId))
     .where(mine)
-    .orderBy(desc(members.owner), asc(businesses.createdAt), asc(businesses.id))
+    .orderBy(desc(eq(businesses.ownerId, actor.id)), asc(businesses.createdAt), asc(businesses.id))
     .limit(1)
     .then((rows) => rows.map((r) => r.members));
   if (!member && !lock) {
@@ -157,7 +158,11 @@ export async function resolveAccess(
   if (!member) return null;
   const query = tx.select().from(businesses).where(eq(businesses.id, member.businessId));
   const [business] = await (lock ? query.for("update") : query);
-  return business ? { business, member } : null;
+  if (business && lock) {
+    // Access can change while this request waits for the business lock.
+    [member] = await tx.select().from(members).where(eq(members.id, member.id));
+  }
+  return business && member ? { business, member } : null;
 }
 
 /** Run a team or schedule command against the locked business. */
@@ -186,7 +191,7 @@ export async function runPlan(
   ];
   for (const row of rows) loaded.set(row.id, presentBooking(row));
   const before = {
-    members: memberRows.map(presentMember),
+    members: memberRows.map((member) => presentMember(member, business.ownerId)),
     organizers: business.organizers,
     bookings: [...loaded.values()],
   };
@@ -220,7 +225,7 @@ export async function runPlan(
     else if (JSON.stringify(old) !== JSON.stringify(m))
       await tx
         .update(members)
-        .set({ name: m.name, roles: ["cashier", "server"], rate: m.rate })
+        .set({ name: m.name, roles: ["cashier", "server"], rate: m.rate, owner: m.owner })
         .where(eq(members.id, m.id));
   }
   if (JSON.stringify(after.organizers) !== JSON.stringify(before.organizers))

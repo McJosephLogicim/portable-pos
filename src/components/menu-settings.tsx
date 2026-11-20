@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
-import type { OptionGroup, Product, ProductCosting, StockItem } from "@/lib/types";
+import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
-import { maxBatchServings, menuRecipeCost } from "@/lib/stock";
+import { catalogSku, maxBatchServings, menuRecipeCost, pricingRules, readTargetMargin } from "@/lib/stock";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
+import { MenuCostingOverview } from "./recipe-costing";
 import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
@@ -169,6 +170,7 @@ export function ItemSheet({
   counted = [],
   stockItems = [],
   costItems,
+  pricing: savedPricing,
   canCreateStock = false,
   onSave,
   onRemove,
@@ -182,6 +184,7 @@ export function ItemSheet({
   stockItems?: StockItem[];
   /** Current cost sources when the till limits selection to its opening stock. */
   costItems?: StockItem[];
+  pricing?: PricingRules;
   /** New stock item names typed here can be added to Settings when the item saves. */
   canCreateStock?: boolean;
   currency: string;
@@ -201,6 +204,11 @@ export function ItemSheet({
   onClose: () => void;
 }) {
   const [itemId] = useState(() => product?.id ?? crypto.randomUUID());
+  const generatedSku = catalogSku("product", itemId);
+  const [sku, setSku] = useState(product?.costing?.sku ?? generatedSku);
+  const [notes, setNotes] = useState(product?.costing?.notes ?? "");
+  const [marginOverride, setMarginOverride] = useState(String(product?.costing?.targetMargin ?? ""));
+  const pricing = pricingRules(currency, savedPricing);
   const [name, setName] = useState(product?.name ?? "");
   const [mode, setMode] = useState<StockMode>(product?.uses?.length ? "uses" : product?.stock ? "count" : "off");
   const [uses, setUses] = useState(() => {
@@ -263,6 +271,13 @@ export function ItemSheet({
   const recipeCosts = costRows.filter(({ draft }) => draft.name.trim()).map(({ cost }) => cost);
   const showCostPreview = !simple && (batchEnabled || recipeCosts.length > 0 || Boolean(labor || other));
   const optionalMoney = (value: string) => value === "" ? undefined : parseMoney(value, currency);
+  const readMarginOverride = () => marginOverride.trim() ? readTargetMargin(marginOverride) : undefined;
+  let previewTarget: number | undefined;
+  try {
+    previewTarget = readMarginOverride() ?? pricing.targetMargin;
+  } catch {
+    // Keep the cost visible while the margin override is being edited.
+  }
   let totalCost: ReturnType<typeof menuRecipeCost>;
   if (showCostPreview) {
     try {
@@ -285,6 +300,9 @@ export function ItemSheet({
   function readCosting(): ProductCosting | undefined {
     const laborPerServing = optionalMoney(labor);
     const otherPerServing = optionalMoney(other);
+    const targetMargin = readMarginOverride();
+    const savedSku = sku.trim() && sku.trim() !== generatedSku ? sku.trim() : undefined;
+    const savedNotes = notes.trim() || undefined;
     let batch: ProductCosting["batch"];
     if (batchEnabled) {
       const servings = Number(batchServings);
@@ -294,11 +312,14 @@ export function ItemSheet({
       if (!uses.length) throw Error("Add at least one ingredient to the batch recipe.");
       batch = { servings, uses };
     }
-    if (!batch && laborPerServing === undefined && otherPerServing === undefined) return undefined;
+    if (!batch && laborPerServing === undefined && otherPerServing === undefined && targetMargin === undefined && !savedSku && !savedNotes) return undefined;
     return {
       ...(batch ? { batch } : {}),
       ...(laborPerServing !== undefined ? { laborPerServing } : {}),
       ...(otherPerServing !== undefined ? { otherPerServing } : {}),
+      ...(targetMargin !== undefined ? { targetMargin } : {}),
+      ...(savedSku ? { sku: savedSku } : {}),
+      ...(savedNotes ? { notes: savedNotes } : {}),
     };
   }
 
@@ -491,12 +512,37 @@ export function ItemSheet({
           <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
           <MoneyField label="Cups, lids, other" value={other} onChange={setOther} currency={currency} />
         </div>
+        <label className="field">
+          <span>Target margin override (%)</span>
+          <input
+            className="input"
+            inputMode="decimal"
+            maxLength={12}
+            placeholder={`Business default (${pricing.targetMargin}%)`}
+            value={marginOverride}
+            onChange={(e) => setMarginOverride(e.target.value)}
+          />
+        </label>
         {showCostPreview ? (
-          <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} />
+          <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
         ) : (
           <p className="cost-missing">Set Stock to Uses stock, or turn on Made in batches, to see what it costs you.</p>
         )}
       </section>}
+
+      {!simple && <details className="card card-pad">
+        <summary className="strong">Recipe details</summary>
+        <div className="stack gap-14 recipe-details-fields">
+          <label className="field">
+            <span>SKU</span>
+            <input className="input" maxLength={64} value={sku} onChange={(e) => setSku(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Notes</span>
+            <textarea className="input" aria-label="Notes" rows={2} maxLength={400} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+        </div>
+      </details>}
 
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
@@ -556,7 +602,7 @@ export function ItemSheet({
   );
 }
 
-export function MenuPage(props: RecipesProps) {
+export function MenuPage({ costingView = false, ...props }: RecipesProps & { costingView?: boolean }) {
   const business = props.state.business!;
   const simple = isSimpleMode(business.settings);
   const menu = props.state.menu;
@@ -581,79 +627,92 @@ export function MenuPage(props: RecipesProps) {
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   return (
     <SubPage
-      title="Menu items"
-      help={
+      title={costingView ? "Menu costing" : "Menu items"}
+      help={costingView ? undefined : (
         <>
           <p>New items and changes to names, prices and options go live on Sell right away.</p>
           <p>Removing an item, or changing the stock it uses, takes effect when the next shift opens. To stop selling something now, mark it sold out on Sell.</p>
         </>
-      }
+      )}
       backLabel="Back to recipes"
-      sentence={
+      sentence={costingView ? undefined : (
         <>
           {plural(menu.length, "item")} <span className="g">for sale.</span>
         </>
-      }
+      )}
       onBack={() => props.onPage(null)}
     >
-      <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
-      {!menu.length && (
-        <RecordEmpty
-          icon={<LayoutGrid size={22} strokeWidth={1.6} />}
-          title="No items yet"
-          text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
+      {costingView ? (
+        <MenuCostingOverview
+          business={business}
+          menu={menu}
+          online={props.online}
+          onEdit={setEditing}
+          onPricing={() => props.onPage("pricing")}
+          onMenu={() => props.onPage("menu")}
         />
-      )}
-      {menu.length > 0 && (
-        <RecordSearch
-          count={menu.length}
-          noun="items"
-          query={query}
-          onQuery={setQuery}
-          filters={{
-            label: "Categories",
-            options: categories,
-            value: tab,
-            onChange: setTab,
-            onNew: () => setNewCategory(true),
-            newDisabled: !props.online,
-          }}
-        />
-      )}
-      {menu.length > 0 && !grouped.some((g) => g.items.length) && (
-        <RecordNoMatch
-          query={query}
-          onClear={() => {
-            setQuery("");
-            setTab(null);
-          }}
-        />
-      )}
-      {grouped
-        .filter((g) => g.items.length)
-        .map((g) => (
-          <RecordGroup key={g.name || "none"} title={tab ? undefined : g.name || (categories.length ? "No category" : undefined)}>
-            {g.items.map((p) => (
-              <RecordRow
-                key={p.id}
-                disabled={!props.online}
-                onClick={() => setEditing(p)}
-                lead={<Thumb src={p.image} />}
-                title={p.name}
-                detail={detailOf(p)}
-                end={<Money value={p.price} currency={business.currency} />}
-              />
+      ) : (
+        <>
+          <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
+          {!menu.length && (
+            <RecordEmpty
+              icon={<LayoutGrid size={22} strokeWidth={1.6} />}
+              title="No items yet"
+              text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
+            />
+          )}
+          {menu.length > 0 && (
+            <RecordSearch
+              count={menu.length}
+              noun="items"
+              query={query}
+              onQuery={setQuery}
+              filters={{
+                label: "Categories",
+                options: categories,
+                value: tab,
+                onChange: setTab,
+                onNew: () => setNewCategory(true),
+                newDisabled: !props.online,
+              }}
+            />
+          )}
+          {menu.length > 0 && !grouped.some((g) => g.items.length) && (
+            <RecordNoMatch
+              query={query}
+              onClear={() => {
+                setQuery("");
+                setTab(null);
+              }}
+            />
+          )}
+          {grouped
+            .filter((g) => g.items.length)
+            .map((g) => (
+              <RecordGroup key={g.name || "none"} title={tab ? undefined : g.name || (categories.length ? "No category" : undefined)}>
+                {g.items.map((p) => (
+                  <RecordRow
+                    key={p.id}
+                    disabled={!props.online}
+                    onClick={() => setEditing(p)}
+                    lead={<Thumb src={p.image} />}
+                    title={p.name}
+                    detail={detailOf(p)}
+                    end={<Money value={p.price} currency={business.currency} />}
+                  />
+                ))}
+              </RecordGroup>
             ))}
-          </RecordGroup>
-        ))}
-      {(!props.online || !live) && (
-        <p className="label">
-          {!props.online
-            ? "Connect to edit the menu."
-            : props.state.shift
-              ? "Changes reach the register when the next shift opens."
-              : "Changes reach the register when you open the next shift."}
-        </p>
+          {(!props.online || !live) && (
+            <p className="label">
+              {!props.online
+                ? "Connect to edit the menu."
+                : props.state.shift
+                  ? "Changes reach the register when the next shift opens."
+                  : "Changes reach the register when you open the next shift."}
+            </p>
+          )}
+        </>
       )}
       {editing && (
         <ItemSheet
@@ -666,6 +725,7 @@ export function MenuPage(props: RecipesProps) {
           liveShift={live}
           counted={Object.keys(props.state.shift?.stock ?? {})}
           stockItems={business.settings.stockItems}
+          pricing={business.settings.pricing}
           canCreateStock
           onClose={() => setEditing(null)}
           onSave={(item, counts, created = []) =>

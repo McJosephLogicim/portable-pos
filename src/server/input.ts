@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkSettings } from "../lib/settings";
-import { checkPrepRecipes, maxBatchServings } from "../lib/stock";
+import { checkPrepRecipes, duplicateSku, maxBatchServings } from "../lib/stock";
 import { planActions } from "../lib/team";
 import { ensure } from "./errors";
 
@@ -8,7 +8,10 @@ const key = z.string().trim().min(1).max(128);
 const name = z.string().trim().min(1).max(120);
 const pin = z.string().regex(/^\d{4,8}$/, "Use a 4 to 8 digit owner PIN.");
 const amount = z.number().int().min(0).max(2147483647);
-const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000) });
+const sku = z.string().trim().min(1).max(64).optional();
+const notes = z.string().trim().max(400).optional();
+const margin = z.number().min(0).lt(100);
+const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000), notes: z.string().trim().max(160).optional() });
 const product = z.object({
   id: key,
   name,
@@ -33,6 +36,9 @@ const product = z.object({
     }).optional(),
     laborPerServing: amount.optional(),
     otherPerServing: amount.optional(),
+    targetMargin: margin.optional(),
+    sku,
+    notes,
   }).optional(),
   groups: z
     .array(
@@ -146,10 +152,20 @@ const settings = z.object({
           uses: z.array(stockUse).min(1).max(20),
           extraBatchCost: amount.optional(),
         }).optional(),
+        details: z.object({
+          sku,
+          category: z.string().trim().max(60).optional(),
+          kind: z.enum(["ingredient", "packaging", "consumable"]).optional(),
+          packDescription: z.string().trim().max(120).optional(),
+          supplier: z.string().trim().max(120).optional(),
+          costUpdatedOn: z.iso.date().optional(),
+          notes,
+        }).optional(),
       }),
     )
     .max(100)
     .optional(),
+  pricing: z.object({ targetMargin: margin, roundingIncrement: amount.min(1) }).optional(),
   logo: z.string().max(512).regex(/^\/(?!\/)/).optional(),
   brand: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
   font: z.string().regex(/^[a-z-]{1,24}$/).optional(),
@@ -213,6 +229,7 @@ export const planCommand = z.discriminatedUnion("action", [
     memberId: z.uuid(),
     name,
     rate: amount,
+    owner: z.boolean().optional(),
     pin: ownerPin,
   }),
   z.object({ action: z.literal("removeMember"), memberId: z.uuid(), pin: ownerPin }),
@@ -346,6 +363,8 @@ export function parseCommand(input: unknown) {
     try {
       checkSettings(value.settings);
       checkPrepRecipes(value.settings.stockItems);
+      const duplicate = duplicateSku(value.settings.stockItems?.map((item) => item.details?.sku) ?? []);
+      if (duplicate) throw Error(`Stock SKU ${duplicate} is already in use.`);
     } catch (error) {
       ensure(false, (error as Error).message);
     }
@@ -362,6 +381,8 @@ export function parseCommand(input: unknown) {
     }
   }
   if (value.action === "menu") {
+    const duplicate = duplicateSku(value.menu.map((item) => item.costing?.sku));
+    if (duplicate) ensure(false, `Menu SKU ${duplicate} is already in use.`);
     ensure(
       Buffer.byteLength(JSON.stringify(value.menu), "utf8") <= 350_000,
       "This menu is too large for an offline till.",

@@ -1158,13 +1158,6 @@ export function SettingsScreen(props: SettingsProps) {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [page]);
-  if (page === "business") return <BusinessPage {...props} />;
-  if (page === "payments") return <PaymentsPage {...props} />;
-  if (page === "discounts") return <DiscountsPage {...props} />;
-  if (page === "currency") return <CurrencyPage {...props} />;
-  if (!simple && page === "organizers") return <OrganizersPage {...props} />;
-  if (!simple && page === "checklist") return <ChecklistPage {...props} />;
-  if (page === "team") return <TeamPage {...props} />;
   const me = state.me;
   if (me && !me.owner)
     return (
@@ -1190,6 +1183,13 @@ export function SettingsScreen(props: SettingsProps) {
         </div>
       </div>
     );
+  if (page === "business") return <BusinessPage {...props} />;
+  if (page === "payments") return <PaymentsPage {...props} />;
+  if (page === "discounts") return <DiscountsPage {...props} />;
+  if (page === "currency") return <CurrencyPage {...props} />;
+  if (!simple && page === "organizers") return <OrganizersPage {...props} />;
+  if (!simple && page === "checklist") return <ChecklistPage {...props} />;
+  if (page === "team") return <TeamPage {...props} />;
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;

@@ -2722,8 +2722,50 @@ html {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.recipe-price-fields {
+.recipe-price-fields,
+.recipe-details-fields {
   margin-top: 10px;
+}
+.recipe-details-fields textarea {
+  resize: vertical;
+}
+.costing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.costing-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.costing-grid dt {
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+.costing-grid dd {
+  margin-top: 2px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.costing-entry {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 14px;
+}
+.costing-entry + .costing-entry {
+  border-top: 1px solid var(--line);
+}
+.costing-title {
+  padding: 3px 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.costing-title .chev {
+  flex: none;
+  color: var(--ink-secondary);
 }
 @media (max-width: 360px) {
   .stock-row .well {

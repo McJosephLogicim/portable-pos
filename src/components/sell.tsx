@@ -1269,6 +1269,7 @@ export function SellScreen({
           counted={Object.keys(shift.stock ?? {})}
           stockItems={shift.settings.stockItems}
           costItems={business.settings.stockItems}
+          pricing={business.settings.pricing}
           onClose={() => setAdding(false)}
           onSave={async (item, counts) => {
             const done = await withPin((pin) => onMenu(saveMenuItem(state.menu, item), pin, counts));

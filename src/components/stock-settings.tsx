@@ -5,8 +5,8 @@ import { CookingPot, Minus, Package, Plus, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
 import { amountText, parseMoney } from "@/lib/domain";
 import { currencyDigits } from "@/lib/settings";
-import { menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units } from "@/lib/stock";
-import type { Product, StockItem, StockPrep, StockPurchase, StockUse } from "@/lib/types";
+import { catalogSku, menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units } from "@/lib/stock";
+import type { PricingRules, Product, StockItem, StockItemDetails, StockPrep, StockPurchase, StockUse } from "@/lib/types";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { buzz, Explain, formatMoney, MoneyField } from "./ui";
@@ -43,6 +43,9 @@ export function StockSheet({
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
+  const [itemId] = useState(() => item?.id ?? crypto.randomUUID());
+  const generatedSku = catalogSku("stock", itemId);
+  const [details, setDetails] = useState<StockItemDetails>(item?.details ?? {});
   const [name, setName] = useState(item?.name ?? "");
   const [unit, setUnit] = useState(item?.unit ?? (prepOnly ? "L" : "pack"));
   const [prepared, setPrepared] = useState(prepOnly || Boolean(item?.prep));
@@ -133,12 +136,23 @@ export function StockSheet({
         if (item && unit.trim() !== item.unit && (recipeUsers.length || ((prepared || item.prep) && users.length)))
           throw Error("Update the recipes that use this item before changing its unit.");
         const purchase = prepared ? undefined : readPurchase();
+        const sku = details.sku?.trim();
+        const savedDetails = {
+          sku: sku && sku !== generatedSku ? sku : undefined,
+          category: details.category?.trim() || undefined,
+          kind: details.kind,
+          packDescription: details.packDescription?.trim() || undefined,
+          supplier: details.supplier?.trim() || undefined,
+          costUpdatedOn: details.costUpdatedOn || undefined,
+          notes: details.notes?.trim() || undefined,
+        };
         return onSave({
-          id: item?.id ?? crypto.randomUUID(),
+          id: itemId,
           name: name.trim(),
           unit: unit.trim(),
           ...(purchase ? { purchase } : {}),
           ...(prepared ? { prep: readPrep() } : {}),
+          ...(Object.values(savedDetails).some((value) => value !== undefined) ? { details: savedDetails } : {}),
         });
       })}
       onRemove={onRemove && (() => void run(onRemove))}
@@ -250,6 +264,49 @@ export function StockSheet({
           )}
         </div>
       )}
+      <details className="card card-pad">
+        <summary className="strong">{prepared ? "Recipe details" : "Purchasing details"}</summary>
+        <div className="stack gap-14 recipe-details-fields">
+          <label className="field">
+            <span>SKU</span>
+            <input className="input" maxLength={64} value={details.sku ?? generatedSku} onChange={(e) => setDetails({ ...details, sku: e.target.value })} />
+          </label>
+          {prepared ? (
+            <label className="field">
+              <span>Prep category</span>
+              <input className="input" maxLength={60} value={details.category ?? ""} onChange={(e) => setDetails({ ...details, category: e.target.value })} />
+            </label>
+          ) : (
+            <>
+              <label className="field">
+                <span>Stock type</span>
+                <select className="input" aria-label="Stock type" value={details.kind ?? ""} onChange={(e) => setDetails({ ...details, kind: (e.target.value || undefined) as StockItemDetails["kind"] })}>
+                  <option value="">Unspecified</option>
+                  <option value="ingredient">Ingredient</option>
+                  <option value="packaging">Packaging</option>
+                  <option value="consumable">Consumable</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Purchase / pack description</span>
+                <input className="input" maxLength={120} value={details.packDescription ?? ""} onChange={(e) => setDetails({ ...details, packDescription: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Supplier / source</span>
+                <input className="input" maxLength={120} value={details.supplier ?? ""} onChange={(e) => setDetails({ ...details, supplier: e.target.value })} />
+              </label>
+              <label className="field">
+                <span>Cost last updated</span>
+                <input className="input" type="date" max="9999-12-31" value={details.costUpdatedOn ?? ""} onChange={(e) => setDetails({ ...details, costUpdatedOn: e.target.value })} />
+              </label>
+            </>
+          )}
+          <label className="field">
+            <span>Notes</span>
+            <textarea className="input" aria-label="Notes" rows={2} maxLength={400} value={details.notes ?? ""} onChange={(e) => setDetails({ ...details, notes: e.target.value })} />
+          </label>
+        </div>
+      </details>
       <p className="label">
         {item
           ? users.length
@@ -522,7 +579,7 @@ export const countOf = (text: string | undefined) => {
 };
 
 
-export type UseDraft = { key: string; stockId?: string; name: string; amount: string; unit: string };
+export type UseDraft = { key: string; stockId?: string; name: string; amount: string; unit: string; notes?: string };
 
 export const blankUseDraft = (): UseDraft => ({ key: crypto.randomUUID(), name: "", amount: "1", unit: "pack" });
 
@@ -548,7 +605,7 @@ function useAmount(value: string) {
 export function useDrafts(uses: StockUse[] | undefined, stockItems: StockItem[]): UseDraft[] {
   return (uses ?? []).flatMap((u) => {
     const item = stockItems.find((s) => s.id === u.stockId);
-    return item ? [{ key: u.stockId, stockId: u.stockId, name: item.name, amount: String(u.amount), unit: item.unit }] : [];
+    return item ? [{ key: u.stockId, stockId: u.stockId, name: item.name, amount: String(u.amount), unit: item.unit, notes: u.notes }] : [];
   });
 }
 
@@ -671,6 +728,15 @@ export function UsesEditor({
             {batch ? "Each batch" : "Each sale"}
             {showCosts && u.name.trim() && (cost === undefined ? " · no cost yet" : " · " + formatMoney(Math.round(cost), currency))}
           </p>
+          {u.name.trim() && (
+            <details className="label">
+              <summary>{u.notes?.trim() ? "Ingredient note" : "Add ingredient note"}</summary>
+              <label className="field recipe-details-fields">
+                <span>Note for {u.name.trim()}</span>
+                <textarea className="input" rows={2} maxLength={160} value={u.notes ?? ""} onChange={(e) => set(u.key, { notes: e.target.value })} />
+              </label>
+            </details>
+          )}
         </div>
       ))}
       <button
@@ -685,19 +751,23 @@ export function UsesEditor({
   );
 }
 
-export function CostPreview({ currency, total, batch, missing }: {
+export function CostPreview({ currency, total, batch, missing, pricing, target }: {
   currency: string;
   total: ReturnType<typeof menuRecipeCost>;
   batch: boolean;
   /** What to do next when the cost can't be worked out yet. */
   missing?: string;
+  pricing: PricingRules;
+  target: number | undefined;
 }) {
-  const [target, setTarget] = useState("70");
-  const [increment, setIncrement] = useState(currency === "PHP" ? "5" : "1");
+  const [trialMargin, setTrialMargin] = useState<string>();
+  const [trialIncrement, setTrialIncrement] = useState<string>();
   let suggested: number | undefined;
-  if (total && target && increment) {
+  if (total) {
     try {
-      suggested = suggestedPrice(total.cost, Number(target), parseMoney(increment, currency));
+      const margin = trialMargin ? Number(trialMargin) : target;
+      const increment = trialIncrement ? parseMoney(trialIncrement, currency) : pricing.roundingIncrement;
+      if (margin !== undefined) suggested = suggestedPrice(total.cost, margin, increment);
     } catch {
       // The preview updates once the rounding amount is valid.
     }
@@ -717,6 +787,10 @@ export function CostPreview({ currency, total, batch, missing }: {
         <span className="num">{formatCost(total.cost)}</span>
       </div>
       <dl className="stack gap-8 label">
+        <div className="between">
+          <dt>Cost % of price</dt>
+          <dd className="strong">{total.costRatio === undefined ? "—" : percent(total.costRatio)}</dd>
+        </div>
         <div className="between">
           <dt>You keep per serving</dt>
           <dd className="strong">{total.profit === undefined ? "—" : formatCost(total.profit)}</dd>
@@ -741,12 +815,13 @@ export function CostPreview({ currency, total, batch, missing }: {
       </dl>
       <details className="label">
         <summary className="strong">Suggested price{suggested === undefined ? "" : ` · ${formatMoney(suggested, currency)}`}</summary>
+        <p className="label">Try different values for this estimate.</p>
         <div className="grid-2 recipe-price-fields">
           <label className="field">
-            <span>Margin you want (%)</span>
-            <input className="input" inputMode="decimal" value={target} onChange={(e) => setTarget(decimalEntry(e.target.value))} />
+            <span>Try a margin (%)</span>
+            <input className="input" inputMode="decimal" placeholder={target?.toString()} value={trialMargin ?? ""} onChange={(e) => setTrialMargin(decimalEntry(e.target.value))} />
           </label>
-          <MoneyField label="Round up to" value={increment} onChange={setIncrement} currency={currency} />
+          <MoneyField label="Try rounding up to" placeholder={amountText(pricing.roundingIncrement, currency)} value={trialIncrement ?? ""} onChange={setTrialIncrement} currency={currency} />
         </div>
       </details>
     </div>
@@ -770,7 +845,8 @@ export function resolveUses(drafts: UseDraft[], stockItems: StockItem[], allowCr
       created.push(item);
     }
     if (uses.some((u) => u.stockId === item!.id)) throw Error(name + " is listed twice.");
-    uses.push({ stockId: item.id, amount });
+    const notes = d.notes?.trim();
+    uses.push({ stockId: item.id, amount, ...(notes ? { notes } : {}) });
   }
   return { uses, created };
 }
