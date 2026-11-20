@@ -19,6 +19,7 @@ import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
 import { OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import {
+  ConfirmSheet,
   errorText,
   formatMoney,
   MethodIcon,
@@ -679,7 +680,7 @@ export function ShiftScreen({
   const [detail, setDetail] = useState<{ id: string; justClosed?: boolean } | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
   const [report, setReport] = useState(false);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Expense | null>(null);
   const [linking, setLinking] = useState(false);
   const [method, setMethod] = useState<string | null>(null);
   const [allExpenses, setAllExpenses] = useState(false);
@@ -804,30 +805,17 @@ export function ShiftScreen({
                     </span>
                   </span>
                   <Money value={e.amount} currency={currency} />
-                  {removing === e.id ? (
-                      <button
-                        type="button"
-                        className="btn ghost danger compact"
-                        onClick={async () => {
-                          setRemoving(null);
-                          await onUnexpense(e.id);
-                        }}
-                      >
-                        Remove
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="round flat"
-                        aria-label={"Remove " + e.label}
-                        onClick={() => {
-                          buzz.tap();
-                          setRemoving(e.id);
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                  )}
+                  <button
+                    type="button"
+                    className="round flat"
+                    aria-label={"Remove " + e.label}
+                    onClick={() => {
+                      buzz.tap();
+                      setRemoving(e);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               ))}
               {!shiftExpenses.length && (
@@ -1021,6 +1009,15 @@ export function ShiftScreen({
           name={state.me?.name ?? ""}
           onSave={onExpense}
           onDismiss={() => setAddingExpense(false)}
+        />
+      )}
+      {removing && (
+        <ConfirmSheet
+          title="Remove expense?"
+          detail={`${removing.label} (${formatMoney(removing.amount, currency)}) will come out of the shift’s expense total.`}
+          confirmLabel="Remove expense"
+          onClose={() => setRemoving(null)}
+          onConfirm={() => onUnexpense(removing.id)}
         />
       )}
       {report && shift && (

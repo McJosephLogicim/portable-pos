@@ -37,6 +37,7 @@ import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import {
   buzz,
+  ConfirmSheet,
   errorText,
   formatMoney,
   MethodIcon,
@@ -553,7 +554,9 @@ function MethodSheet({
   const [name, setName] = useState(method?.name ?? "");
   const [kind, setKind] = useState<PaymentKind>(method?.kind ?? "wallet");
   const [proof, setProof] = useState(Boolean(method?.proof));
+  const [removing, setRemoving] = useState(false);
   return (
+    <>
     <Sheet
       title={method ? "Edit method" : "New payment method"}
       onClose={onClose}
@@ -579,10 +582,7 @@ function MethodSheet({
             <button
               className="btn ghost danger compact block"
               disabled={!canRemove}
-              onClick={() => {
-                onRemove();
-                onClose();
-              }}
+              onClick={() => setRemoving(true)}
             >
               <Trash2 size={16} /> Remove {method.name}
             </button>
@@ -636,6 +636,19 @@ function MethodSheet({
         </div>
       )}
     </Sheet>
+    {removing && method && onRemove && (
+      <ConfirmSheet
+        title="Remove payment method?"
+        detail={`${method.name} will be removed when you save your payment methods.`}
+        confirmLabel="Remove method"
+        onClose={() => setRemoving(false)}
+        onConfirm={() => {
+          onRemove();
+          onClose();
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -752,6 +765,7 @@ function DiscountSheet({
   const [name, setName] = useState(discount?.name ?? "");
   const [type, setType] = useState<Discount["type"]>(discount?.type ?? "percent");
   const [proof, setProof] = useState(Boolean(discount?.proof));
+  const [removing, setRemoving] = useState(false);
   const [value, setValue] = useState(
     discount
       ? discount.type === "percent"
@@ -774,6 +788,7 @@ function DiscountSheet({
     }
   }
   return (
+    <>
     <Sheet
       title={discount ? "Edit discount" : "New discount"}
       onClose={onClose}
@@ -799,10 +814,7 @@ function DiscountSheet({
           {onRemove && (
             <button
               className="btn ghost danger compact block"
-              onClick={() => {
-                onRemove();
-                onClose();
-              }}
+              onClick={() => setRemoving(true)}
             >
               <Trash2 size={16} /> Remove discount
             </button>
@@ -878,6 +890,19 @@ function DiscountSheet({
       </div>
       {problem && <p className="alert">{problem}</p>}
     </Sheet>
+    {removing && discount && onRemove && (
+      <ConfirmSheet
+        title="Remove discount?"
+        detail={`${discount.name} will be removed when you save your discounts.`}
+        confirmLabel="Remove discount"
+        onClose={() => setRemoving(false)}
+        onConfirm={() => {
+          onRemove();
+          onClose();
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -1095,12 +1120,8 @@ function ProfileCard(props: SettingsProps) {
           onError={setError}
           onChange={async (photo) => {
             setError("");
-            try {
-              await props.onAction({ action: "profile", photo: photo ?? null });
-              props.onSaved(photo ? "Photo saved" : "Photo removed");
-            } catch (e) {
-              setError(errorText(e));
-            }
+            await props.onAction({ action: "profile", photo: photo ?? null });
+            props.onSaved(photo ? "Photo saved" : "Photo removed");
           }}
         />
         <span className="grow stack" style={{ minWidth: 0 }}>

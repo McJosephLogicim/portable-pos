@@ -12,6 +12,7 @@ import { PricingRulesPage } from "./recipe-costing";
 export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing";
 
 export interface RecipesProps extends EditorProps {
+  onRemoveMenuItem: (productId: string, pin: string) => Promise<void>;
   page: RecipesPage | null;
   onPage: (page: RecipesPage | null) => void;
 }

@@ -3,6 +3,7 @@ import { checkSettings } from "../lib/settings";
 import { stockListFields } from "../lib/stock-lists";
 import { batchStockUses, checkPrepRecipes, duplicateSku, maxBatchServings } from "../lib/stock";
 import { planActions } from "../lib/team";
+import type { Product } from "../lib/types";
 import { ensure } from "./errors";
 
 const key = z.string().trim().min(1).max(128);
@@ -253,6 +254,7 @@ export const planCommand = z.discriminatedUnion("action", [
     pin: ownerPin,
   }),
   z.object({ action: z.literal("booking"), booking, pin: ownerPin }),
+  z.object({ action: z.literal("restoreBooking"), booking, pin: ownerPin }),
   z.object({
     action: z.literal("bulkBookings"),
     bookings: z.array(booking).min(1).max(120),
@@ -302,6 +304,8 @@ const command = z.discriminatedUnion("action", [
     deviceId: key.optional(),
     stock: counts.optional(),
   }),
+  z.object({ action: z.literal("removeMenuItem"), productId: key, pin }),
+  z.object({ action: z.literal("restoreMenuItem"), item: product, index: z.number().int().min(0).max(999), pin }),
   z.object({
     action: z.literal("settings"),
     deviceId: key,
@@ -395,24 +399,19 @@ export function parseCommand(input: unknown) {
       ensure(false, "Choose a valid time zone.");
     }
   }
-  if (value.action === "menu") {
-    const duplicate = duplicateSku(value.menu.map((item) => item.costing?.sku));
-    if (duplicate) ensure(false, `Menu SKU ${duplicate} is already in use.`);
-    ensure(
-      Buffer.byteLength(JSON.stringify(value.menu), "utf8") <= 350_000,
-      "This menu is too large for an offline till.",
-    );
-    const ids = value.menu.flatMap((item) => [
-      item.id,
-      ...item.groups.flatMap((group) => [
-        group.id,
-        ...group.options.map((opt) => opt.id),
-      ]),
-    ]);
-    ensure(
-      new Set(ids).size === ids.length,
-      "Two menu items or options ended up the same. Reload the app and try again.",
-    );
-  }
+  if (value.action === "menu") validateMenu(value.menu);
   return value;
+}
+
+export function validateMenu(menu: Product[]) {
+  const duplicate = duplicateSku(menu.map((item) => item.costing?.sku));
+  if (duplicate) ensure(false, `Menu SKU ${duplicate} is already in use.`);
+  ensure(menu.length <= 1000 && Buffer.byteLength(JSON.stringify(menu), "utf8") <= 350_000,
+    "This menu is too large for an offline till.");
+  const ids = menu.flatMap((item) => [
+    item.id,
+    ...item.groups.flatMap((group) => [group.id, ...group.options.map((opt) => opt.id)]),
+  ]);
+  ensure(new Set(ids).size === ids.length,
+    "Two menu items or options ended up the same. Reload the app and try again.");
 }

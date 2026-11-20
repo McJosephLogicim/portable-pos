@@ -9,7 +9,7 @@ import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
 import { matches, RecordNoMatch, RecordSearch } from "./records";
-import { errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
+import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
 export function initials(name: string) {
   return (
@@ -145,6 +145,7 @@ function MemberSheet({
   const [email, setEmail] = useState(member?.email ?? "");
   const [rate, setRate] = useState(member && member.rate ? amountText(member.rate, currency) : "");
   const [owner, setOwner] = useState(member?.owner ?? false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function run(fn: () => Promise<boolean>) {
@@ -160,6 +161,7 @@ function MemberSheet({
   }
   const valid = name.trim() && (member || !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   return (
+    <>
     <Sheet
       title={member ? member.name : "Invite someone"}
       onClose={onClose}
@@ -189,7 +191,7 @@ function MemberSheet({
             </button>
           )}
           {onRemove && (
-            <button className="btn ghost danger compact block" disabled={busy} onClick={() => void run(onRemove)}>
+            <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirmRemove(true)}>
               <Trash2 size={16} /> Remove from team
             </button>
           )}
@@ -269,6 +271,22 @@ function MemberSheet({
         </p>
       )}
     </Sheet>
+    {confirmRemove && member && onRemove && (
+      <ConfirmSheet
+        title={member.joined ? "Remove team member?" : "Cancel invitation?"}
+        detail={member.joined
+          ? `${member.name} will lose access to this business and be removed from upcoming shifts.`
+          : `${member.name}’s invitation link will stop working.`}
+        confirmLabel={member.joined ? "Remove member" : "Cancel invitation"}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={async () => {
+          const done = await onRemove();
+          if (done) onClose();
+          return done;
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -399,6 +417,7 @@ export function ChecklistPage(props: SettingsProps) {
   const [text, setText] = useState("");
   const [photoError, setPhotoError] = useState("");
   const list = draft.settings.checklist ?? [];
+  const [removing, setRemoving] = useState<(typeof list)[number] | null>(null);
   const full = list.length >= 30;
   const update = (change: (steps: typeof list) => typeof list) =>
     setDraft((current) => ({
@@ -459,7 +478,7 @@ export function ChecklistPage(props: SettingsProps) {
                 type="button"
                 className="round flat"
                 aria-label={"Remove " + item.text}
-                onClick={() => update((steps) => steps.filter((step) => step.id !== item.id))}
+                onClick={() => setRemoving(item)}
               >
                 <Trash2 size={16} />
               </button>
@@ -489,6 +508,15 @@ export function ChecklistPage(props: SettingsProps) {
       </div>
       {full && <p className="label">The checklist can hold up to 30 steps.</p>}
       {bar}
+      {removing && (
+        <ConfirmSheet
+          title="Remove checklist step?"
+          detail={`“${removing.text}” will be removed when you save the checklist.`}
+          confirmLabel="Remove step"
+          onClose={() => setRemoving(null)}
+          onConfirm={() => update((steps) => steps.filter((step) => step.id !== removing.id))}
+        />
+      )}
     </SubPage>
   );
 }

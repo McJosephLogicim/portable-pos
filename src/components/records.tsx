@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ChevronRight, Plus, Search, Trash2, X } from "lucide-react";
-import { CategoryTabs, errorText, Sheet } from "./ui";
+import { CategoryTabs, ConfirmSheet, errorText, Sheet } from "./ui";
 import { collapseOnExit } from "@/lib/exit";
 
 /*
@@ -30,7 +30,7 @@ export function RecordAdd({
 /** Lists this long get a search field. */
 export const SEARCH_FROM = 6;
 
-const fold = (text: string) =>
+export const fold = (text: string) =>
   text
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
@@ -202,6 +202,7 @@ export function RecordSheet({
   saveLabel,
   onSave,
   removeLabel,
+  removeDetail,
   onRemove,
   onClose,
   help,
@@ -216,13 +217,17 @@ export function RecordSheet({
   saveLabel?: string;
   onSave: () => void;
   removeLabel?: string;
-  onRemove?: () => void;
+  removeDetail?: string;
+  onRemove?: () => Promise<boolean>;
   onClose: () => void;
   /** How this record works, behind an (i) beside the sheet title. */
   help?: ReactNode;
   children: ReactNode;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const remove = removeLabel ?? "Remove " + noun;
   return (
+    <>
     <Sheet
       title={(editing ? "Edit " : "New ") + noun}
       onClose={onClose}
@@ -239,8 +244,8 @@ export function RecordSheet({
             {busy ? "Saving…" : (saveLabel ?? (editing ? "Save " : "Add ") + noun)}
           </button>
           {editing && onRemove && (
-            <button className="btn ghost danger compact block" disabled={busy} onClick={onRemove}>
-              <Trash2 size={16} /> {removeLabel ?? "Remove " + noun}
+            <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirming(true)}>
+              <Trash2 size={16} /> {remove}
             </button>
           )}
         </>
@@ -248,37 +253,20 @@ export function RecordSheet({
     >
       {children}
     </Sheet>
-  );
-}
-
-/** Names that pick things on or off, like which menu items use a choice. */
-export function PickChips({
-  label,
-  items,
-  picked,
-  onChange,
-}: {
-  label: string;
-  items: { id: string; name: string }[];
-  picked: string[];
-  onChange: (picked: string[]) => void;
-}) {
-  return (
-    <div className="chips wrap" role="group" aria-label={label}>
-      {items.map((i) => {
-        const on = picked.includes(i.id);
-        return (
-          <button
-            key={i.id}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(on ? picked.filter((x) => x !== i.id) : [...picked, i.id])}
-          >
-            {i.name}
-          </button>
-        );
-      })}
-    </div>
+    {confirming && onRemove && (
+      <ConfirmSheet
+        title={remove + "?"}
+        detail={removeDetail ?? `This will remove this ${noun} for your business.`}
+        confirmLabel={remove}
+        onClose={() => setConfirming(false)}
+        onConfirm={async () => {
+          const done = await onRemove();
+          if (done) onClose();
+          return done;
+        }}
+      />
+    )}
+    </>
   );
 }
 

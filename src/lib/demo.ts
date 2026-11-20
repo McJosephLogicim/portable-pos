@@ -1,6 +1,6 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
-import { checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu } from "./domain";
+import { changeMenuItem, checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu, type MenuItemChange } from "./domain";
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
@@ -10,6 +10,7 @@ import type {
   Bootstrap,
   Product,
   RegisterMode,
+  RegisterResponse,
   RegisterState,
   Settings,
   Shift,
@@ -101,6 +102,7 @@ export type OwnerAction =
   | { action: "link"; newShift: WalkIn }
   | { action: "profile"; memberId?: string; name?: string; photo?: string | null; pin?: string }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
+  | (MenuItemChange & { pin: string })
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
   | Closing
@@ -123,7 +125,7 @@ export type OwnerAction =
 export function demoAction(
   state: RegisterState,
   input: OwnerAction,
-): Bootstrap {
+): RegisterResponse {
   if ("pin" in input && input.pin !== undefined && input.pin !== DEMO_PIN)
     throw new RequestFailure(403, "Wrong PIN. The demo PIN is 1234.");
   switch (input.action) {
@@ -193,15 +195,19 @@ export function demoAction(
         shifts: state.shifts.map((s) => (s.id === shift.id ? shift : s)),
       };
     }
+    case "removeMenuItem":
+    case "restoreMenuItem":
     case "menu": {
-      const duplicate = duplicateSku(input.menu.map((item) => item.costing?.sku));
+      const { menu, deletedRecord } = input.action === "menu" ? { menu: input.menu, deletedRecord: undefined } : changeMenuItem(state.menu, input);
+      const duplicate = duplicateSku(menu.map((item) => item.costing?.sku));
       if (duplicate) throw Error(`Menu SKU ${duplicate} is already in use.`);
-      const problem = batchIngredientProblem(input.menu, state.business?.settings.stockItems);
+      const problem = batchIngredientProblem(menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
-      const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock, state.business?.settings.stockItems);
+      const shift = state.shift && updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, state.business?.settings.stockItems);
       return {
         ...state,
-        menu: input.menu,
+        menu,
+        deletedRecord,
         shift,
         shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),
       };
@@ -306,6 +312,9 @@ export function demoAction(
         );
         return {
           ...state,
+          deletedRecord: input.action === "deleteBooking"
+            ? { kind: "booking", booking: state.bookings!.find((b) => b.id === input.bookingId)! }
+            : undefined,
           team: plan.members,
           organizers: plan.organizers,
           bookings: plan.bookings.sort((a, b) => a.startsAt.localeCompare(b.startsAt)),

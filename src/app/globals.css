@@ -299,6 +299,10 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
 .btn.ghost.danger {
   color: var(--danger);
 }
+.btn.destructive {
+  background: var(--danger);
+  color: #fff;
+}
 .btn .btn-end {
   margin-left: auto;
   font-weight: 500;
@@ -914,13 +918,24 @@ button.list-row:not(.sell-option):active {
 .notice .btn {
   flex: none;
 }
-.toast {
+.toast-viewport {
   position: fixed;
   left: 50%;
   bottom: calc(var(--tabbar-space) + 6px);
   transform: translateX(-50%);
   z-index: 60;
-  padding: 12px 18px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  padding: 6px 14px;
+  min-height: 44px;
+  max-width: 100%;
   border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--on-accent);
@@ -928,10 +943,26 @@ button.list-row:not(.sell-option):active {
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   box-shadow: var(--shadow-float);
   animation: rise var(--dur-base) var(--ease-out);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+.toast-action {
+  flex: none;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.toast-action:focus-visible {
+  outline-color: currentColor;
 }
 .loading {
   min-height: 60dvh;
@@ -2004,6 +2035,70 @@ button.notice {
   padding: 8px 10px 10px;
 }
 
+.picker {
+  min-width: 0;
+}
+.picker-results {
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.picker-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.picker-results > .picker-meta {
+  min-height: 32px;
+  padding: 0 10px;
+}
+.picker-pages {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+.picker-pages > button.round {
+  width: 36px;
+  height: 36px;
+}
+.picker-list {
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.picker-list .combo-pick {
+  gap: 10px;
+  padding: 6px 10px;
+}
+.picker-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.picker-list [aria-selected="true"] .picker-check {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+.picker-thumbnail {
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink-secondary);
+}
+.picker-thumbnail img {
+  object-fit: cover;
+}
+
 /* ---------- tab bar: icons only ---------- */
 .tabbar button {
   min-width: 44px;
@@ -2247,6 +2342,20 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 .sheet .chips.wrap > button:not([aria-pressed="true"]) {
   background: var(--surface);
+}
+.sheet .chips.wrap.picker-pills > button {
+  min-height: 40px;
+  max-width: 100%;
+  background: var(--surface-muted);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.picker-pills svg {
+  flex: none;
+  color: var(--ink-secondary);
+}
+.picker-pills .picker-thumbnail {
+  border-radius: 50%;
 }
 .chips.wrap > button.link,
 .sheet .chips.wrap > button.link {

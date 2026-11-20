@@ -36,7 +36,7 @@ function StockListSheet({ field, name, usedBy, onSave, onClose }: {
       error={error}
       canSave={Boolean(draft.trim()) && draft.trim() !== name}
       onSave={() => void run(() => onSave(draft.trim()))}
-      onRemove={name && !usedBy.length ? () => void run(() => onSave("")) : undefined}
+      onRemove={name && !usedBy.length ? () => onSave("") : undefined}
       onClose={onClose}
     >
       <div className="card card-pad">

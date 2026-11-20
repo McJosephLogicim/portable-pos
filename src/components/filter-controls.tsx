@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { countFilterOptions, matchesFilters, type FilterFacets, type FilterSelection, type FilterValue } from "@/lib/filters";
 import { buzz, Sheet } from "./ui";
+import { MultiSelect } from "./multi-select";
+import { SEARCH_FROM } from "./records";
 
 type FilterGroup<Key extends string> = { key: Key; name: string; options: FilterValue[] };
+const VISIBLE_FILTER_PILLS = 8;
 
-export function toggleFilter<Key extends string>(filter: FilterSelection<Key>, key: Key, value: string) {
+function toggleFilter<Key extends string>(filter: FilterSelection<Key>, key: Key, value: string) {
   buzz.tap();
   const picked = filter[key] ?? [];
   return { ...filter, [key]: picked.includes(value) ? picked.filter((option) => option !== value) : [...picked, value] };
@@ -20,14 +23,20 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
   onChange: (next: FilterSelection<Key>) => void;
   onOpen: () => void;
 }) {
-  const chips = groups.flatMap(({ key, name, options }) =>
-    (filter[key] ?? []).map((value) => ({ key, name, value, label: options.find((option) => option.value === value)?.label ?? value })),
-  );
+  const chips: { key: Key; name: string; value: string; label: string }[] = [];
+  let total = 0;
+  for (const { key, name, options } of groups) {
+    const selected = filter[key] ?? [];
+    total += selected.length;
+    for (const value of selected.slice(0, Math.max(0, VISIBLE_FILTER_PILLS - chips.length))) {
+      chips.push({ key, name, value, label: options.find((option) => option.value === value)?.label ?? value });
+    }
+  }
   return (
     <div className="chips filter-chips" role="group" aria-label="Filters">
       <button type="button" className="filter-open" onClick={onOpen}>
         <SlidersHorizontal size={15} strokeWidth={1.9} />
-        {chips.length ? "Filters · " + chips.length : label}
+        {total ? "Filters · " + total : label}
       </button>
       {chips.map((chip) => (
         <button
@@ -39,28 +48,52 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
           <span className="g">{chip.name}</span> {chip.label} <X size={14} />
         </button>
       ))}
+      {total > chips.length && (
+        <button type="button" className="filter-open" onClick={onOpen}>+{total - chips.length} more</button>
+      )}
     </div>
   );
 }
 
-export function FilterChoices({ name, options, picked, onToggle, children }: {
+export function FilterChoices({ name, options, picked, onChange, searchable, showThumbnails }: {
   name: string;
-  options: (FilterValue & { count: number })[];
+  options: (FilterValue & { count: number; image?: string })[];
   picked: string[];
-  onToggle: (value: string) => void;
-  children?: ReactNode;
+  onChange: (picked: string[]) => void;
+  searchable?: boolean;
+  showThumbnails?: boolean;
 }) {
+  function change(next: string[]) {
+    buzz.tap();
+    onChange(next);
+  }
+
   return (
     <div className="stack gap-10">
       <p className="group-title">{name}</p>
-      <div className="chips wrap" role="group" aria-label={name}>
-        {options.map((option) => (
-          <button key={option.value} type="button" aria-pressed={picked.includes(option.value)} onClick={() => onToggle(option.value)}>
-            {option.label} <span className="filter-count">{option.count}</span>
-          </button>
-        ))}
-        {children}
-      </div>
+      {searchable || options.length >= SEARCH_FROM ? (
+        <MultiSelect
+          label={name}
+          placeholder={`Search by ${name.toLocaleLowerCase()}…`}
+          items={options.map((option) => ({ id: option.value, name: option.label, count: option.count, image: option.image }))}
+          picked={picked}
+          onChange={change}
+          showThumbnails={showThumbnails}
+        />
+      ) : (
+        <div className="chips wrap" role="group" aria-label={name}>
+          {options.map((option) => {
+            const selected = picked.includes(option.value);
+            return (
+              <button key={option.value} type="button" aria-pressed={selected} onClick={() => change(
+                selected ? picked.filter((value) => value !== option.value) : [...picked, option.value],
+              )}>
+                {option.label} <span className="filter-count">{option.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -110,7 +143,7 @@ export function RecordFilters<Key extends string>({ noun, label, names, rows, se
               name={name}
               options={options}
               picked={draft[key] ?? []}
-              onToggle={(value) => setDraft(toggleFilter(draft, key, value))}
+              onChange={(picked) => setDraft({ ...draft, [key]: picked })}
             />;
           })}
         </Sheet>

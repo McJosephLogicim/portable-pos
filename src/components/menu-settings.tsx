@@ -12,11 +12,11 @@ import { MenuCostingOverview } from "./recipe-costing";
 import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
-import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
+import { MultiSelect } from "./multi-select";
+import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch, usePin } from "./ui";
 import {
   matches,
   namesText,
-  PickChips,
   plural,
   RecordAdd,
   RecordEmpty,
@@ -388,7 +388,10 @@ export function ItemSheet({
       canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()) && useCountsReady)}
       onSave={save}
       removeLabel="Remove from menu"
-      onRemove={onRemove && (() => void run(onRemove))}
+      removeDetail={product && (liveShift
+        ? `${product.name} will stay on Sell until this shift ends. You can undo the removal from the toast.`
+        : `${product.name} will be removed from the menu. You can undo the removal from the toast.`)}
+      onRemove={onRemove}
       onClose={onClose}
     >
       <div className="card card-pad">
@@ -653,6 +656,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
   const simple = isSimpleMode(business.settings);
   const menu = props.state.menu;
   const commit = useCommit(props);
+  const withPin = usePin();
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [newCategory, setNewCategory] = useState(false);
   const [picked, setTab] = useState<string | null>(null);
@@ -786,7 +790,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
             }, editing === "new" ? "Added " + item.name : "Saved " + item.name)
           }
           onRemove={
-            editing === "new" ? undefined : () => commit.menu(menu.filter((p) => p.id !== editing.id), "Removed " + editing.name)
+            editing === "new" ? undefined : () => withPin((pin) => props.onRemoveMenuItem(editing.id, pin))
           }
         />
       )}
@@ -809,8 +813,9 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
 
 /** The menu with these items in the category, and any others that were in it (under its old name) taken out. */
 function withCategory(menu: Product[], before: string, name: string, ids: string[]) {
+  const picked = new Set(ids);
   return menu.map((p) =>
-    ids.includes(p.id)
+    picked.has(p.id)
       ? p.category === name
         ? p
         : { ...p, category: name }
@@ -824,9 +829,22 @@ export function categoriesOf(menu: Product[]) {
   const map = new Map<string, Product[]>();
   for (const p of menu) {
     const c = p.category.trim();
-    if (c) map.set(c, [...(map.get(c) ?? []), p]);
+    if (!c) continue;
+    const items = map.get(c);
+    if (items) items.push(p);
+    else map.set(c, [p]);
   }
   return [...map.entries()].map(([name, items]) => ({ name, items }));
+}
+
+function useMenuOptions(menu: Product[]) {
+  return useMemo(() => menu.map((item) => ({
+    id: item.id,
+    name: item.name,
+    image: item.image,
+    detail: item.category.trim() || "Uncategorized",
+    searchText: item.costing?.sku,
+  })), [menu]);
 }
 
 function CategorySheet({
@@ -844,8 +862,10 @@ function CategorySheet({
 }) {
   const [name, setName] = useState(category?.name ?? "");
   const [picked, setPicked] = useState(category?.items.map((p) => p.id) ?? []);
+  const options = useMenuOptions(menu);
   const { busy, error, run } = useRecordSave(onClose);
-  const moving = menu.filter((p) => picked.includes(p.id) && p.category.trim() && p.category.trim() !== category?.name);
+  const selected = new Set(picked);
+  const moving = menu.filter((p) => selected.has(p.id) && p.category.trim() && p.category.trim() !== category?.name);
   return (
     <RecordSheet
       noun="category"
@@ -860,7 +880,7 @@ function CategorySheet({
       error={error}
       canSave={Boolean(name.trim() && picked.length)}
       onSave={() => void run(() => onSave(name.trim(), picked))}
-      onRemove={onRemove && (() => void run(onRemove))}
+      onRemove={onRemove}
       onClose={onClose}
     >
       <div className="card card-pad stack gap-14">
@@ -876,8 +896,8 @@ function CategorySheet({
           />
         </label>
         <div className="field">
-          <span>Items in it</span>
-          <PickChips label="Items in this category" items={menu} picked={picked} onChange={setPicked} />
+          <span>Items</span>
+          <MultiSelect label="Items in this category" placeholder="Search menu items…" items={options} picked={picked} onChange={setPicked} showThumbnails />
           {moving.length > 0 && (
             <p className="label">
               {namesText(moving.map((p) => p.name)) + " will move here from " + namesText([...new Set(moving.map((p) => p.category.trim()))]) + "."}
@@ -991,7 +1011,7 @@ export function choicesOf(menu: Product[]): Choice[] {
       const key = choiceKey(g);
       const found = map.get(key);
       if (found) {
-        if (!found.items.includes(p)) found.items.push(p);
+        if (found.items.at(-1) !== p) found.items.push(p);
       } else map.set(key, { key, name: g.name, required: g.required, options: g.options, items: [p] });
     }
   return [...map.values()];
@@ -1018,6 +1038,7 @@ function ChoiceSheet({
     choice ? choice.options.map((o) => ({ id: o.id, name: o.name, price: priceText(o.price, currency) })) : [blankOption()],
   );
   const [picked, setPicked] = useState(choice?.items.map((p) => p.id) ?? []);
+  const menuOptions = useMenuOptions(menu);
   const reuse = useMemo(() => reusable(menu, undefined, currency), [menu, currency]);
   const { busy, error, run } = useRecordSave(onClose);
   return (
@@ -1030,7 +1051,7 @@ function ChoiceSheet({
       onSave={() =>
         void run(() => onSave({ name: name.trim(), required, options: parseOptions(options, currency) }, picked))
       }
-      onRemove={onRemove && (() => void run(onRemove))}
+      onRemove={onRemove}
       onClose={onClose}
     >
       <div className="card card-pad stack gap-14">
@@ -1074,7 +1095,7 @@ function ChoiceSheet({
           Offered on
           <Explain title="Offered on">Saving updates the choice on every item picked here.</Explain>
         </span>
-        <PickChips label="Items that offer this choice" items={menu} picked={picked} onChange={setPicked} />
+        <MultiSelect label="Items that offer this choice" placeholder="Search menu items…" items={menuOptions} picked={picked} onChange={setPicked} showThumbnails />
       </div>
     </RecordSheet>
   );
@@ -1097,9 +1118,10 @@ export function ChoicesPage(props: RecipesProps) {
 
   function apply(group: Omit<OptionGroup, "id">, ids: string[]) {
     const key = editing && editing !== "new" ? editing.key : null;
+    const selected = new Set(ids);
     return menu.map((p) => {
       const at = key ? p.groups.findIndex((g) => choiceKey(g) === key) : -1;
-      const wanted = ids.includes(p.id);
+      const wanted = selected.has(p.id);
       if (!wanted) return at < 0 ? p : { ...p, groups: p.groups.filter((_, i) => i !== at) };
       const old = at >= 0 ? p.groups[at] : undefined;
       const next: OptionGroup = {

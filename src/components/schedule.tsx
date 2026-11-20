@@ -51,7 +51,7 @@ import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
 import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, ConfirmSheet, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -365,6 +365,8 @@ function BookingSheet({
   const [picking, setPicking] = useState<{ replace?: StaffSlot } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [managing, setManaging] = useState<StaffSlot | null>(null);
+  const [leaving, setLeaving] = useState<StaffSlot | null>(null);
+  const [takingOver, setTakingOver] = useState(false);
   const mine = b.staff.find((s) => s.memberId === me.memberId);
   const open = seatsOpen(b);
   const started = Date.parse(b.startsAt) <= Date.now();
@@ -427,7 +429,7 @@ function BookingSheet({
                 <button
                   className="btn secondary block"
                   disabled={!online || busy || started}
-                  onClick={() => void run({ action: "leave", bookingId: b.id, memberId: me.memberId }, "You left the shift", false)}
+                  onClick={() => setLeaving(mine)}
                 >
                   {started ? "Started" : "Leave"}
                 </button>
@@ -612,29 +614,28 @@ function BookingSheet({
             {error}
           </p>
         )}
-        {me.owner &&
-          (confirmDelete ? (
-            <div className="notice">
-              <span className="grow">Delete this shift for everyone?</span>
-              <button className="btn small secondary" onClick={() => setConfirmDelete(false)}>
-                Keep
-              </button>
-              <button
-                className="btn small"
-                disabled={busy}
-                onClick={async () => {
-                  if (await run({ action: "deleteBooking", bookingId: b.id }, "Shift deleted")) onClose();
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          ) : (
-            <button className="btn ghost danger compact" disabled={!online || busy} onClick={() => setConfirmDelete(true)}>
-              <Trash2 size={16} /> Delete shift
-            </button>
-          ))}
+        {me.owner && (
+          <button className="btn ghost danger compact" disabled={!online || busy} onClick={() => setConfirmDelete(true)}>
+            <Trash2 size={16} /> Delete shift
+          </button>
+        )}
       </Sheet>
+      {confirmDelete && (
+        <ConfirmSheet
+          title="Delete shift?"
+          detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule. You can undo the deletion from the toast.`}
+          confirmLabel="Delete shift"
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={async () => {
+            const done = await withPin((pin) => props.onAction({ action: "deleteBooking", bookingId: b.id, pin }));
+            if (done) {
+              buzz.tick();
+              onClose();
+            }
+            return done;
+          }}
+        />
+      )}
       {managing && (
         <Sheet
           title={managing.name}
@@ -644,20 +645,7 @@ function BookingSheet({
               {managing.memberId !== me.memberId && (
                 <button
                   className="btn block"
-                  onClick={() => {
-                    const s = managing;
-                    setManaging(null);
-                    void run(
-                      {
-                        action: "assign",
-                        bookingId: b.id,
-                        memberId: me.memberId,
-                        role: s.role,
-                        replace: s.memberId,
-                      },
-                      "You took over from " + s.name,
-                    );
-                  }}
+                  onClick={() => setTakingOver(true)}
                 >
                   Take over this shift
                 </button>
@@ -682,11 +670,7 @@ function BookingSheet({
               </button>
               <button
                 className="btn ghost danger compact block"
-                onClick={() => {
-                  const s = managing;
-                  setManaging(null);
-                  void run({ action: "leave", bookingId: b.id, memberId: s.memberId }, s.name + " is off the shift");
-                }}
+                onClick={() => setLeaving(managing)}
               >
                 Take {managing.memberId === me.memberId ? "yourself" : managing.name.split(" ")[0]} off
               </button>
@@ -701,6 +685,51 @@ function BookingSheet({
               : ""}
           </p>
         </Sheet>
+      )}
+      {takingOver && managing && (
+        <ConfirmSheet
+          title="Take over this shift?"
+          detail={`You’ll take ${managing.name}’s seat at your own pay.`}
+          confirmLabel="Take over"
+          onClose={() => setTakingOver(false)}
+          onConfirm={async () => {
+            const done = await withPin((pin) => props.onAction({
+              action: "assign",
+              bookingId: b.id,
+              memberId: me.memberId,
+              role: managing.role,
+              replace: managing.memberId,
+              pin,
+            }));
+            if (done) {
+              props.onSaved("You took over from " + managing.name);
+              setManaging(null);
+            }
+            return done;
+          }}
+        />
+      )}
+      {leaving && (
+        <ConfirmSheet
+          title={leaving.memberId === me.memberId ? "Leave this shift?" : "Remove from shift?"}
+          detail={leaving.memberId === me.memberId
+            ? "Your seat will open up for someone else."
+            : `${leaving.name}'s seat will open up for someone else.`}
+          confirmLabel={leaving.memberId === me.memberId ? "Leave shift" : "Remove"}
+          onClose={() => setLeaving(null)}
+          onConfirm={async () => {
+            const mine = leaving.memberId === me.memberId;
+            const action = { action: "leave" as const, bookingId: b.id, memberId: leaving.memberId };
+            const done = me.owner
+              ? await withPin((pin) => props.onAction({ ...action, pin }))
+              : (await props.onAction(action), true);
+            if (done) {
+              props.onSaved(mine ? "You left the shift" : leaving.name + " is off the shift");
+              setManaging(null);
+            }
+            return done;
+          }}
+        />
       )}
       {switching && mine && (
         <RoleSheet

@@ -27,6 +27,7 @@ export type PlanCommand =
   | { action: "removeMember"; memberId: string }
   | { action: "organizers"; organizers: Organizer[] }
   | { action: "booking"; booking: BookingInput }
+  | { action: "restoreBooking"; booking: BookingInput }
   | { action: "bulkBookings"; bookings: BookingInput[] }
   | { action: "deleteBooking"; bookingId: string }
   | {
@@ -47,6 +48,7 @@ export const planActions = [
   "removeMember",
   "organizers",
   "booking",
+  "restoreBooking",
   "bulkBookings",
   "deleteBooking",
   "assign",
@@ -94,7 +96,7 @@ export function normalEmail(email: string) {
 
 const maxLength = 24 * 60 * 60 * 1000;
 
-function checkBooking(b: BookingInput, members: Member[]) {
+function checkBooking(b: BookingInput, members: Member[], allowFormerStaff = false) {
   const start = Date.parse(b.startsAt);
   const end = Date.parse(b.endsAt);
   check(Number.isFinite(start) && Number.isFinite(end), "Choose a start and end time.");
@@ -107,7 +109,7 @@ function checkBooking(b: BookingInput, members: Member[]) {
     check(!ids.has(slot.memberId), "Someone is on this shift twice.");
     ids.add(slot.memberId);
     const member = members.find((m) => m.id === slot.memberId);
-    check(member, "Someone on this shift is no longer on the team.", 404);
+    check(member || allowFormerStaff, "Someone on this shift is no longer on the team.", 404);
   }
   check(!b.event || b.organizer, "Pick the organizer for this event.");
 }
@@ -221,6 +223,12 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
       checkBooking(booking, members);
       return put(booking);
     }
+    case "restoreBooking": {
+      const booking = cmd.booking;
+      check(!plan.bookings.some((b) => b.id === booking.id), "That shift is already on the schedule.", 409);
+      checkBooking(booking, members, Date.parse(booking.startsAt) <= now);
+      return put(booking);
+    }
     case "bulkBookings": {
       check(cmd.bookings.length >= 1, "Pick at least one day.");
       check(cmd.bookings.length <= 120, "Add up to 120 shifts at a time.");
@@ -292,7 +300,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
 
 /** Ids of the bookings a command reads or writes. */
 export function bookingIds(cmd: PlanCommand): string[] {
-  if (cmd.action === "booking") return [cmd.booking.id];
+  if (cmd.action === "booking" || cmd.action === "restoreBooking") return [cmd.booking.id];
   if (cmd.action === "bulkBookings") return cmd.bookings.map((b) => b.id);
   if ("bookingId" in cmd) return [cmd.bookingId];
   return [];

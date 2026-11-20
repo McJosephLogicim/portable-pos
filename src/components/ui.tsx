@@ -251,7 +251,7 @@ export function PhotoPicker({
   /** A profile photo, which anyone on the team can add for themselves. */
   face?: boolean;
   value?: string;
-  onChange: (url: string | undefined) => void;
+  onChange: (url: string | undefined) => void | Promise<void>;
   onError?: (message: string) => void;
   label: string;
   size?: "large" | "small";
@@ -261,6 +261,7 @@ export function PhotoPicker({
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [removing, setRemoving] = useState(false);
   return (
     <div className={"photo-pick " + size}>
       <button
@@ -277,7 +278,7 @@ export function PhotoPicker({
         {busy && <span className="photo-busy" />}
       </button>
       {size === "small" && value && !busy && (
-        <button type="button" className="photo-clear" aria-label={"Remove " + label} onClick={() => onChange(undefined)}>
+        <button type="button" className="photo-clear" aria-label={"Remove " + label} disabled={disabled} onClick={() => setRemoving(true)}>
           <X size={12} strokeWidth={2.6} />
         </button>
       )}
@@ -292,7 +293,7 @@ export function PhotoPicker({
             <span className="label">{value ? "Tap it to take another." : "Take one or pick from your gallery."}</span>
           )}
           {value && (
-            <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} onClick={() => onChange(undefined)}>
+            <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} disabled={disabled || busy} onClick={() => setRemoving(true)}>
               Remove photo
             </button>
           )}
@@ -311,7 +312,7 @@ export function PhotoPicker({
           setError("");
           onError?.("");
           try {
-            onChange(await upload(file, face));
+            await onChange(await upload(file, face));
             buzz.success();
           } catch (err) {
             const message = errorText(err);
@@ -323,6 +324,17 @@ export function PhotoPicker({
           }
         }}
       />
+      {removing && (
+        <ConfirmSheet
+          title={`Remove ${label}?`}
+          detail={face && size === "small"
+            ? "Your profile photo will be removed from shifts and reports."
+            : "The image will be cleared when you save."}
+          confirmLabel="Remove photo"
+          onClose={() => setRemoving(false)}
+          onConfirm={() => onChange(undefined)}
+        />
+      )}
     </div>
   );
 }
@@ -357,6 +369,7 @@ export function Sheet({
   busy = false,
   action,
   help,
+  describedBy,
 }: {
   title: string;
   onClose: () => void;
@@ -366,6 +379,7 @@ export function Sheet({
   action?: ReactNode;
   /** How this sheet works, behind an (i) beside the title. */
   help?: ReactNode;
+  describedBy?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -407,6 +421,7 @@ export function Sheet({
       className="sheet"
       tabIndex={-1}
       aria-labelledby={id}
+      aria-describedby={describedBy}
       onCancel={(event) => {
         if (event.target !== ref.current) return;
         event.preventDefault();
@@ -448,6 +463,60 @@ export function Sheet({
       <div className="sheet-body">{children}</div>
       {footer && <div className="sheet-foot">{footer}</div>}
     </dialog>
+  );
+}
+
+export function ConfirmSheet({
+  title,
+  detail,
+  confirmLabel,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  detail: ReactNode;
+  confirmLabel: string;
+  onClose: () => void;
+  onConfirm: () => void | boolean | Promise<void | boolean>;
+}) {
+  const descriptionId = useId();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+
+  async function confirm() {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      if (await onConfirm() !== false) onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      title={title}
+      describedBy={descriptionId}
+      busy={busy}
+      onClose={onClose}
+      footer={
+        <div className="grid-2">
+          <button type="button" className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="button" className="btn destructive" disabled={busy} onClick={() => void confirm()}>
+            {busy ? "Working…" : confirmLabel}
+          </button>
+        </div>
+      }
+    >
+      <p id={descriptionId} className="muted">{detail}</p>
+      {error && <p className="alert" role="alert">{error}</p>}
+    </Sheet>
   );
 }
 
@@ -846,16 +915,59 @@ function PinSheet({
   );
 }
 
-export function Toast({ text, onDone }: { text: string; onDone: () => void }) {
+export function Toast({
+  text,
+  undo,
+  onDone,
+}: {
+  text: string;
+  undo?: (pin: string) => Promise<void>;
+  onDone: (restored?: boolean) => void;
+}) {
   const done = useRef(onDone);
   done.current = onDone;
+  const withPin = usePin();
+  const [busy, setBusy] = useState(false);
+  const restoring = useRef(false);
+  const [hover, setHover] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => done.current(), 2200);
+    if (busy || hover || focused) return;
+    const t = setTimeout(() => done.current(), undo ? 10000 : 2200);
     return () => clearTimeout(t);
-  }, [text]);
+  }, [text, undo, busy, hover, focused]);
+
+  async function restore() {
+    if (!undo || restoring.current) return;
+    restoring.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      if (await withPin(undo)) done.current(true);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      restoring.current = false;
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="toast" role="status" ref={fadeOnExit}>
-      {text}
+    <div
+      className="toast"
+      ref={fadeOnExit}
+      onPointerEnter={(event) => { if (undo && event.pointerType === "mouse") setHover(true); }}
+      onPointerLeave={() => setHover(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
+    >
+      <span role={error ? "alert" : "status"}>{error || text}</span>
+      {undo && (
+        <button type="button" className="toast-action" disabled={busy} onClick={() => void restore()}>
+          {busy ? "Restoring…" : "Undo"}
+        </button>
+      )}
     </div>
   );
 }

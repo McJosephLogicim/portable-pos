@@ -11,6 +11,24 @@ import type {
   Tender,
 } from "./types";
 
+export type MenuItemChange =
+  | { action: "removeMenuItem"; productId: string }
+  | { action: "restoreMenuItem"; item: Product; index: number };
+
+export function changeMenuItem(menu: Product[], change: MenuItemChange) {
+  const id = change.action === "removeMenuItem" ? change.productId : change.item.id;
+  const index = menu.findIndex((item) => item.id === id);
+  if (change.action === "removeMenuItem") {
+    if (index < 0) throw Error("That item is already off the menu.");
+    return {
+      menu: menu.filter((item) => item.id !== id),
+      deletedRecord: { kind: "menuItem" as const, item: menu[index], index },
+    };
+  }
+  if (index >= 0) throw Error("That item is already on the menu.");
+  return { menu: [...menu.slice(0, change.index), change.item, ...menu.slice(change.index)] };
+}
+
 /** Replace an item by id, including when a previous save already reached the server. */
 export function saveMenuItem(menu: Product[], item: Product): Product[] {
   return menu.some((product) => product.id === item.id)

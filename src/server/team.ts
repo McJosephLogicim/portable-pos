@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { applyPlan, bookingIds, PlanError, type PlanCommand } from "../lib/team";
 import type { Booking, BusinessSummary, Me, Member } from "../lib/types";
@@ -222,6 +223,9 @@ export async function runPlan(
       : []),
   ];
   for (const row of rows) loaded.set(row.id, presentBooking(row));
+  if (me.owner && cmd.action === "restoreBooking" &&
+    isDeepStrictEqual(loaded.get(cmd.booking.id), { ...cmd.booking, rent: cmd.booking.rent ?? 0 }))
+    return;
   const before = {
     members: memberRows.map((member) => presentMember(member, business.ownerId)),
     organizers: business.organizers,
@@ -235,7 +239,7 @@ export async function runPlan(
     throw error;
   }
   // A booking id that belongs to another business must never be overwritten.
-  if (cmd.action === "booking" && !loaded.has(cmd.booking.id)) {
+  if ((cmd.action === "booking" || cmd.action === "restoreBooking") && !loaded.has(cmd.booking.id)) {
     const [taken] = await tx.select({ id: bookings.id }).from(bookings).where(eq(bookings.id, cmd.booking.id));
     if (taken) throw new RegisterError(409, "That shift was already added.");
   }
@@ -288,4 +292,5 @@ export async function runPlan(
         .where(and(eq(bookings.id, b.id), eq(bookings.businessId, business.id)));
     else await tx.insert(bookings).values({ id: b.id, businessId: business.id, ...values });
   }
+  return cmd.action === "deleteBooking" ? loaded.get(cmd.bookingId) : undefined;
 }

@@ -17,6 +17,46 @@ test("the register API requires an authenticated Supabase bearer", async () => {
 });
 
 test(
+  "undo restores the deleted menu item and scheduled shift without replacing other records",
+  { skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database." },
+  async () => {
+    process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+    const owner = randomUUID();
+    const pin = "2718";
+    const call = (input: object) => runCommand(owner, { pin, ...input });
+    await call({ action: "setup", name: "Undo test", currency: "USD", timeZone: "UTC" });
+    const tea = { id: "tea", name: "Tea", category: "Drinks", price: 250, groups: [], costing: { sku: "TEA" } };
+    const coffee = { ...tea, id: "coffee", name: "Coffee", costing: { sku: "COFFEE" } };
+    await call({ action: "menu", menu: [tea, coffee] });
+    const bookingId = await shiftNow(call, pin);
+    const opened = await call({ action: "open", openingCash: 0, deviceId: randomUUID(), bookingId });
+
+    const removed = await call({ action: "removeMenuItem", productId: tea.id });
+    assert.deepEqual(removed.menu, [coffee]);
+    assert.deepEqual(removed.deletedRecord, { kind: "menuItem", item: tea, index: 0 });
+    assert.equal(removed.shift!.menu[0].id, tea.id);
+    const repriced = { ...coffee, price: 300 };
+    await call({ action: "menu", menu: [repriced] });
+    const restoreItem = { action: "restoreMenuItem", item: tea, index: 0 };
+    assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
+    assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
+    await assert.rejects(call({ ...restoreItem, item: { ...tea, price: 350 } }), { status: 409 });
+
+    const deleted = await call({ action: "deleteBooking", bookingId });
+    assert.equal(deleted.bookings!.some((entry) => entry.id === bookingId), false);
+    assert.equal(deleted.deletedRecord?.kind, "booking");
+    const booking = deleted.deletedRecord.booking;
+    const restoreShift = { action: "restoreBooking", booking };
+    const restored = await call(restoreShift);
+    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0 });
+    assert.equal(restored.shift!.id, opened.shift!.id);
+    assert.equal(restored.shift!.bookingId, bookingId);
+    assert.equal((await call(restoreShift)).bookings!.filter((entry) => entry.id === bookingId).length, 1);
+    await assert.rejects(call({ ...restoreShift, booking: { ...booking, seats: 3 } }), { status: 409 });
+  },
+);
+
+test(
   "a business can switch modes and open a Simple till without a scheduled shift",
   { skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database." },
   async () => {

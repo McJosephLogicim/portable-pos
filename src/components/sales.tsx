@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
-import type { Booking, RegisterState, Shift } from "@/lib/types";
+import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import {
@@ -18,7 +18,7 @@ import {
   type SalesFilter,
 } from "@/lib/sales-filter";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
-import { FilterBar, FilterChoices, toggleFilter } from "./filter-controls";
+import { FilterBar, FilterChoices } from "./filter-controls";
 import { formatMoney, Money, Sheet } from "./ui";
 
 /** Opens Sales already filtered, like from "All sales" on a shift. */
@@ -249,6 +249,8 @@ export function SalesScreen({
       {filtering && (
         <FilterSheet
           all={all}
+          menu={state.menu}
+          shifts={shifts}
           filter={filter}
           zone={business.timeZone}
           onApply={(next) => {
@@ -295,20 +297,33 @@ export function SalesScreen({
 /** Pick any mix of shifts, events, organizers, places, items and payments. Counts update as you pick. */
 function FilterSheet({
   all,
+  menu,
+  shifts,
   filter,
   zone,
   onApply,
   onClose,
 }: {
   all: Parameters<typeof filterOptions>[0];
+  menu: Product[];
+  shifts: Map<string, Shift>;
   filter: SalesFilter;
   zone: string;
   onApply: (filter: SalesFilter) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<SalesFilter>(filter);
-  const [moreShifts, setMoreShifts] = useState(false);
   const options = useMemo(() => filterOptions(all, draft), [all, draft]);
+  const photos = useMemo(() => {
+    const images = new Map(menu.map((item) => [item.id, item.image]));
+    // Older receipts can contain items that have since been removed from the menu.
+    for (const shift of shifts.values()) {
+      for (const item of shift.menu) {
+        if (item.image && !images.has(item.id)) images.set(item.id, item.image);
+      }
+    }
+    return images;
+  }, [menu, shifts]);
   const count = all.filter((x) => matchesFilter(x.facets, draft)).length;
   const date = new Intl.DateTimeFormat("en", { timeZone: zone, month: "short", day: "numeric" });
   const label = (key: FilterKey, o: FilterOption) =>
@@ -334,24 +349,20 @@ function FilterSheet({
       {filterKeys.map((key) => {
         const list = options[key];
         if (!list.length) return null;
-        const shown = key === "shift" && !moreShifts ? list.slice(0, 6) : list;
-        const chosen = draft[key] ?? [];
-        // Keep picked shifts visible even when they're older than the first few.
-        const extra = key === "shift" && !moreShifts ? list.filter((o) => chosen.includes(o.value) && !shown.includes(o)) : [];
         return (
           <FilterChoices
             key={key}
             name={filterNames[key]}
-            options={[...shown, ...extra].map((option) => ({ ...option, label: label(key, option) }))}
-            picked={chosen}
-            onToggle={(value) => setDraft(toggleFilter(draft, key, value))}
-          >
-            {key === "shift" && list.length > shown.length + extra.length && (
-              <button type="button" className="link" onClick={() => setMoreShifts(true)}>
-                {list.length - shown.length - extra.length} more
-              </button>
-            )}
-          </FilterChoices>
+            options={list.map((option) => ({
+              ...option,
+              label: label(key, option),
+              image: key === "item" ? photos.get(option.value) : undefined,
+            }))}
+            picked={draft[key] ?? []}
+            onChange={(picked) => setDraft({ ...draft, [key]: picked })}
+            searchable={key !== "payment"}
+            showThumbnails={key === "item"}
+          />
         );
       })}
     </Sheet>

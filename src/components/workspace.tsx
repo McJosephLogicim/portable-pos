@@ -10,7 +10,7 @@ import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen, ScheduledShiftSheet } from "./schedule";
 import { Account, Setup } from "./account";
 import { BusinessSwitcher } from "./businesses";
-import { buzz, CelebrateProvider, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import { priceLines, updateShiftMenu } from "@/lib/domain";
@@ -44,6 +44,12 @@ const tabs = [
   { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
 type Tab = (typeof tabs)[number]["id"];
+type UndoNotice = {
+  id: string;
+  text: string;
+  restoredText: string;
+  restore: (pin: string) => Promise<void>;
+};
 type JoinTarget =
   | { businessId: string; bookingId: string | null }
   | { code: NonNullable<ReturnType<typeof readJoinCode>> };
@@ -141,6 +147,8 @@ export function Workspace() {
     [sharedSchedule, setSharedSchedule] = useState<{ bookingId: string | null } | null>(null),
     [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
     [toast, setToast] = useState(""),
+    [undoNotices, setUndoNotices] = useState<UndoNotice[]>([]),
+    [confirmSignOut, setConfirmSignOut] = useState(false),
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
   const active = useRef<string | null>(null),
@@ -157,6 +165,7 @@ export function Workspace() {
       setState(null);
       setSyncErr("");
       setBootError("");
+      setUndoNotices([]);
       setTillBooking(null);
       setSharedSchedule(null);
       setTab("sell");
@@ -388,9 +397,24 @@ export function Workspace() {
                   deviceId: s.deviceId,
                   ...(closingId ? { shiftId: closingId } : {}),
                 });
-          const { inviteDelivery, ...snapshot } = data;
+          const { inviteDelivery, deletedRecord, ...snapshot } = data;
           show(key, await mergeServer(key, snapshot));
           setSyncErr("");
+          if (deletedRecord && active.current === key) {
+            const item = deletedRecord.kind === "menuItem";
+            const undoNotice: UndoNotice = {
+              id: crypto.randomUUID(),
+              text: item ? "Removed " + deletedRecord.item.name : "Shift deleted",
+              restoredText: item ? "Item restored" : "Shift restored",
+              restore: async (pin) => {
+                if (active.current !== key) throw Error("This business is no longer open.");
+                await owner(deletedRecord.kind === "menuItem"
+                  ? { action: "restoreMenuItem", item: deletedRecord.item, index: deletedRecord.index, pin }
+                  : { action: "restoreBooking", booking: deletedRecord.booking, pin });
+              },
+            };
+            setUndoNotices((current) => [...current, undoNotice]);
+          }
           if (input.action === "invite") {
             if (key === DEMO) setToast("Invitation saved in demo");
             else if (!input.email.trim()) setToast("Invite link ready");
@@ -465,22 +489,18 @@ export function Workspace() {
   }
   async function signOut() {
     if (!key || key === DEMO) return;
-    try {
-      await locked("write-" + key, async () => {
-        await syncRegister(key);
-        const s = await loadRegister(key);
-        if (s.pending.length)
-          throw Error("Sync this device before signing out.");
-        const { error } = await authClient().auth.signOut({ scope: "local" });
-        if (error) throw error;
-        await clearRegister(key);
-      });
-      setSettingsPage(null);
-      setRecipesPage(null);
-      await connect(DEMO);
-    } catch (e) {
-      setNotice(message(e));
-    }
+    await locked("write-" + key, async () => {
+      await syncRegister(key);
+      const s = await loadRegister(key);
+      if (s.pending.length)
+        throw Error("Sync this device before signing out.");
+      const { error } = await authClient().auth.signOut({ scope: "local" });
+      if (error) throw error;
+      await clearRegister(key);
+    });
+    setSettingsPage(null);
+    setRecipesPage(null);
+    await connect(DEMO);
   }
   const demo = key === DEMO;
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
@@ -616,7 +636,7 @@ export function Workspace() {
     screen = <Setup adding onSave={addBusiness} onSignOut={() => setAdding(false)} />;
   else if (!state) screen = <div className="loading" role="status">Opening register…</div>;
   else if (!business)
-    screen = <Setup onSave={owner} onSignOut={() => void signOut()} />;
+    screen = <Setup onSave={owner} onSignOut={() => setConfirmSignOut(true)} />;
   else if (view === "schedule")
     screen = (
       <ScheduleScreen
@@ -648,7 +668,7 @@ export function Workspace() {
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
         onAction={owner}
         onSignIn={() => setAccount(true)}
-        onSignOut={() => void signOut()}
+        onSignOut={() => setConfirmSignOut(true)}
         onBusinesses={() => setSwitching(true)}
       />
     );
@@ -662,6 +682,7 @@ export function Workspace() {
         onSaved={setToast}
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
+        onRemoveMenuItem={(productId, pin) => owner({ action: "removeMenuItem", productId, pin })}
       />
     );
   else if (view === "sales")
@@ -770,7 +791,31 @@ export function Workspace() {
           ))}
         </nav>
       )}
-      {toast && <Toast text={toast} onDone={() => setToast("")} />}
+      {(toast || undoNotices.length > 0) && (
+        <div className="toast-viewport">
+          {toast && <Toast text={toast} onDone={() => setToast("")} />}
+          {undoNotices.map((entry) => (
+            <Toast
+              key={entry.id}
+              text={entry.text}
+              undo={entry.restore}
+              onDone={(restored) => {
+                setUndoNotices((current) => current.filter((notice) => notice.id !== entry.id));
+                if (restored) setToast(entry.restoredText);
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {confirmSignOut && (
+        <ConfirmSheet
+          title="Sign out?"
+          detail="You’ll need to sign in again to access this business on this device."
+          confirmLabel="Sign out"
+          onConfirm={signOut}
+          onClose={() => setConfirmSignOut(false)}
+        />
+      )}
       {switching && state?.business && (
         <BusinessSwitcher
           state={state}

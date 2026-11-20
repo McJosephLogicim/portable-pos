@@ -31,6 +31,7 @@ import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 import {
   buzz,
   CategoryTabs,
+  ConfirmSheet,
   DoneCheck,
   ItemFaces,
   errorText,
@@ -884,6 +885,7 @@ export function SellScreen({
   const [marking, setMarking] = useState(false);
   const [picked, setPicked] = useState<Product | null>(null);
   const [charging, setCharging] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   /** The sale just went through: keep the sheet up for its change and receipt though the cart is empty. */
   const [paid, setPaid] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
@@ -928,7 +930,7 @@ export function SellScreen({
     (s) => s.shiftId === shift.id && !s.reversedAt,
   );
 
-  async function write(op: () => Promise<void>) {
+  async function write(op: () => Promise<void>, reportOnPage = true) {
     if (lock.current || pending) return false;
     lock.current = true;
     setWorking(true);
@@ -937,6 +939,7 @@ export function SellScreen({
       await op();
       return true;
     } catch (e) {
+      if (!reportOnPage) throw e;
       setError(errorText(e));
       return false;
     } finally {
@@ -991,7 +994,7 @@ export function SellScreen({
           <button
             className="btn ghost small"
             disabled={busy}
-            onClick={() => void write(() => onCart([]))}
+            onClick={() => setConfirmClear(true)}
           >
             Clear
           </button>
@@ -1243,10 +1246,7 @@ export function SellScreen({
           lines={lines}
           busy={busy}
           onQuantity={setQuantity}
-          onClear={() => {
-            void write(() => onCart([]));
-            setCharging(false);
-          }}
+          onClear={() => setConfirmClear(true)}
           onPay={async (tender, received, discountId, proofs) => {
             if (lock.current || pending) return null;
             lock.current = true;
@@ -1288,6 +1288,19 @@ export function SellScreen({
             const done = await withPin((pin) => onMenu(saveMenuItem(state.menu, item), pin, counts));
             if (done) onSaved("Added " + item.name);
             return done;
+          }}
+        />
+      )}
+      {confirmClear && (
+        <ConfirmSheet
+          title="Clear this order?"
+          detail="All items in the current order will be removed."
+          confirmLabel="Clear order"
+          onClose={() => setConfirmClear(false)}
+          onConfirm={async () => {
+            const cleared = await write(() => onCart([]), false);
+            if (cleared) setCharging(false);
+            return cleared;
           }}
         />
       )}

@@ -320,8 +320,13 @@ export interface Bootstrap {
   /** Profile photos of everyone on the team, by member id. */
   faces?: Record<string, string>;
 }
+export type DeletedRecord =
+  | { kind: "menuItem"; item: Product; index: number }
+  | { kind: "booking"; booking: Booking };
+
 export type RegisterResponse = Bootstrap & {
   inviteDelivery?: "sent" | "failed" | "unavailable";
+  deletedRecord?: DeletedRecord;
 };
 
 export interface RegisterState extends Bootstrap {

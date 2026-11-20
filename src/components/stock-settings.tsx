@@ -179,7 +179,7 @@ export function StockSheet({
           ...(Object.values(savedDetails).some((value) => value !== undefined) ? { details: savedDetails } : {}),
         });
       })}
-      onRemove={onRemove && (() => void run(onRemove))}
+      onRemove={onRemove}
       onClose={onClose}
     >
       <div className="card card-pad stack gap-14">

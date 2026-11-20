@@ -56,7 +56,7 @@ function OrganizerSheet({
           });
         })
       }
-      onRemove={onRemove && (() => void run(onRemove))}
+      onRemove={onRemove}
       onClose={onClose}
     >
       <div className="card card-pad">

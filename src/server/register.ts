@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
-import { checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
+import { changeMenuItem, checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
   defaultSettings,
@@ -14,7 +14,7 @@ import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking
 import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
-import { parseCommand } from "./input";
+import { parseCommand, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, members, sales, shifts } from "./schema";
@@ -22,7 +22,7 @@ import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
-const ownerActions = ["menu", "settings", "mode", ...ownerPlanActions];
+const ownerActions = ["menu", "removeMenuItem", "restoreMenuItem", "settings", "mode", ...ownerPlanActions];
 const pinActions = ["reverse", "close", ...ownerActions];
 
 async function addWalkIn(
@@ -114,16 +114,31 @@ export async function runCommand(
     ensure(!ownerActions.includes(cmd.action) || me.owner, "Only the owner can change this.", 400);
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
-      await runPlan(tx, business, me, cmd as PlanCommand);
+      const deleted = await runPlan(tx, business, me, cmd as PlanCommand);
+      if (deleted) return { ...(await snapshot(access)), deletedRecord: { kind: "booking" as const, booking: deleted } };
       return snapshot(access);
     }
 
-    if (cmd.action === "menu") {
-      const problem = batchIngredientProblem(cmd.menu, business.settings?.stockItems);
+    if (cmd.action === "menu" || cmd.action === "removeMenuItem" || cmd.action === "restoreMenuItem") {
+      let menu, deletedRecord;
+      if (cmd.action === "menu") {
+        menu = cmd.menu;
+      } else {
+        if (cmd.action === "restoreMenuItem" &&
+          isDeepStrictEqual(business.menu.find((item) => item.id === cmd.item.id), cmd.item))
+          return snapshot(access);
+        try {
+          ({ menu, deletedRecord } = changeMenuItem(business.menu, cmd));
+        } catch (error) {
+          ensure(false, (error as Error).message, 409);
+        }
+        if (cmd.action === "restoreMenuItem") validateMenu(menu);
+      }
+      const problem = batchIngredientProblem(menu, business.settings?.stockItems);
       if (problem) ensure(false, problem);
       await tx
         .update(businesses)
-        .set({ menu: cmd.menu })
+        .set({ menu })
         .where(eq(businesses.id, business.id));
       const [open] = await tx
         .select()
@@ -132,8 +147,8 @@ export async function runCommand(
       if (open) {
         const next = updateShiftMenu(
           presentShift(open, business.currency),
-          cmd.menu,
-          cmd.stock,
+          menu,
+          cmd.action === "menu" ? cmd.stock : undefined,
           business.settings?.stockItems,
         );
         if (!isDeepStrictEqual(next.menu, open.menu)) {
@@ -152,6 +167,7 @@ export async function runCommand(
             .where(eq(shifts.id, open.id));
         }
       }
+      return { ...(await snapshot(access)), deletedRecord };
     } else if (cmd.action === "mode") {
       await tx
         .update(businesses)
