@@ -7,6 +7,10 @@ import {
   Repeat,
   ChevronRight,
   SlidersHorizontal,
+  CalendarDays,
+  Package,
+  Calculator,
+  Palette,
   ListChecks,
   Users,
   Coins,
@@ -55,7 +59,6 @@ export type SettingsInput = {
 
 export type SettingsPage =
   | "business"
-  | "mode"
   | "payments"
   | "discounts"
   | "currency"
@@ -89,18 +92,28 @@ const countText = (n: number) => (n ? String(n) : "None");
 export function Row({
   icon,
   title,
+  description,
   detail,
   onClick,
 }: {
   icon: ReactNode;
   title: string;
+  /** One plain line on what's inside, so the row explains itself before it's tapped. */
+  description?: string;
   detail?: ReactNode;
   onClick: () => void;
 }) {
   return (
     <button className="list-row" onClick={onClick}>
       <span className="well">{icon}</span>
-      <span className="grow row-title">{title}</span>
+      {description ? (
+        <span className="row-text">
+          <span className="ellipsis">{title}</span>
+          <span className="label">{description}</span>
+        </span>
+      ) : (
+        <span className="grow row-title">{title}</span>
+      )}
       {detail !== undefined && <span className="record-end">{detail}</span>}
       <ChevronRight size={18} className="chev" />
     </button>
@@ -215,54 +228,94 @@ function applyNote(state: RegisterState) {
       : "Applies when you open the next shift.";
 }
 
-const modes = [
-  { id: "simple", name: "Simple", detail: "Sell, manage the menu, review receipts and run the till." },
-  { id: "advanced", name: "Advanced", detail: "Adds recipe costing, ingredient setup, shift scheduling and more." },
-] as const;
+/** What Advanced adds on top of Simple, in the order an owner meets it. */
+const advancedAdds = [
+  { icon: CalendarDays, title: "Shifts tab", text: "Schedule who works where, with pay, rent and quotas." },
+  { icon: Package, title: "Stock and prep", text: "Count what runs out and cost what you make in batches." },
+  { icon: Calculator, title: "Cost and margin", text: "See what each menu item costs you and what you keep." },
+  { icon: ListChecks, title: "Checklist and organizers", text: "Opening steps, and the bazaars and events you join." },
+  { icon: Palette, title: "Brand look and sales charts", text: "Your colors and font, and sales by hour." },
+];
 
-function ModePage(props: SettingsProps) {
-  const current = props.state.business!.settings.mode ?? "advanced";
-  const [mode, setMode] = useState<RegisterMode>(current);
-  const back = () => props.onPage(null);
+/**
+ * The mode lives at the top of Settings as one switch, like any on/off setting. Flipping it
+ * says exactly what appears or goes out of sight before anything changes.
+ */
+function ModeCard(props: SettingsProps) {
+  const simple = isSimpleMode(props.state.business!.settings);
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <div className="card card-pad mode-card">
+        <span className="well">
+          <SlidersHorizontal size={18} strokeWidth={1.8} />
+        </span>
+        <span className="row-text">
+          <span className="strong">Advanced mode</span>
+          <span className="label">Stock, costing and shift scheduling</span>
+        </span>
+        <Switch
+          checked={!simple}
+          label="Advanced mode"
+          disabled={!props.online && !props.demo}
+          onChange={() => setAsking(true)}
+        />
+      </div>
+      {asking && <ModeSheet {...props} turnOn={simple} onClose={() => setAsking(false)} />}
+    </>
+  );
+}
+
+function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: boolean; onClose: () => void }) {
+  const business = props.state.business!;
   const commit = useCommit(props);
-  const { busy, error, run } = useRecordSave(back);
-  const selected = modes.find((option) => option.id === mode)!;
+  const { busy, error, run } = useRecordSave(onClose);
+  const mode: RegisterMode = turnOn ? "advanced" : "simple";
   const save = () => run(() => commit.run(
     (pin) => props.onAction({ action: "mode", mode, pin }),
-    `${selected.name} mode enabled`,
+    turnOn ? "Advanced mode on. Shifts is in the tab bar." : "Simple mode on",
   ));
   return (
-    <SubPage title="Mode" onBack={back}>
-      <div className="card card-pad stack gap-14">
-        <div className="segmented" role="group" aria-label="Register mode">
-          {modes.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={mode === option.id}
-              disabled={busy}
-              onClick={() => setMode(option.id)}
-            >
-              {option.name}
-            </button>
-          ))}
-        </div>
-        <p className="label">{selected.detail}</p>
-        <p className="label">Applies to everyone using this business. You can switch modes anytime.</p>
-      </div>
-      {(mode !== current || error) && (
-        <div className="save-bar stack gap-8">
-          {error && <p className="notice alert" role="alert">{error}</p>}
-          <button
-            className="btn"
-            disabled={busy || !props.online || mode === current}
-            onClick={() => void save()}
-          >
-            {busy ? "Saving…" : props.online ? "Save mode" : "Connect to save"}
+    <Sheet
+      title={turnOn ? "Turn on Advanced mode?" : "Switch to Simple mode?"}
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          {error && <p className="alert" role="alert">{error}</p>}
+          <button className="btn block" disabled={busy || (!props.online && !props.demo)} onClick={() => void save()}>
+            {busy ? "Saving…" : turnOn ? "Turn on Advanced" : "Switch to Simple"}
           </button>
-        </div>
-      )}
-    </SubPage>
+          <button className="btn ghost compact block" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      <p className="muted">
+        {turnOn
+          ? "Everything you use now stays the same. You also get:"
+          : "Selling, receipts, the menu and the till stay the same. These go out of sight:"}
+      </p>
+      <div className="card card-pad change-list">
+        {advancedAdds.map(({ icon: Icon, title, text }) => (
+          <div key={title}>
+            <span className="well">
+              <Icon size={18} strokeWidth={1.8} />
+            </span>
+            <span className="row-text">
+              <span>{title}</span>
+              <span className="label">{text}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="label">
+        {turnOn
+          ? `Applies to everyone on ${business.name}. You can switch back anytime.`
+          : `Nothing is deleted. Schedules, stock and costs come back when you turn Advanced on again. Applies to everyone on ${business.name}.`}
+      </p>
+    </Sheet>
   );
 }
 
@@ -1122,7 +1175,6 @@ export function SettingsScreen(props: SettingsProps) {
         </div>
       </div>
     );
-  if (page === "mode") return <ModePage {...props} />;
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;
@@ -1132,6 +1184,7 @@ export function SettingsScreen(props: SettingsProps) {
         <h1 className="headline">Settings</h1>
       </div>
       <ProfileCard {...props} />
+      <ModeCard {...props} />
       <div className="card card-list">
         <button className="list-row" onClick={() => onPage("business")}>
           <BusinessMark name={business.name} logo={s.logo} brand={s.brand} />
@@ -1190,12 +1243,6 @@ export function SettingsScreen(props: SettingsProps) {
       </div>
       <p className="group-title">Register</p>
       <div className="card card-list">
-        <Row
-          icon={<SlidersHorizontal size={18} strokeWidth={1.8} />}
-          title="Mode"
-          detail={simple ? "Simple" : "Advanced"}
-          onClick={() => onPage("mode")}
-        />
         <Row
           icon={<Store size={18} strokeWidth={1.8} />}
           title="Currency and time"

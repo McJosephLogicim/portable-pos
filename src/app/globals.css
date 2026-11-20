@@ -2869,3 +2869,109 @@ html {
 .list-row .row-title + .record-end {
   flex: 0 0 auto;
 }
+
+/* ---------- plain-language help ---------- */
+/* A quiet (i) beside a term opens a short sheet that explains it. */
+.explain {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px -4px -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--ink-tertiary);
+  vertical-align: middle;
+  flex: none;
+}
+.explain:active {
+  background: var(--surface-muted);
+}
+.explain-text {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+.explain-text strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+
+/* ---------- rows that explain themselves ---------- */
+.row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.row-text .label {
+  line-height: 1.35;
+}
+
+/* ---------- mode ---------- */
+.mode-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.change-list {
+  display: flex;
+  flex-direction: column;
+}
+.change-list > div {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.change-list > div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.change-list .well {
+  flex: none;
+}
+
+/* ---------- a result you can trust at a glance ---------- */
+.cost-result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+.cost-result .num {
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.cost-result .label {
+  min-width: 0;
+}
+.cost-missing {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--ink-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.row-text + .record-end {
+  flex: 0 0 auto;
+}

@@ -18,6 +18,7 @@ import {
   Camera,
   CreditCard,
   Delete,
+  Info,
   Smartphone,
   Wallet,
   X,
@@ -388,6 +389,43 @@ export function Sheet({
       <div className="sheet-body">{children}</div>
       {footer && <div className="sheet-foot">{footer}</div>}
     </dialog>
+  );
+}
+
+/**
+ * A word that needs explaining, like "usable yield": a small (i) next to it opens a short,
+ * plain answer. Keeps labels short without leaving anyone guessing.
+ */
+export function Explain({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="explain"
+        aria-label={"What is " + title.toLowerCase() + "?"}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(true);
+        }}
+      >
+        <Info size={15} strokeWidth={1.9} />
+      </button>
+      {open && (
+        <Sheet
+          title={title}
+          onClose={() => setOpen(false)}
+          footer={
+            <button type="button" className="btn block" onClick={() => setOpen(false)}>
+              Got it
+            </button>
+          }
+        >
+          <div className="explain-text stack gap-10">{children}</div>
+        </Sheet>
+      )}
+    </>
   );
 }
 
