@@ -799,12 +799,14 @@ export function EmptyRow({ title, detail }: { title: string; detail?: string }) 
  * onNew adds a dashed "New category" tab at the end.
  */
 export function CategoryTabs({
+  label = "Categories",
   categories,
   value,
   onChange,
   onNew,
   newDisabled,
 }: {
+  label?: string;
   categories: string[];
   value: string | null;
   onChange: (category: string | null) => void;
@@ -812,7 +814,7 @@ export function CategoryTabs({
   newDisabled?: boolean;
 }) {
   return (
-    <div className="chips" role="group" aria-label="Categories">
+    <div className="chips" role="group" aria-label={label}>
       <button type="button" aria-pressed={value === null} onClick={() => onChange(null)}>
         All
       </button>

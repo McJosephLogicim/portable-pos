@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ChevronRight, Plus, Trash2 } from "lucide-react";
-import { errorText, Sheet } from "./ui";
+import { ChevronRight, Plus, Search, Trash2, X } from "lucide-react";
+import { CategoryTabs, errorText, Sheet } from "./ui";
 
 /*
  * One way to keep a list of things in Settings: menu items, categories, choices, stock items
@@ -23,6 +23,99 @@ export function RecordAdd({
     <button className="btn" disabled={disabled} onClick={onClick}>
       <Plus size={18} /> {label}
     </button>
+  );
+}
+
+/** Lists this long get a search field. */
+export const SEARCH_FROM = 6;
+
+const fold = (text: string) =>
+  text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase();
+
+/** Whether every word typed appears somewhere in these texts, ignoring case and accents. */
+export function matches(query: string, ...texts: (string | undefined | false)[]) {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = fold(texts.filter(Boolean).join(" "));
+  return words.every((w) => hay.includes(w));
+}
+
+/**
+ * Search, and optional filter tabs, above a Settings list. The search field shows once the
+ * list reaches SEARCH_FROM; the tabs show when there is more than one way to narrow it.
+ */
+export function RecordSearch({
+  count,
+  noun,
+  query,
+  onQuery,
+  filters,
+}: {
+  /** How many things the page lists, before searching. */
+  count: number;
+  /** "items", "people"… */
+  noun: string;
+  query: string;
+  onQuery: (query: string) => void;
+  filters?: {
+    label: string;
+    options: string[];
+    value: string | null;
+    onChange: (value: string | null) => void;
+    onNew?: () => void;
+    newDisabled?: boolean;
+  };
+}) {
+  const search = count >= SEARCH_FROM || query !== "";
+  if (!search && !filters) return null;
+  return (
+    <>
+      {search && (
+        <div className="search-field record-search">
+          <Search size={18} aria-hidden="true" />
+          <input
+            className="input"
+            type="search"
+            enterKeyHint="search"
+            aria-label={"Search " + noun}
+            placeholder={"Search " + noun}
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+          />
+          {query && (
+            <button type="button" className="combo-clear" aria-label="Clear search" onClick={() => onQuery("")}>
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      )}
+      {filters && (
+        <CategoryTabs
+          label={filters.label}
+          categories={filters.options}
+          value={filters.value}
+          onChange={filters.onChange}
+          onNew={filters.onNew}
+          newDisabled={filters.newDisabled}
+        />
+      )}
+    </>
+  );
+}
+
+/** What a list shows when search or a filter leaves nothing. */
+export function RecordNoMatch({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div className="card empty">
+      <span className="strong">{query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing here"}</span>
+      <span className="label">Try another name, or see everything.</span>
+      <button type="button" className="btn ghost small" onClick={onClear}>
+        Show all
+      </button>
+    </div>
   );
 }
 
