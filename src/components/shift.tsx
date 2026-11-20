@@ -13,6 +13,7 @@ import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
 import { RecordEmpty } from "./records";
+import { ShiftStrip } from "./sell";
 import { OPEN_EARLY, startProblem } from "@/lib/team";
 import {
   errorText,
@@ -769,6 +770,13 @@ export function ShiftScreen({
       )}
       {shift && totals ? (
         <>
+          {!simple && (
+            <ShiftStrip
+              state={state}
+              onTillPage
+              onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
+            />
+          )}
           <h1 className="headline">
             <Money value={total} currency={currency} />{" "}
             <span className="g">
@@ -889,25 +897,6 @@ export function ShiftScreen({
                 })}
               </div>
             </div>
-          )}
-          {!simple && !shift.bookingId && (
-            <button className="notice warn" onClick={() => setLinking(true)}>
-              <CalendarDays size={18} strokeWidth={1.8} />
-              <span className="grow stack" style={{ textAlign: "left" }}>
-                <span className="strong">This till isn't on a shift</span>
-                <span className="label">Add it to Shifts so sales, pay and the report line up.</span>
-              </span>
-              <ChevronRight size={18} className="chev" />
-            </button>
-          )}
-          {!simple && shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) && (
-            <button className="notice" onClick={onSchedule}>
-              <CalendarDays size={18} strokeWidth={1.8} />
-              <span className="grow" style={{ textAlign: "left" }}>
-                For {bookingTitle(state.bookings!.find((b) => b.id === shift.bookingId)!)}
-              </span>
-              <ChevronRight size={18} className="chev" />
-            </button>
           )}
           <div className="stack gap-10">
             <p className="group-title">By payment</p>

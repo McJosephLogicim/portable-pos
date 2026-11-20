@@ -747,7 +747,11 @@ export interface SellProps {
 }
 
 /** Which shift this till is selling for. Tapping it opens the Till. */
-function ShiftStrip({ state, onTill }: { state: RegisterState; onTill: () => void }) {
+/**
+ * Which scheduled shift this till is selling for, as a strip at the top of Sell and Till.
+ * On Sell it opens the Till; on the Till it opens the shift, or links one if there isn't one.
+ */
+export function ShiftStrip({ state, onTill, onTillPage = false }: { state: RegisterState; onTill: () => void; onTillPage?: boolean }) {
   const shift = state.shift!;
   const zone = state.business!.timeZone;
   const booking = state.bookings?.find((b) => b.id === shift.bookingId);
@@ -756,13 +760,13 @@ function ShiftStrip({ state, onTill }: { state: RegisterState; onTill: () => voi
     return (
       <button type="button" className="shift-strip warn" onClick={onTill}>
         <CalendarDays size={16} strokeWidth={1.9} />
-        <span className="grow ellipsis">Not on a shift yet. Add it on the Till.</span>
+        <span className="grow ellipsis">{onTillPage ? "Not on a shift yet. Tap to add it." : "Not on a shift yet. Add it on the Till."}</span>
         <ChevronRight size={16} className="chev" />
       </button>
     );
   const people = booking.staff.map((s) => s.name.split(" ")[0]).join(", ");
   return (
-    <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${bookingTitle(booking)}. Open the Till.`}>
+    <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${bookingTitle(booking)}. ${onTillPage ? "Open the shift." : "Open the Till."}`}>
       <CalendarDays size={16} strokeWidth={1.9} />
       <span className="grow ellipsis">
         <span className="strong">{bookingTitle(booking)}</span>

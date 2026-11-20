@@ -25,7 +25,7 @@ The owner turns **Advanced mode** on or off with the switch at the top of Settin
 
 ## Opening, running and closing a shift
 
-In Advanced mode, the seller picks a scheduled shift to open the till, starting up to 30 minutes before the scheduled time. A till opened in Simple mode can be linked to the schedule from Till after switching to Advanced. The top of Sell in Advanced shows which shift the till is selling for.
+In Advanced mode, the seller picks a scheduled shift to open the till, starting up to 30 minutes before the scheduled time. A till opened in Simple mode can be linked to the schedule from Till after switching to Advanced. The top of Sell and Till in Advanced shows which shift the till is selling for.
 
 Opening asks for the cash float, counted by coin and bill (for example ₱5 × 15) or typed as a total, a count of every stock item, and the opening checklist. During the shift, anyone on the till logs expenses from the Till page: paid with cash from the till, which lowers the cash expected in the drawer, or out of their own pocket, which the report lists as owed back to them. Closing asks for the cash on hand, again by coin and bill or as a total, and what is left of each stock item. The server checks that coin counts add up to the amount sent.
 
