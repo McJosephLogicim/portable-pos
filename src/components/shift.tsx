@@ -73,15 +73,18 @@ function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zon
 function NoShift({
   state,
   onStart,
+  onJoin,
   onSchedule,
   onGoMenu,
 }: {
   state: RegisterState;
   onStart: (bookingId: string) => void;
+  onJoin?: (shiftId: string) => Promise<void>;
   onSchedule: () => void;
   onGoMenu?: () => void;
 }) {
   const zone = state.business!.timeZone;
+  const [joining, setJoining] = useState<Shift | null>(null);
   if (!state.menu.length)
     return (
       <div className="stack gap-18">
@@ -100,13 +103,45 @@ function NoShift({
         </div>
       </div>
     );
+  // Booths other phones are running now. This phone can sell on one, or start its own.
+  const running = new Map(state.shifts.flatMap((s) => (!s.closedAt && s.bookingId ? [[s.bookingId, s] as const] : [])));
   const list = upcomingBookings(state);
-  const ready = list.filter((b) => !startProblem(b, zone));
-  const next = list.find((b) => startProblem(b, zone));
+  const live = (state.bookings ?? []).filter((b) => running.has(b.id));
+  const ready = list.filter((b) => !running.has(b.id) && !startProblem(b, zone));
+  const next = list.find((b) => !running.has(b.id) && startProblem(b, zone));
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   return (
     <div className="stack gap-18">
       <h1 className="headline">Open till</h1>
+      {live.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Open on another phone</p>
+          <div className="card card-list">
+            {live.map((b) => {
+              const till = running.get(b.id)!;
+              return (
+                <BookingRow
+                  key={b.id}
+                  booking={b}
+                  zone={zone}
+                  note={`Shift ${till.number}${till.openedBy ? " · opened by " + till.openedBy.split(" ")[0] : ""}`}
+                  onClick={onJoin ? () => setJoining(till) : undefined}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {joining && onJoin && (
+        <ConfirmSheet
+          title={`Sell on shift ${joining.number}?`}
+          detail="Sales from this phone go to that shift's drawer. Any phone on it can close it."
+          confirmLabel="Sell on this shift"
+          destructive={false}
+          onClose={() => setJoining(null)}
+          onConfirm={() => onJoin(joining.id)}
+        />
+      )}
       {ready.length > 0 && (
         <div className="stack gap-10">
           <p className="group-title">Ready to start</p>
@@ -129,7 +164,7 @@ function NoShift({
           </div>
         </div>
       )}
-      {!list.length ? (
+      {!list.length && !running.size ? (
         <RecordEmpty
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled"
@@ -502,6 +537,7 @@ const expenseIdeas = ["Rent", "Lalamove", "Grab", "Ice", "Supplies", "Parking", 
 
 export function ShiftScreen({
   onOpen,
+  onJoin,
   onClose,
   onExpense,
   onUnexpense,
@@ -513,6 +549,7 @@ export function ShiftScreen({
   ...schedule
 }: ScheduleProps & {
   onOpen: (opening: Opening) => Promise<void>;
+  onJoin?: (shiftId: string) => Promise<void>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onExpense: (input: ExpenseInput) => Promise<void>;
   onUnexpense: (id: string) => Promise<void>;
@@ -801,7 +838,7 @@ export function ShiftScreen({
             onBack={() => setStarting(null)}
           />
         ) : (
-          <NoShift state={state} onStart={setStarting} onSchedule={onSchedule} onGoMenu={onGoMenu} />
+          <NoShift state={state} onStart={setStarting} onJoin={onJoin} onSchedule={onSchedule} onGoMenu={onGoMenu} />
         )
       )}
       {pastShifts && (

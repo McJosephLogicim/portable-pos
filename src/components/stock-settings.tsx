@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CookingPot, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
+import { ChevronRight, CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
 import { amountText, parseMoney, stockReplay } from "@/lib/domain";
 import { matchesFilters, type FilterFacets, type FilterSelection } from "@/lib/filters";
@@ -13,6 +13,7 @@ import type { PricingRules, Product, StockItem, StockItemDetails, StockListField
 import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
 import type { RecipesProps } from "./recipes";
+import { MergeLeftoversSheet, useMergeable } from "./merge-leftovers";
 import { buzz, Explain, formatMoney, MoneyField, Sheet } from "./ui";
 import {
   matches,
@@ -535,6 +536,8 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<StockItem | "new" | null>(null);
+  const [merging, setMerging] = useState(false);
+  const mergeable = useMergeable(props.state);
   const rows = list.filter((item) => Boolean(item.prep) === prepOnly);
   const rates = stockCostRates(list);
   const live = props.state.shift && !props.state.shift.closedAt ? stockReplay(props.state.shift, props.state.sales) : undefined;
@@ -611,6 +614,29 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           <Tags size={16} /> Stock lists
         </button>
       </div>}
+      {!select.on && props.onMergeStock && mergeable.length > 0 && (
+        <div className="card card-list">
+          <button type="button" className="list-row" disabled={!props.online} aria-haspopup="dialog" onClick={() => setMerging(true)}>
+            <span className="well">
+              <Merge size={18} strokeWidth={1.8} />
+            </span>
+            <span className="grow stack">
+              <span>Merge leftovers</span>
+              <span className="label">{plural(mergeable.length, "finished shift")}</span>
+            </span>
+            <ChevronRight size={18} className="chev" />
+          </button>
+        </div>
+      )}
+      {merging && props.onMergeStock && (
+        <MergeLeftoversSheet
+          state={props.state}
+          online={props.online}
+          onMerge={props.onMergeStock}
+          onSaved={props.onSaved}
+          onClose={() => setMerging(false)}
+        />
+      )}
       {count > 0 && (
         <RecordSearch
           count={count}

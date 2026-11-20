@@ -38,6 +38,8 @@ export function presentShift(
     ...(row.closingCount ? { closingCount: row.closingCount } : {}),
     ...(row.usedStock ? { usedStock: row.usedStock } : {}),
     ...(row.stockSets?.length ? { stockSets: row.stockSets } : {}),
+    ...(row.leftStock ? { leftStock: row.leftStock } : {}),
+    ...(row.mergedAt ? { mergedAt: new Date(row.mergedAt).toISOString() } : {}),
     ...(row.openedBy ? { openedBy: row.openedBy } : {}),
   };
 }
@@ -186,6 +188,7 @@ const empty = {
 export async function snapshot(
   tx: Transaction,
   access: Access,
+  view: { till?: string | null; deviceId?: string } = {},
 ): Promise<Bootstrap & { nextSales?: string }> {
   if (!access) return empty;
   // Read again: the command may have just changed them.
@@ -253,14 +256,23 @@ export async function snapshot(
       business: { id, name, currency, timeZone, settings },
     };
 
-  const recent = await tx
+  // Every booth still open, plus the last 30 closed.
+  const running = await tx
     .select()
     .from(shifts)
-    .where(eq(shifts.businessId, business.id))
+    .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)))
+    .orderBy(desc(shifts.number));
+  const closed = await tx
+    .select()
+    .from(shifts)
+    .where(and(eq(shifts.businessId, business.id), isNotNull(shifts.closedAt)))
     .orderBy(desc(shifts.number))
-    .limit(31);
-  const active = recent.find((shift) => !shift.closedAt);
-  if (!active && recent.length > 30) recent.pop();
+    .limit(30);
+  const recent = [...running, ...closed].sort((a, b) => b.number - a.number);
+  // The shift this phone runs. Older app versions don't say, and get the one open shift.
+  const active = view.till !== undefined
+    ? running.find((shift) => shift.id === view.till)
+    : running.length === 1 ? running[0] : running.find((shift) => shift.deviceId === view.deviceId);
   const history = recent.length
     ? await receiptsPage(
         tx,

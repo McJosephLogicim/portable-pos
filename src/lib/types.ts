@@ -193,6 +193,10 @@ export interface Shift {
   closingCount?: Record<string, number>;
   /** How much of each stock item the shift's sales used, saved at closing. */
   usedStock?: Record<string, number>;
+  /** What each stock item had left when the shift closed: the count, or what the sales left. */
+  leftStock?: Record<string, number>;
+  /** When this shift's leftovers were merged into the stock items' starting amounts. */
+  mergedAt?: string;
   /** Who opened the till. */
   openedBy?: string;
   /** The scheduled shift this till ran for. */

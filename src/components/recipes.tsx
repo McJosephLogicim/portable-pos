@@ -13,6 +13,8 @@ export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" |
 
 export interface RecipesProps extends EditorProps {
   onRemoveMenuItem: (productId: string, pin: string) => Promise<void>;
+  /** Add up finished shifts' leftovers into what each shift starts with. */
+  onMergeStock?: (shiftIds: string[], pin: string) => Promise<void>;
   page: RecipesPage | null;
   onPage: (page: RecipesPage | null) => void;
   onBack: () => void;
