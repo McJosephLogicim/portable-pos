@@ -6,7 +6,23 @@ import type { Organizer, Tag } from "@/lib/types";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
 import { buzz } from "./ui";
-import { matches, namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
+import {
+  matches,
+  andText,
+  namesText,
+  plural,
+  RecordAdd,
+  RecordEmpty,
+  RecordGroup,
+  RecordNoMatch,
+  RecordRow,
+  RecordSearch,
+  RecordSelectBar,
+  RecordSelectToggle,
+  RecordSheet,
+  useRecordSave,
+  useRecordSelect,
+} from "./records";
 
 /** An organizer, like a mall or a market group, and the events they run. */
 function OrganizerSheet({
@@ -143,9 +159,12 @@ export function OrganizersPage(props: SettingsProps) {
   const taken = list.flatMap((o) => [o.id, ...o.events.map((e) => e.id)]);
   const save = (next: Organizer[], label: string) =>
     commit.run((pin) => props.onAction({ action: "organizers", organizers: next, pin }), label);
+  const select = useRecordSelect(list.map((o) => o.id));
+  const canEdit = props.online || Boolean(props.demo);
   return (
     <SubPage
       title="Organizers"
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!canEdit} />}
       help={<p>The bazaars and markets you join, and their events. You pick them when you schedule a shift, and the leaderboard ranks them. Add or remove them here.</p>}
       sentence={
         list.length ? (
@@ -160,7 +179,7 @@ export function OrganizersPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      <RecordAdd label="Add organizer" disabled={!props.online && !props.demo} onClick={() => setEditing("new")} />
+      {!select.on && <RecordAdd label="Add organizer" disabled={!canEdit} onClick={() => setEditing("new")} />}
       <RecordSearch count={list.length} noun="organizers and events" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
         <RecordNoMatch query={query} onClear={() => setQuery("")} />
@@ -171,6 +190,7 @@ export function OrganizersPage(props: SettingsProps) {
               key={o.id}
               disabled={!props.online && !props.demo}
               onClick={() => setEditing(o)}
+              select={select.row(o.id)}
               lead={
                 <span className="well">
                   <Ticket size={18} strokeWidth={1.8} />
@@ -187,6 +207,21 @@ export function OrganizersPage(props: SettingsProps) {
           icon={<Ticket size={22} strokeWidth={1.6} />}
           title="No organizers yet"
           text="Add them here, or type a new one while scheduling a shift."
+        />
+      )}
+      {select.on && (
+        <RecordSelectBar
+          select={select}
+          shown={shown.map((o) => o.id)}
+          noun="organizer"
+          removeDetail={(ids) => {
+            const shifts = bookings.filter((b) => b.organizer && ids.includes(b.organizer.id)).length;
+            const names = andText(list.filter((o) => ids.includes(o.id)).map((o) => o.name), 3);
+            return shifts
+              ? `${names} and their events will be removed. ${shifts === 1 ? "1 scheduled shift keeps the name it was" : shifts + " scheduled shifts keep the names they were"} saved with.`
+              : `${names} and their events will be removed.`;
+          }}
+          onRemove={(ids) => save(list.filter((o) => !ids.includes(o.id)), "Removed " + plural(ids.length, "organizer"))}
         />
       )}
       {editing && (

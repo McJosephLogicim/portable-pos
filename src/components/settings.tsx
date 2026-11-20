@@ -154,12 +154,15 @@ export function SubPage({
   onBack,
   backLabel = "Back to settings",
   help,
+  action,
   children,
 }: {
   title: string;
   sentence?: ReactNode;
   onBack: () => void;
   backLabel?: string;
+  /** A small action at the end of the title row, like Select. */
+  action?: ReactNode;
   /** How the page works, behind an (i) beside its title instead of a note at the bottom. */
   help?: ReactNode;
   children: ReactNode;
@@ -174,6 +177,7 @@ export function SubPage({
           <h1 className={"strong " + styles.subPageTitle}>{title}</h1>
           {help && <Explain title={title}>{help}</Explain>}
         </div>
+        {action}
       </div>
       {sentence && <p className="headline">{sentence}</p>}
       {children}

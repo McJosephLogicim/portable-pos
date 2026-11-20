@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Rows3, Tag as TagIcon, Trash2, X } from "lucide-react";
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
@@ -13,9 +13,10 @@ import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUse
 import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { MultiSelect } from "./multi-select";
-import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch, usePin } from "./ui";
+import { buzz, currencySymbol, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch, usePin } from "./ui";
 import {
   matches,
+  andText,
   namesText,
   plural,
   RecordAdd,
@@ -24,8 +25,11 @@ import {
   RecordNoMatch,
   RecordRow,
   RecordSearch,
+  RecordSelectBar,
+  RecordSelectToggle,
   RecordSheet,
   useRecordSave,
+  useRecordSelect,
 } from "./records";
 
 /* ---------- shared pieces ---------- */
@@ -655,7 +659,10 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
   const commit = useCommit(props);
   const withPin = usePin();
   const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [bulkEdit, setBulkEdit] = useState<Product[] | null>(null);
   const [newCategory, setNewCategory] = useState(false);
+  const select = useRecordSelect(menu.map((p) => p.id));
   const [picked, setTab] = useState<string | null>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
   const [query, setQuery] = useState("");
@@ -672,13 +679,17 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
     .filter((c) => tab === null || c === tab)
     .map((c) => ({ name: c, items: shown.filter((m) => (m.category || "") === c) }));
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
+  const shownIds = grouped.flatMap((g) => g.items.map((p) => p.id));
+  const selecting = select.on && !costingView;
   return (
     <SubPage
       title={costingView ? "Menu costing" : "Menu items"}
+      action={costingView || menu.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={costingView ? undefined : (
         <>
           <p>New items and changes to names, prices and options go live on Sell right away.</p>
           <p>Removing an item, or changing the stock it uses, takes effect when the next shift opens. To stop selling something now, mark it sold out on Sell.</p>
+          <p>To change or remove several at once, tap Select, or hold an item.</p>
         </>
       )}
       backLabel="Back to recipes"
@@ -700,7 +711,14 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
         />
       ) : (
         <>
-          <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
+          {!selecting && (
+            <div className="row gap-8">
+              <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
+              <button type="button" className="btn ghost" disabled={!props.online} onClick={() => setAdding(true)}>
+                <Rows3 size={16} /> Add several
+              </button>
+            </div>
+          )}
           {!menu.length && (
             <RecordEmpty
               icon={<LayoutGrid size={22} strokeWidth={1.6} />}
@@ -742,6 +760,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
                     key={p.id}
                     disabled={!props.online}
                     onClick={() => setEditing(p)}
+                    select={select.row(p.id)}
                     lead={<Thumb src={p.image} />}
                     title={p.name}
                     detail={detailOf(p)}
@@ -750,6 +769,21 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
                 ))}
               </RecordGroup>
             ))}
+          {selecting && (
+            <RecordSelectBar
+              select={select}
+              shown={shownIds}
+              noun="item"
+              onEdit={() => setBulkEdit(menu.filter((p) => select.picked.includes(p.id)))}
+              removeDetail={(ids) => {
+                const names = andText(menu.filter((p) => ids.includes(p.id)).map((p) => p.name), 3);
+                return live
+                  ? `${names} will come off the menu. They stay on Sell until this shift ends.`
+                  : `${names} will come off the menu.`;
+              }}
+              onRemove={(ids) => commit.menu(menu.filter((p) => !ids.includes(p.id)), "Removed " + plural(ids.length, "item"))}
+            />
+          )}
           {(!props.online || !live) && (
             <p className="label">
               {!props.online
@@ -791,6 +825,29 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
           }
         />
       )}
+      {adding && (
+        <QuickAddSheet
+          category={tab ?? undefined}
+          menu={menu}
+          currency={business.currency}
+          onClose={() => setAdding(false)}
+          onSave={(items) => commit.menu([...menu, ...items], "Added " + plural(items.length, "item"))}
+        />
+      )}
+      {bulkEdit && (
+        <BulkEditSheet
+          items={bulkEdit}
+          menu={menu}
+          currency={business.currency}
+          onClose={() => setBulkEdit(null)}
+          onSave={async (items) => {
+            const byId = new Map(items.map((p) => [p.id, p]));
+            const saved = await commit.menu(menu.map((p) => byId.get(p.id) ?? p), "Saved " + plural(items.length, "item"));
+            if (saved) select.done();
+            return saved;
+          }}
+        />
+      )}
       {newCategory && (
         <CategorySheet
           menu={menu}
@@ -803,6 +860,290 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
         />
       )}
     </SubPage>
+  );
+}
+
+/* ---------- several items at once ---------- */
+
+type QuickRow = { id: string; name: string; price: string };
+const blankQuick = (): QuickRow => ({ id: crypto.randomUUID(), name: "", price: "" });
+
+/** Type a list of names and prices, one item per line. A new line appears as the last one is filled. */
+function QuickAddSheet({
+  category: startCategory = "",
+  menu,
+  currency,
+  onSave,
+  onClose,
+}: {
+  category?: string;
+  menu: Product[];
+  currency: string;
+  onSave: (items: Product[]) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<QuickRow[]>(() => [blankQuick()]);
+  const [category, setCategory] = useState(startCategory);
+  const { busy, error, run } = useRecordSave(onClose);
+  const list = useRef<HTMLDivElement>(null);
+  const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
+  const filled = rows.filter((r) => r.name.trim() || r.price.trim());
+  const ready = filled.length > 0 && filled.every((r) => r.name.trim() && r.price.trim());
+  function setRow(id: string, patch: Partial<QuickRow>) {
+    setRows((all) => {
+      const next = all.map((r) => (r.id === id ? { ...r, ...patch } : r));
+      const last = next.at(-1)!;
+      return last.name.trim() || last.price.trim() ? [...next, blankQuick()] : next;
+    });
+  }
+  function focus(index: number, field: "name" | "price") {
+    requestAnimationFrame(() =>
+      list.current?.querySelector<HTMLInputElement>(`[data-row="${index}"][data-field="${field}"]`)?.focus(),
+    );
+  }
+  function save() {
+    void run(() =>
+      onSave(
+        filled.map((r) => {
+          const name = r.name.trim();
+          if (!name) throw Error("Name every item, or clear its price.");
+          let price: number;
+          try {
+            price = parseMoney(r.price, currency);
+          } catch {
+            throw Error(`Check the price of ${name}.`);
+          }
+          return { id: crypto.randomUUID(), name, category: category.trim(), price, groups: [] };
+        }),
+      ),
+    );
+  }
+  return (
+    <RecordSheet
+      noun="items"
+      title="Add several items"
+      help={
+        <>
+          <p>Each line becomes a menu item. A new line appears as you fill the last one.</p>
+          <p>Add photos, choices and stock later by tapping an item. New items go live on Sell right away.</p>
+        </>
+      }
+      editing={false}
+      busy={busy}
+      error={error}
+      canSave={ready}
+      saveText={filled.length ? "Add " + plural(filled.length, "item") : "Add"}
+      saveLabel={filled.length ? "Add " + plural(filled.length, "item") : "Add items"}
+      onSave={save}
+      onClose={onClose}
+    >
+      <div className="card card-pad stack gap-14">
+        <div className="field">
+          <span>Category</span>
+          <SuggestInput
+            label="Category for these items"
+            maxLength={60}
+            placeholder="None"
+            value={category}
+            newText="New category"
+            suggestions={categories.map((c) => ({
+              key: c,
+              name: c,
+              detail: plural(menu.filter((m) => m.category.trim() === c).length, "item"),
+            }))}
+            onChange={setCategory}
+          />
+        </div>
+      </div>
+      <div className="card card-pad stack gap-10" ref={list}>
+        <div className="quick-row label">
+          <span>Name</span>
+          <span>Price</span>
+          <span />
+        </div>
+        {rows.map((r, i) => {
+          const last = i === rows.length - 1;
+          return (
+            <div className="quick-row" key={r.id}>
+              <input
+                className="input"
+                aria-label={`Item ${i + 1} name`}
+                placeholder={i === 0 ? "e.g. Iced latte" : last ? "Next item" : ""}
+                maxLength={80}
+                enterKeyHint="next"
+                autoComplete="off"
+                data-row={i}
+                data-field="name"
+                value={r.name}
+                onChange={(e) => setRow(r.id, { name: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  focus(i, "price");
+                }}
+              />
+              <span className="money-input quick-price">
+                <input
+                  className="input"
+                  aria-label={`Item ${i + 1} price`}
+                  inputMode="decimal"
+                  placeholder="0"
+                  enterKeyHint={last ? "done" : "next"}
+                  autoComplete="off"
+                  data-row={i}
+                  data-field="price"
+                  value={r.price}
+                  onChange={(e) => setRow(r.id, { price: e.target.value.replace(/[^\d.]/g, "") })}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    if (r.name.trim()) focus(i + 1, "name");
+                  }}
+                />
+                <span className="prefix">{currencySymbol(currency)}</span>
+              </span>
+              {last ? (
+                <span aria-hidden="true" />
+              ) : (
+                <button
+                  type="button"
+                  className="round flat quick-remove"
+                  aria-label={`Remove item ${i + 1}`}
+                  onClick={() => setRows((all) => all.filter((x) => x.id !== r.id))}
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </RecordSheet>
+  );
+}
+
+type PriceChange = "set" | "up" | "down";
+
+/** One change to several items: move them to a category, or set, raise or lower their prices. */
+function BulkEditSheet({
+  items,
+  menu,
+  currency,
+  onSave,
+  onClose,
+}: {
+  items: Product[];
+  menu: Product[];
+  currency: string;
+  onSave: (items: Product[]) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [category, setCategory] = useState("");
+  const [change, setChange] = useState<PriceChange>("set");
+  const [amount, setAmount] = useState("");
+  const { busy, error, run } = useRecordSave(onClose);
+  const categories = Array.from(new Set(menu.map((m) => m.category.trim()).filter(Boolean)));
+  let value: number | undefined;
+  try {
+    if (amount) value = parseMoney(amount, currency);
+  } catch {
+    // Wait for a complete amount before previewing.
+  }
+  const priceOf = (p: Product) =>
+    value === undefined ? p.price : change === "set" ? value : change === "up" ? p.price + value : p.price - value;
+  const next = items.map((p) => ({ ...p, ...(category.trim() ? { category: category.trim() } : {}), price: priceOf(p) }));
+  const changed = next.filter((p, i) => p.price !== items[i].price || p.category !== items[i].category);
+  const negative = next.filter((p) => p.price < 0);
+  const what = plural(items.length, "item");
+  const before = new Map(items.map((p) => [p.id, p]));
+  return (
+    <RecordSheet
+      noun="items"
+      title={"Edit " + what}
+      help={
+        <>
+          <p>Fill in only what should change. Anything left blank keeps each item's own value.</p>
+          <p>Changes go live on Sell right away. Photos, choices and stock are set on each item.</p>
+        </>
+      }
+      editing
+      busy={busy}
+      error={error || (negative.length ? `That takes ${namesText(negative.map((p) => p.name))} below zero.` : "")}
+      canSave={changed.length > 0 && !negative.length && (!amount || value !== undefined)}
+      saveLabel={"Save " + what}
+      onSave={() => void run(() => onSave(next))}
+      onClose={onClose}
+    >
+      <div className="card card-pad stack gap-14">
+        <div className="field">
+          <span>Move to category</span>
+          <SuggestInput
+            label="Move to category"
+            maxLength={60}
+            placeholder="Keep as is"
+            value={category}
+            newText="New category"
+            suggestions={categories.map((c) => ({
+              key: c,
+              name: c,
+              detail: plural(menu.filter((m) => m.category.trim() === c).length, "item"),
+            }))}
+            onChange={setCategory}
+          />
+        </div>
+      </div>
+      <div className="card card-pad stack gap-12">
+        <span className="strong">Price</span>
+        <div className="segmented" role="group" aria-label="How to change the price">
+          {(
+            [
+              ["set", "Set to"],
+              ["up", "Raise by"],
+              ["down", "Lower by"],
+            ] as const
+          ).map(([id, text]) => (
+            <button key={id} type="button" aria-pressed={change === id} onClick={() => setChange(id)}>
+              {text}
+            </button>
+          ))}
+        </div>
+        <MoneyField
+          label={change === "set" ? "New price" : change === "up" ? "Raise each by" : "Lower each by"}
+          placeholder={change === "set" ? "Keep as is" : "0"}
+          value={amount}
+          onChange={setAmount}
+          currency={currency}
+        />
+      </div>
+      {changed.length > 0 && (
+        <RecordGroup title={"What changes · " + plural(changed.length, "item")}>
+          {changed.slice(0, 5).map((p) => {
+            const old = before.get(p.id)!;
+            return (
+              <div className="list-row" key={p.id}>
+                <span className="grow stack">
+                  <span className="ellipsis">{p.name}</span>
+                  {old.category !== p.category && (
+                    <span className="label ellipsis">{(old.category || "No category") + " → " + p.category}</span>
+                  )}
+                </span>
+                <span className="record-end">
+                  {old.price === p.price ? (
+                    formatMoney(p.price, currency)
+                  ) : (
+                    <>
+                      <span className="g">{formatMoney(old.price, currency)} → </span>
+                      <span className="num">{formatMoney(Math.max(0, p.price), currency)}</span>
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+          {changed.length > 5 && <p className="label list-more">and {plural(changed.length - 5, "more item")}</p>}
+        </RecordGroup>
+      )}
+    </RecordSheet>
   );
 }
 
@@ -914,9 +1255,11 @@ export function CategoriesPage(props: RecipesProps) {
   const [query, setQuery] = useState("");
   const shown = list.filter((c) => matches(query, c.name, ...c.items.map((p) => p.name)));
   const loose = menu.filter((p) => !p.category.trim()).length;
+  const select = useRecordSelect(list.map((c) => c.name));
   return (
     <SubPage
       title="Categories"
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={<p>Categories are the tabs on Sell, in this order. Changes go live on Sell right away. Items with no category show last.</p>}
       backLabel="Back to recipes"
       sentence={
@@ -932,7 +1275,9 @@ export function CategoriesPage(props: RecipesProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      <RecordAdd label="Add category" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      {!select.on && (
+        <RecordAdd label="Add category" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      )}
       <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
         <RecordNoMatch query={query} onClear={() => setQuery("")} />
@@ -943,6 +1288,7 @@ export function CategoriesPage(props: RecipesProps) {
               key={c.name}
               disabled={!props.online}
               onClick={() => setEditing(c)}
+              select={select.row(c.name)}
               lead={
                 <span className="well">
                   <TagIcon size={18} strokeWidth={1.8} />
@@ -959,6 +1305,24 @@ export function CategoriesPage(props: RecipesProps) {
           icon={<TagIcon size={22} strokeWidth={1.6} />}
           title={menu.length ? "No categories yet" : "Add menu items first"}
           text={menu.length ? "Like Drinks, Pastries or Bundles. Pick the items that go in each." : "Categories group the items on your menu."}
+        />
+      )}
+      {select.on && (
+        <RecordSelectBar
+          select={select}
+          shown={shown.map((c) => c.name)}
+          noun="category"
+          nouns="categories"
+          removeDetail={(names) => {
+            const items = menu.filter((p) => names.includes(p.category.trim())).length;
+            return `${andText(names, 3)} will come off Sell. ${plural(items, "item")} ${items === 1 ? "stays" : "stay"} on the menu, with no category.`;
+          }}
+          onRemove={(names) =>
+            commit.menu(
+              menu.map((p) => (names.includes(p.category.trim()) ? { ...p, category: "" } : p)),
+              "Removed " + plural(names.length, "category", "categories"),
+            )
+          }
         />
       )}
       {(loose > 0 || !props.online) && (
@@ -1112,6 +1476,7 @@ export function ChoicesPage(props: RecipesProps) {
     { title: "Pick one", items: shown.filter((c) => c.required) },
     { title: "Add-ons", items: shown.filter((c) => !c.required) },
   ].filter((k) => k.items.length);
+  const select = useRecordSelect(list.map((c) => c.key));
 
   function apply(group: Omit<OptionGroup, "id">, ids: string[]) {
     const key = editing && editing !== "new" ? editing.key : null;
@@ -1137,6 +1502,7 @@ export function ChoicesPage(props: RecipesProps) {
   return (
     <SubPage
       title="Choices"
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={
         <>
           <p><strong>Pick one</strong> choices, like Size, make the cashier choose. <strong>Add-ons</strong>, like an extra shot, are optional.</p>
@@ -1157,7 +1523,9 @@ export function ChoicesPage(props: RecipesProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      <RecordAdd label="Add choice" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      {!select.on && (
+        <RecordAdd label="Add choice" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      )}
       <RecordSearch count={list.length} noun="choices" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length && <RecordNoMatch query={query} onClear={() => setQuery("")} />}
       {kinds.map((k) => (
@@ -1167,6 +1535,7 @@ export function ChoicesPage(props: RecipesProps) {
               key={c.key}
               disabled={!props.online}
               onClick={() => setEditing(c)}
+              select={select.row(c.key)}
               lead={
                 <span className="well">
                   <ListPlus size={18} strokeWidth={1.8} />
@@ -1187,6 +1556,22 @@ export function ChoicesPage(props: RecipesProps) {
             menu.length
               ? "A Pick one choice like Size, or Add-ons like an extra shot. Pick the items that offer it."
               : "Choices are asked when an item is added to the order."
+          }
+        />
+      )}
+      {select.on && (
+        <RecordSelectBar
+          select={select}
+          shown={shown.map((c) => c.key)}
+          noun="choice"
+          removeDetail={(keys) =>
+            `${andText(list.filter((c) => keys.includes(c.key)).map((c) => c.name), 3)} will no longer be asked on any item.`
+          }
+          onRemove={(keys) =>
+            commit.menu(
+              menu.map((p) => ({ ...p, groups: p.groups.filter((g) => !keys.includes(choiceKey(g))) })),
+              "Removed " + plural(keys.length, "choice"),
+            )
           }
         />
       )}

@@ -13,7 +13,23 @@ import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
 import type { RecipesProps } from "./recipes";
 import { buzz, Explain, formatMoney, MoneyField, Sheet } from "./ui";
-import { matches, namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
+import {
+  matches,
+  andText,
+  namesText,
+  plural,
+  RecordAdd,
+  RecordEmpty,
+  RecordGroup,
+  RecordNoMatch,
+  RecordRow,
+  RecordSearch,
+  RecordSelectBar,
+  RecordSelectToggle,
+  RecordSheet,
+  useRecordSave,
+  useRecordSelect,
+} from "./records";
 
 /** A stock item's details: its name and the unit it's counted in. */
 /** Units already used, then the usual ones, so a unit is picked once and reused. */
@@ -427,6 +443,13 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterSelection<StockFilter>>({});
   const noun = prepOnly ? "prep" : "stock items";
+  const select = useRecordSelect(rows.map((item) => item.id));
+  /** The picked ones a remaining recipe still needs stay; the rest can go. */
+  function removal(ids: string[]) {
+    const left = list.filter((i) => !ids.includes(i.id));
+    const kept = list.filter((i) => ids.includes(i.id) && usedInRecipes(left, menu, i.id).length);
+    return { kept, gone: list.filter((i) => ids.includes(i.id) && !kept.includes(i)) };
+  }
   function entry(item: StockItem, legacy = false) {
     const users = legacy ? [item.name] : usedBy(menu, item.id);
     const rate = legacy ? undefined : rates.get(item.id);
@@ -459,6 +482,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   return (
     <SubPage
       title={prepOnly ? "Prep" : "Stock items"}
+      action={rows.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={prepOnly ? (
         <>
           <p>Things you make ahead in batches, like syrups and creams. Enter what goes in and how much one batch makes, and you'll see what each unit costs.</p>
@@ -474,12 +498,12 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       sentence={sentence}
       onBack={() => props.onPage(null)}
     >
-      <div className="row gap-8">
+      {!select.on && <div className="row gap-8">
         <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || list.length >= 100} onClick={() => setEditing("new")} />
         <button type="button" className="btn ghost" onClick={() => props.onPage("stock-lists")}>
           <Tags size={16} /> Stock lists
         </button>
-      </div>
+      </div>}
       {count > 0 && (
         <RecordSearch
           count={count}
@@ -515,6 +539,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                 key={item.id}
                 disabled={!props.online}
                 onClick={() => setEditing(item)}
+                select={select.row(item.id)}
                 lead={
                   <span className="well">
                     {item.prep ? <CookingPot size={18} strokeWidth={1.8} /> : <Package size={18} strokeWidth={1.8} />}
@@ -558,6 +583,40 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             );
           })}
         </RecordGroup>
+      )}
+      {select.on && (
+        <RecordSelectBar
+          select={select}
+          shown={shownRows.map(({ item }) => item.id)}
+          noun={prepOnly ? "prep item" : "stock item"}
+          removeDetail={(ids) => {
+            const { kept, gone } = removal(ids);
+            const used = gone.filter((i) => usedBy(menu, i.id).length);
+            return [
+              gone.length ? `${andText(gone.map((i) => i.name), 3)} will be removed.` : "",
+              used.length ? `Menu items stop using ${andText(used.map((i) => i.name), 2)}.` : "",
+              kept.length ? `${andText(kept.map((i) => i.name), 2)} ${kept.length === 1 ? "stays" : "stay"}, because a recipe uses ${kept.length === 1 ? "it" : "them"}.` : "",
+            ].filter(Boolean).join(" ");
+          }}
+          onRemove={(ids) => {
+            const { gone } = removal(ids);
+            if (!gone.length) return Promise.reject(Error("A recipe uses these. Take them out of the recipe first."));
+            const goneIds = new Set(gone.map((i) => i.id));
+            return commit.run(async (pin) => {
+              await props.onSave(commit.input({ stockItems: list.filter((i) => !goneIds.has(i.id)), stockLists }), pin);
+              if (menu.some((p) => p.uses?.some((u) => goneIds.has(u.stockId))))
+                await props.onMenu(
+                  menu.map((p) => {
+                    if (!p.uses?.some((u) => goneIds.has(u.stockId))) return p;
+                    const { uses, ...rest } = p;
+                    const left = uses!.filter((u) => !goneIds.has(u.stockId));
+                    return left.length ? { ...rest, uses: left } : rest;
+                  }),
+                  pin,
+                );
+            }, "Removed " + plural(gone.length, prepOnly ? "prep item" : "stock item"));
+          }}
+        />
       )}
       {!props.online && <p className="label">Connect to edit {prepOnly ? "prep" : "stock items"}.</p>}
       {editing && (
