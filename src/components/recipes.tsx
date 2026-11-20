@@ -38,7 +38,7 @@ export function RecipesScreen(props: RecipesProps) {
   const stock = state.business?.settings.stockItems ?? [];
   const count = (n: number) => n || "None";
   return (
-    <div className="page narrow">
+    <div className="page">
       <div className="page-top">
         <button type="button" className="round" aria-label="Back to settings" onClick={props.onBack}>
           <ArrowLeft size={19} aria-hidden="true" />
