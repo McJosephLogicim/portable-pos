@@ -3663,3 +3663,18 @@ html {
   min-width: 0;
   max-width: 45%;
 }
+/* This phone → Connection: one short value, never wraps. */
+.sync-status {
+  flex: none;
+  max-width: none;
+}
+.dot.syncing {
+  background: var(--ink-secondary);
+  animation: sync-pulse 1.4s var(--ease-out) infinite;
+}
+@keyframes sync-pulse {
+  50% { opacity: 0.3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot.syncing { animation: none; }
+}
