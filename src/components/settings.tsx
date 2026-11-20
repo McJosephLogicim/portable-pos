@@ -7,10 +7,8 @@ import {
   Repeat,
   ChevronRight,
   SlidersHorizontal,
-  CalendarDays,
   Package,
   Calculator,
-  Palette,
   ListChecks,
   Users,
   Coins,
@@ -237,11 +235,8 @@ function applyNote(state: RegisterState) {
 
 /** What Advanced adds on top of Simple, in the order an owner meets it. */
 const advancedAdds = [
-  { icon: CalendarDays, title: "Shifts tab", text: "Schedule who works where, with pay, rent and quotas." },
   { icon: Package, title: "Stock and prep", text: "Count what runs out and cost what you make in batches." },
   { icon: Calculator, title: "Cost and margin", text: "See what each menu item costs you and what you keep." },
-  { icon: ListChecks, title: "Checklist and organizers", text: "Opening steps, and the bazaars and events you join." },
-  { icon: Palette, title: "Brand look and sales charts", text: "Your colors and font, and sales by hour." },
 ];
 
 /**
@@ -259,7 +254,7 @@ function ModeCard(props: SettingsProps) {
         </span>
         <span className="row-text">
           <span className="strong">Advanced mode</span>
-          <span className="label">Stock, costing and shift scheduling</span>
+          <span className="label">Stock, prep and costing</span>
         </span>
         <Switch
           checked={!simple}
@@ -280,7 +275,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
   const mode: RegisterMode = turnOn ? "advanced" : "simple";
   const save = () => run(() => commit.run(
     (pin) => props.onAction({ action: "mode", mode, pin }),
-    turnOn ? "Advanced mode on. Shifts is in the tab bar." : "Simple mode on",
+    turnOn ? "Advanced mode on" : "Simple mode on",
   ));
   return (
     <Sheet
@@ -302,7 +297,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
       <p className="muted">
         {turnOn
           ? "Everything you use now stays the same. You also get:"
-          : "Selling, receipts, the menu and the till stay the same. These go out of sight:"}
+          : "Selling, shifts, checklists, organizers, branding and sales charts stay available. These go out of sight:"}
       </p>
       <div className="card card-pad change-list">
         {advancedAdds.map(({ icon: Icon, title, text }) => (
@@ -320,7 +315,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
       <p className="label">
         {turnOn
           ? `Applies to everyone on ${business.name}. You can switch back anytime.`
-          : `Nothing is deleted. Schedules, stock and costs come back when you turn Advanced on again. Applies to everyone on ${business.name}.`}
+          : `Nothing is deleted. Stock and costs come back when you turn Advanced on again. Applies to everyone on ${business.name}.`}
       </p>
     </Sheet>
   );
@@ -332,7 +327,6 @@ const brands = ["#0a0a0a", "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8"
 
 function BusinessPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
-  const simple = isSimpleMode(props.state.business!.settings);
   const setBrand = (patch: Partial<Settings>) => {
     const settings = { ...draft.settings, ...patch };
     if (!settings.logo) delete settings.logo;
@@ -363,7 +357,6 @@ function BusinessPage(props: SettingsProps) {
   useEffect(() => () => applyTheme(savedRef.current), []);
   useEffect(() => {
     // Load every font once so the picker shows each in its own face.
-    if (simple) return;
     const id = "brand-font-all";
     if (document.getElementById(id)) return;
     const link = document.createElement("link");
@@ -371,7 +364,7 @@ function BusinessPage(props: SettingsProps) {
     link.rel = "stylesheet";
     link.href = "https://fonts.googleapis.com/css2?" + fonts.filter((f) => f.google).map((f) => "family=" + f.google).join("&") + "&display=swap";
     document.head.appendChild(link);
-  }, [simple]);
+  }, []);
   return (
     <SubPage
       title="Business"
@@ -382,14 +375,14 @@ function BusinessPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      {!simple && <div className="brand-preview" style={{ background: brand }}>
+      <div className="brand-preview" style={{ background: brand }}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="strong ellipsis" style={{ color: onColor(brand) }}>{draft.name || "Your stall"}</span>
           <span className="label" style={{ color: onColor(brand), opacity: 0.72 }}>Buttons, highlights and cards take this look</span>
         </span>
-      </div>}
-      {!simple && <div className="stack gap-10">
+      </div>
+      <div className="stack gap-10">
         <p className="group-title title-help">
           Branding
           <Explain title="Branding">
@@ -491,9 +484,8 @@ function BusinessPage(props: SettingsProps) {
             <button type="button" className="btn secondary grow">Cancel</button>
           </div>
         </div>
-      </div>}
+      </div>
       <div className="card card-pad stack gap-14">
-        {simple && logoPicker}
         <label className="field">
           <span>Business name</span>
           <input
@@ -1154,7 +1146,6 @@ export function SettingsScreen(props: SettingsProps) {
   const { state, page, onPage, demo } = props;
   const business = state.business!;
   const s = business.settings;
-  const simple = isSimpleMode(s);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [page]);
@@ -1187,8 +1178,8 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "payments") return <PaymentsPage {...props} />;
   if (page === "discounts") return <DiscountsPage {...props} />;
   if (page === "currency") return <CurrencyPage {...props} />;
-  if (!simple && page === "organizers") return <OrganizersPage {...props} />;
-  if (!simple && page === "checklist") return <ChecklistPage {...props} />;
+  if (page === "organizers") return <OrganizersPage {...props} />;
+  if (page === "checklist") return <ChecklistPage {...props} />;
   if (page === "team") return <TeamPage {...props} />;
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
@@ -1231,7 +1222,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("discounts")}
         />
       </div>
-      <p className="group-title">{simple ? "People" : "Shifts"}</p>
+      <p className="group-title">Shifts</p>
       <div className="card card-list">
         <Row
           icon={<Users size={18} strokeWidth={1.8} />}
@@ -1239,24 +1230,20 @@ export function SettingsScreen(props: SettingsProps) {
           detail={plural(state.team?.length ?? 1, "person", "people")}
           onClick={() => onPage("team")}
         />
-        {!simple && (
-          <>
-            <Row
-              icon={<ListChecks size={18} strokeWidth={1.8} />}
-              title="Opening checklist"
-              description="Steps to tick before the till opens"
-              detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
-              onClick={() => onPage("checklist")}
-            />
-            <Row
-              icon={<Ticket size={18} strokeWidth={1.8} />}
-              title="Organizers"
-              description="The bazaars and markets you join"
-              detail={countText(state.organizers?.length ?? 0)}
-              onClick={() => onPage("organizers")}
-            />
-          </>
-        )}
+        <Row
+          icon={<ListChecks size={18} strokeWidth={1.8} />}
+          title="Opening checklist"
+          description="Steps to tick before the till opens"
+          detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
+          onClick={() => onPage("checklist")}
+        />
+        <Row
+          icon={<Ticket size={18} strokeWidth={1.8} />}
+          title="Organizers"
+          description="The bazaars and markets you join"
+          detail={countText(state.organizers?.length ?? 0)}
+          onClick={() => onPage("organizers")}
+        />
       </div>
       <p className="group-title">Register</p>
       <div className="card card-list">

@@ -281,15 +281,20 @@ function OpenShift({
   online,
   onOpen,
   onBack,
+  onSelectBooking,
 }: {
   state: RegisterState;
   booking?: Booking;
   online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
   onBack: () => void;
+  onSelectBooking: (bookingId: string) => void;
 }) {
   const business = state.business!;
   const currency = business.currency;
+  const readyBookings = isSimpleMode(business.settings) && !booking
+    ? upcoming(state).filter((b) => !startProblem(b, business.timeZone))
+    : [];
   const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -325,6 +330,16 @@ function OpenShift({
           </div>
           <div className="card card-list">
             <BookingRow booking={booking} zone={business.timeZone} />
+          </div>
+        </div>
+      )}
+      {readyBookings.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Scheduled shift (optional)</p>
+          <div className="card card-list">
+            {readyBookings.map((b) => (
+              <BookingRow key={b.id} booking={b} zone={business.timeZone} onClick={() => onSelectBooking(b.id)} />
+            ))}
           </div>
         </div>
       )}
@@ -697,7 +712,7 @@ export function ShiftScreen({
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
-  const startingBooking = !simple && starting ? state.bookings?.find((b) => b.id === starting) : undefined;
+  const startingBooking = starting ? state.bookings?.find((b) => b.id === starting) : undefined;
   const opening = simple ? state.menu.length > 0 : Boolean(startingBooking);
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
@@ -735,13 +750,11 @@ export function ShiftScreen({
       )}
       {shift && totals ? (
         <>
-          {!simple && (
-            <ShiftStrip
-              state={state}
-              onTillPage
-              onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
-            />
-          )}
+          <ShiftStrip
+            state={state}
+            onTillPage
+            onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
+          />
           <h1 className="headline">
             <Money value={total} currency={currency} />{" "}
             <span className="g">
@@ -942,6 +955,7 @@ export function ShiftScreen({
               setStarting(null);
             }}
             onBack={() => setStarting(null)}
+            onSelectBooking={setStarting}
           />
         ) : (
           <NoShift state={state} onStart={setStarting} onSchedule={onSchedule} onGoMenu={onGoMenu} />
@@ -990,7 +1004,7 @@ export function ShiftScreen({
           onDismiss={() => setClosing(false)}
         />
       )}
-      {!simple && linking && <LinkSheet state={state} onLink={onLink} onDismiss={() => setLinking(false)} />}
+      {linking && <LinkSheet state={state} onLink={onLink} onDismiss={() => setLinking(false)} />}
       {addingExpense && (
         <ExpenseSheet
           currency={currency}

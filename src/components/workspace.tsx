@@ -30,7 +30,6 @@ import {
 } from "@/lib/register-store";
 import { applyTheme } from "@/lib/theme";
 import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "@/lib/join-link";
-import { isSimpleMode } from "@/lib/settings";
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
@@ -484,7 +483,6 @@ export function Workspace() {
   const demo = key === DEMO;
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
-  const simple = isSimpleMode(business?.settings);
   const status = state?.pending.length
     ? `${state.pending.length} waiting to sync`
     : syncErr
@@ -494,7 +492,7 @@ export function Workspace() {
         : "Offline";
   const canManageRecipes = !state?.me || state.me.owner;
   const shown = tabs.filter((item) =>
-    !(item.id === "recipes" && !canManageRecipes) && !(item.id === "schedule" && simple),
+    !(item.id === "recipes" && !canManageRecipes),
   );
   const view: Tab = shown.some((item) => item.id === tab) ? tab : "sell";
   const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
@@ -554,10 +552,6 @@ export function Workspace() {
       return;
     }
     done();
-    if (simple) {
-      if (asked) setNotice("Scheduled shifts are available in Advanced mode.");
-      return;
-    }
     const bookingId =
       ("code" in target
         ? target.code.shift ? matchCode(state.bookings, target.code.shift, SHIFT_CODE) : undefined
@@ -567,7 +561,7 @@ export function Workspace() {
     setSharedSchedule({ bookingId });
     setTab("schedule");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.business?.id, state?.businesses, key, online, syncErr, simple]);
+  }, [state?.business?.id, state?.businesses, key, online, syncErr]);
   /** Open another business on this phone. Each keeps its own till and sync queue. */
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;

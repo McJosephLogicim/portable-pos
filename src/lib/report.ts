@@ -1,7 +1,6 @@
 import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
-import { isSimpleMode } from "./settings";
 import { round, stockModel, unitText } from "./stock";
 import { dayOf, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
@@ -72,7 +71,6 @@ export function shiftReport(
     .filter((e) => e.shiftId === shift.id && !e.voidedAt)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const totals = shiftTotals(shift, sales, expenses);
-  const showInsights = !isSimpleMode(business.settings);
   const zone = business.timeZone;
   const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -84,10 +82,8 @@ export function shiftReport(
   const hourOf = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", hourCycle: "h23" });
   for (const sale of sales) {
     if (sale.reversedAt) continue;
-    if (showInsights) {
-      const h = Number(hourOf.format(new Date(sale.createdAt)));
-      hourly.set(h, (hourly.get(h) ?? 0) + sale.total);
-    }
+    const h = Number(hourOf.format(new Date(sale.createdAt)));
+    hourly.set(h, (hourly.get(h) ?? 0) + sale.total);
     for (const line of sale.lines) {
       const row = sold.get(line.productId) ?? {
         productId: line.productId,

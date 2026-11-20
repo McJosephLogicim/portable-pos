@@ -1070,7 +1070,7 @@ export function SellScreen({
             <Ban size={19} />
           </button>
         </div>
-        {!simple && <ShiftStrip state={state} onTill={onTill} />}
+        <ShiftStrip state={state} onTill={onTill} />
         {menu.length > 0 && !marking && (
           <Tip id="sold-out" title="Something ran out?">
             Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the top, then the item. It shows Sold out until you tap it again.

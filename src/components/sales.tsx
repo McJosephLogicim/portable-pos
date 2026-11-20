@@ -5,7 +5,6 @@ import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
-import { isSimpleMode } from "@/lib/settings";
 import {
   activeCount,
   filterKeys,
@@ -168,7 +167,7 @@ export function SalesScreen({
           onOpen={() => setFiltering(true)}
         />
       )}
-      {!isSimpleMode(business.settings) && !searching && live.length >= 3 && (
+      {!searching && live.length >= 3 && (
         <HourChart
           hours={salesByHour(live, tills, business.timeZone)}
           currency={currency}
