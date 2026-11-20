@@ -864,6 +864,54 @@ button.list-row:not(.sell-option):active {
 }
 
 /* ---------- app shell ---------- */
+.account-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) var(--gutter) 0;
+}
+.account-bar .sell-brand {
+  min-height: 44px;
+}
+.account-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.account-button[aria-current="page"] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.account-button:active {
+  opacity: 0.7;
+}
+.account-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger-dot);
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+.account-bar ~ main > .page {
+  padding-top: 14px;
+}
+.account-bar ~ main .sell-head {
+  margin-top: -14px;
+  padding-top: 14px;
+}
 .page {
   width: 100%;
   max-width: 600px;
@@ -933,16 +981,6 @@ button.list-row:not(.sell-option):active {
 }
 :root[data-input="keyboard"] .tab-selection {
   transition: none;
-}
-.tabbar .tab-dot {
-  position: absolute;
-  top: 8px;
-  left: calc(50% + 7px);
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--danger-dot);
-  box-shadow: 0 0 0 2px #fff;
 }
 .notice {
   display: flex;
@@ -1374,10 +1412,12 @@ button.list-row:not(.sell-option):active {
   :root {
     --gutter: 28px;
   }
-  .page {
+  .page,
+  .account-bar {
     max-width: 1180px;
   }
-  .page.narrow {
+  .page.narrow,
+  .account-bar.narrow {
     max-width: 640px;
   }
   .sell-layout {

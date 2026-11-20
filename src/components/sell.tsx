@@ -22,7 +22,6 @@ import {
   totalLines,
 } from "@/lib/domain";
 import { ItemSheet } from "./menu-settings";
-import { BusinessMark } from "./businesses";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
@@ -847,7 +846,6 @@ export interface SellProps {
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
   onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
   onSaved: (text: string) => void;
-  onBusinesses: () => void;
   /** Opens the Till, where the shift is run and closed. */
   onTill: () => void;
 }
@@ -897,7 +895,6 @@ export function SellScreen({
   onReverse,
   onMenu,
   onSaved,
-  onBusinesses,
   onTill,
 }: SellProps) {
   const [adding, setAdding] = useState(false);
@@ -1060,13 +1057,8 @@ export function SellScreen({
     <>
       <div className="sell-head">
         <div className="page-top">
-          <button type="button" className="grow sell-brand" onClick={onBusinesses} aria-label={"Switch business, now " + business.name}>
-            <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} size={38} />
-            <span className="grow stack" style={{ minWidth: 0 }}>
-            <span className="sell-title ellipsis row gap-4">
-              <span className="ellipsis">{business.name}</span>
-              <ChevronDown size={16} className="chev-down" />
-            </span>
+          <div className="grow stack" style={{ minWidth: 0 }}>
+            <h1 className="sell-title">Sell</h1>
             <span className="label row gap-6">
               {status !== "Online" && (
                 <span className={"dot" + (online ? "" : " danger")} />
@@ -1077,8 +1069,7 @@ export function SellScreen({
                 {status !== "Online" ? " · " + status : ""}
               </span>
             </span>
-            </span>
-          </button>
+          </div>
           {menu.length > 8 && (
             <button
               className="round"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
+import { ArrowLeft, Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
 import { isSimpleMode } from "@/lib/settings";
 import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
 import { Row, type EditorProps } from "./settings";
@@ -15,6 +15,7 @@ export interface RecipesProps extends EditorProps {
   onRemoveMenuItem: (productId: string, pin: string) => Promise<void>;
   page: RecipesPage | null;
   onPage: (page: RecipesPage | null) => void;
+  onBack: () => void;
 }
 
 export function RecipesScreen(props: RecipesProps) {
@@ -38,7 +39,12 @@ export function RecipesScreen(props: RecipesProps) {
   const count = (n: number) => n || "None";
   return (
     <div className="page narrow">
-      <div className="page-top"><h1 className="headline">Recipes</h1></div>
+      <div className="page-top">
+        <button type="button" className="round" aria-label="Back to settings" onClick={props.onBack}>
+          <ArrowLeft size={19} aria-hidden="true" />
+        </button>
+        <h1 className="headline">Recipes</h1>
+      </div>
       <h2 className="group-title">Menu</h2>
       <div className="card card-list">
         <Row

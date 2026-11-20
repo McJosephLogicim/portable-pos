@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { BookOpen, CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
+import { CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
@@ -9,7 +9,7 @@ import { SettingsScreen, type SettingsPage } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen, ScheduledShiftSheet } from "./schedule";
 import { Account, Setup } from "./account";
-import { BusinessSwitcher } from "./businesses";
+import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
@@ -40,10 +40,8 @@ const tabs = [
   { id: "sales", name: "Sales", icon: ReceiptText },
   { id: "shift", name: "Till", icon: Wallet },
   { id: "schedule", name: "Shifts", icon: CalendarDays },
-  { id: "recipes", name: "Recipes", icon: BookOpen },
-  { id: "settings", name: "Settings", icon: SettingsIcon },
 ] as const;
-type Tab = (typeof tabs)[number]["id"];
+type Tab = (typeof tabs)[number]["id"] | "settings" | "recipes";
 type UndoNotice = {
   id: string;
   text: string;
@@ -513,10 +511,8 @@ export function Workspace() {
         ? "Online"
         : "Offline";
   const canManageRecipes = !state?.me || state.me.owner;
-  const shown = tabs.filter((item) =>
-    !(item.id === "recipes" && !canManageRecipes),
-  );
-  const view: Tab = shown.some((item) => item.id === tab) ? tab : "sell";
+  const view: Tab = tab === "recipes" && !canManageRecipes ? "sell" : tab;
+  const activeTabIndex = tabs.findIndex((item) => item.id === view);
   const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
   const go = (t: Tab) => {
     if (t !== tab) buzz.tap();
@@ -670,6 +666,7 @@ export function Workspace() {
         onSignIn={() => setAccount(true)}
         onSignOut={() => setConfirmSignOut(true)}
         onBusinesses={() => setSwitching(true)}
+        onRecipes={() => go("recipes")}
       />
     );
   else if (view === "recipes")
@@ -679,6 +676,7 @@ export function Workspace() {
         online={online}
         page={recipesPage}
         onPage={setRecipesPage}
+        onBack={() => go("settings")}
         onSaved={setToast}
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
@@ -733,7 +731,6 @@ export function Workspace() {
           onReverse={reverse}
           onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
           onSaved={setToast}
-          onBusinesses={() => setSwitching(true)}
           onTill={() => go("shift")}
         />
       </div>
@@ -745,6 +742,28 @@ export function Workspace() {
       <FacesProvider value={faces}>
     <ProofProvider value={loadProof}>
     <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
+      {business && (
+        <header className={"account-bar" + (view === "sell" && sellable ? "" : " narrow")}>
+          <button type="button" className="grow sell-brand" onClick={() => setSwitching(true)} aria-label={"Switch business, now " + business.name}>
+            <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} size={36} />
+            <span className="strong ellipsis">{business.name}</span>
+            <ChevronDown size={16} className="chev-down" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="account-button"
+            aria-label="Account and settings"
+            aria-current={view === "settings" || view === "recipes" ? "page" : undefined}
+            aria-description={syncErr ? "Sync paused" : !online ? "Offline" : undefined}
+            onClick={() => go("settings")}
+          >
+            <span className={"avatar" + (state?.me?.photo ? " has-photo" : "")} aria-hidden="true">
+              {state?.me?.photo ? <img src={state.me.photo} alt="" /> : state?.me?.name ? initialsOf(state.me.name) : <UserRound size={20} strokeWidth={1.8} />}
+            </span>
+            {(syncErr || !online) && <span className="account-dot" aria-hidden="true" />}
+          </button>
+        </header>
+      )}
       {(notice || (syncErr && !bootError)) && (
         <div className="page narrow" style={{ paddingBottom: 0, marginBottom: -14 }}>
           {notice && (
@@ -777,17 +796,16 @@ export function Workspace() {
           className="tabbar"
           aria-label="Main"
           style={{
-            "--tab-count": shown.length,
-            "--tab-offset": `${shown.findIndex((item) => item.id === view) * 100}%`,
+            "--tab-count": tabs.length,
+            "--tab-offset": `${Math.max(0, activeTabIndex) * 100}%`,
           } as CSSProperties}
         >
-          <span className="tab-selection" aria-hidden="true" />
-          {shown.map((t) => (
+          {activeTabIndex >= 0 && <span className="tab-selection" aria-hidden="true" />}
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
               aria-current={view === t.id ? "page" : undefined}
-              aria-description={t.id === "settings" ? (syncErr ? "Sync paused" : !online ? "Offline" : undefined) : undefined}
               onClick={() => {
                 setSalesFocus(null);
                 go(t.id);
@@ -795,9 +813,6 @@ export function Workspace() {
             >
               <t.icon size={20} strokeWidth={view === t.id ? 2.1 : 1.7} aria-hidden="true" />
               <span>{t.name}</span>
-              {t.id === "settings" && (syncErr || !online) && (
-                <span className="tab-dot" aria-hidden="true" />
-              )}
             </button>
           ))}
         </nav>
