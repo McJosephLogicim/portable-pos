@@ -9,7 +9,7 @@ import { menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitC
 import type { Product, StockItem, StockPrep, StockPurchase, StockUse } from "@/lib/types";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
-import { buzz, formatMoney, MoneyField } from "./ui";
+import { buzz, Explain, formatMoney, MoneyField } from "./ui";
 import { namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordRow, RecordSheet, useRecordSave } from "./records";
 
 /** A stock item's details: its name and the unit it's counted in. */
@@ -105,10 +105,24 @@ export function StockSheet({
   } catch {
     // Partial entries can be completed before saving.
   }
+  const unitName = unit.trim() || "unit";
+  const missing = costPerUnit !== undefined
+    ? undefined
+    : prepared
+      ? !ingredients.length
+        ? "Add what goes into it in Stock items first, like cream or sugar, with what you pay for it."
+        : !(Number(batchYield) > 0)
+          ? "Enter how much one batch makes to see its cost per " + unitName + "."
+          : costGap(stockUseRows(drafts, ingredients), "batch") ?? "Add what goes into one batch."
+      : !purchasePrice
+        ? "Enter what you pay to see what one " + unitName + " costs you."
+        : !(Number(packQuantity) > 0)
+          ? "Enter how much you get for that price."
+          : "Check the usable amount. It goes from 1 to 100%.";
 
   return (
     <RecordSheet
-      noun={prepOnly ? "prep recipe" : "stock item"}
+      noun={prepOnly || item?.prep ? "prep item" : "stock item"}
       editing={Boolean(item)}
       busy={busy}
       error={error}
@@ -137,7 +151,7 @@ export function StockSheet({
             className="input"
             maxLength={60}
             autoFocus={!item}
-            placeholder={prepOnly ? "e.g. Sea Salt Cream" : "e.g. Strawberry pack"}
+            placeholder={prepOnly ? "e.g. Sea salt cream" : "e.g. Fresh milk"}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -156,19 +170,20 @@ export function StockSheet({
         </div>
         {!prepOnly && (
           <div className="field">
-            <span>Cost source</span>
-            <div className="segmented" role="group" aria-label="Cost source">
-              <button type="button" aria-pressed={!prepared} onClick={() => setPrepared(false)}>Purchase</button>
-              <button type="button" aria-pressed={prepared} onClick={() => setPrepared(true)}>Prep recipe</button>
+            <span>How you get it</span>
+            <div className="segmented" role="group" aria-label="How you get it">
+              <button type="button" aria-pressed={!prepared} onClick={() => setPrepared(false)}>Buy it</button>
+              <button type="button" aria-pressed={prepared} onClick={() => setPrepared(true)}>Make it</button>
             </div>
+            {prepared && !item?.prep && <span className="label">Once saved, it moves to Prep.</span>}
           </div>
         )}
       </div>
       {prepared ? (
         <div className="card card-pad stack gap-14">
-          <h3 className="strong">Batch recipe</h3>
+          <h3 className="strong">One batch</h3>
           <label className="field">
-            <span>Finished yield{unit.trim() ? ` (${unit.trim()})` : ""}</span>
+            <span>Makes{unit.trim() ? ` (${unit.trim()})` : ""}</span>
             <input
               className="input"
               inputMode="decimal"
@@ -177,43 +192,61 @@ export function StockSheet({
               onChange={(e) => setBatchYield(decimalEntry(e.target.value))}
             />
           </label>
-          <UsesEditor stockItems={ingredients} uses={drafts} currency={currency} batch onChange={setDrafts} />
-          <MoneyField label="Other batch cost" value={extraBatchCost} onChange={setExtraBatchCost} currency={currency} placeholder="Optional" />
+          <div className="field">
+            <span>What goes in</span>
+            <UsesEditor stockItems={ingredients} uses={drafts} currency={currency} batch onChange={setDrafts} />
+          </div>
+          <MoneyField label="Other costs per batch" value={extraBatchCost} onChange={setExtraBatchCost} currency={currency} placeholder="Optional, like gas" />
           {batchCost !== undefined && costPerUnit !== undefined ? (
-            <dl className="recipe-cost stack gap-8 label">
-              <div className="between"><dt>Batch cost</dt><dd className="strong">{formatMoney(Math.round(batchCost), currency)}</dd></div>
-              <div className="between"><dt>Cost per {unit.trim()}</dt><dd className="strong">{costPerUnit}</dd></div>
-            </dl>
+            <div className="cost-result" aria-live="polite">
+              <span className="label">{formatMoney(Math.round(batchCost), currency)} a batch</span>
+              <span className="num">{costPerUnit} / {unitName}</span>
+            </div>
           ) : (
-            <p className="label">Cost incomplete. Enter the finished yield and check ingredient quantities and purchase costs.</p>
+            <p className="cost-missing" aria-live="polite">{missing}</p>
           )}
         </div>
       ) : (
         <div className="card card-pad stack gap-14">
-          <h3 className="strong">Purchase cost</h3>
-          <MoneyField label="Purchase price" value={purchasePrice} onChange={setPurchasePrice} currency={currency} placeholder="Optional" />
-          <label className="field">
-            <span>Pack quantity{unit.trim() ? ` (${unit.trim()})` : ""}</span>
+          <h3 className="strong">What you pay</h3>
+          <div className="grid-2">
+            <MoneyField label="Price" value={purchasePrice} onChange={setPurchasePrice} currency={currency} placeholder="e.g. 95" />
+            <label className="field">
+              <span>For ({unitName})</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder="e.g. 1"
+                value={packQuantity}
+                onChange={(e) => setPackQuantity(decimalEntry(e.target.value))}
+              />
+            </label>
+          </div>
+          <div className="field">
+            <span className="field-head">
+              Usable (%)
+              <Explain title="Usable amount">
+                <p>Some of what you buy never reaches a cup or plate: peels, trimmings, spills.</p>
+                <p>If 1 kg of mangoes gives you 800 g you can use, enter <strong>80</strong>. The cost of what you use goes up to cover the waste.</p>
+                <p>Leave it at 100 if nothing is lost.</p>
+              </Explain>
+            </span>
             <input
               className="input"
               inputMode="decimal"
-              placeholder="e.g. 50"
-              value={packQuantity}
-              onChange={(e) => setPackQuantity(decimalEntry(e.target.value))}
-            />
-          </label>
-          <label className="field">
-            <span>Usable yield (%)</span>
-            <input
-              className="input"
-              inputMode="decimal"
+              aria-label="Usable (%)"
               placeholder="100"
               value={yieldPercent}
               onChange={(e) => setYieldPercent(decimalEntry(e.target.value))}
             />
-          </label>
-          {costPerUnit !== undefined && (
-            <p className="between label"><span>Cost per {unit.trim()}</span><strong>{costPerUnit}</strong></p>
+          </div>
+          {costPerUnit !== undefined ? (
+            <div className="cost-result" aria-live="polite">
+              <span className="label">Costs you</span>
+              <span className="num">{costPerUnit} / {unitName}</span>
+            </div>
+          ) : (
+            <p className="cost-missing" aria-live="polite">{missing}</p>
           )}
         </div>
       )}
@@ -222,7 +255,9 @@ export function StockSheet({
           ? users.length
             ? "Used by " + namesText(users, 3) + "." + (onRemove ? " Removing it stops those items using it." : "")
             : "No menu item uses it yet. Open a menu item and set Stock to Uses stock."
-          : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
+          : prepared
+            ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
+            : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
       </p>
       {recipeUsers.length > 0 && <p className="label">Used in {namesText(recipeUsers, 3)}. Remove it from those recipes before deleting it.</p>}
     </RecordSheet>
@@ -249,6 +284,21 @@ function formatStockRate(rate: number, currency: string) {
   }).format(rate / 10 ** digits);
 }
 
+/**
+ * Why a recipe's cost can't be worked out yet, as the one thing to do next.
+ * Undefined when every named line has a cost.
+ */
+export function costGap(rows: ReturnType<typeof stockUseRows>, per: "batch" | "sale") {
+  for (const { draft, item, cost } of rows) {
+    const name = draft.name.trim();
+    if (!name || cost !== undefined) continue;
+    if (!item) return `Pick ${name} from the list, or add it in Stock items first.`;
+    if (!(Number(draft.amount) > 0)) return `Enter how much ${item.name} one ${per} uses.`;
+    if (item.prep) return `${item.name} isn't costed yet. Finish its recipe in Prep.`;
+    return `${item.name} has no price yet. Add what you pay for it in Stock items.`;
+  }
+}
+
 /** Things counted when a shift opens and closes, like a pack of strawberries or a kilo of ice. */
 export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepOnly?: boolean }) {
   const business = props.state.business!;
@@ -256,28 +306,25 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<StockItem | "new" | null>(null);
-  const rows = prepOnly ? list.filter((item) => item.prep) : list;
-  const rates = prepOnly ? stockCostRates(list) : undefined;
+  const rows = list.filter((item) => Boolean(item.prep) === prepOnly);
+  const rates = stockCostRates(list);
   const legacy = prepOnly ? [] : stockModel([], menu).items;
   const count = rows.length + legacy.length;
+  const sentence = prepOnly
+    ? count
+      ? <>{plural(count, "thing")} <span className="g">you make ahead, counted like stock.</span></>
+      : <>Make it once, <span className="g">cost it per cup.</span></>
+    : count
+      ? <>{plural(count, "thing")} <span className="g">you buy, counted when a shift opens and closes.</span></>
+      : <>Nothing counted yet. <span className="g">Add what runs out, like milk or ice.</span></>;
   return (
     <SubPage
-      title={prepOnly ? "Prep recipes" : "Stock items"}
+      title={prepOnly ? "Prep" : "Stock items"}
       backLabel="Back to recipes"
-      sentence={
-        prepOnly ? "Cost the ingredients you make in batches." : count ? (
-          <>
-            {plural(count, "thing")} <span className="g">counted when a shift opens and closes.</span>
-          </>
-        ) : (
-          <>
-            Nothing counted yet. <span className="g">Add what runs out, like strawberry packs or ice.</span>
-          </>
-        )
-      }
+      sentence={sentence}
       onBack={() => props.onPage(null)}
     >
-      <RecordAdd label={prepOnly ? "Add prep recipe" : "Add stock item"} disabled={!props.online || list.length >= 100} onClick={() => setEditing("new")} />
+      <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || list.length >= 100} onClick={() => setEditing("new")} />
       {rows.length > 0 && (
         <RecordGroup title={legacy.length ? "Stock items" : undefined}>
           {rows.map((item) => {
@@ -294,7 +341,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                   </span>
                 }
                 title={item.name}
-                detail={prepOnly && rate === undefined ? "Cost incomplete" : users.length ? "Used by " + namesText(users, 1) : undefined}
+                detail={prepOnly && rate === undefined ? "Not costed yet" : users.length ? "Used by " + namesText(users, 1) : "Not on the menu yet"}
                 end={rate === undefined ? item.unit : `${formatStockRate(rate, business.currency)} / ${item.unit}`}
               />
             );
@@ -304,9 +351,9 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       {!count && (
         <RecordEmpty
           icon={prepOnly ? <CookingPot size={22} strokeWidth={1.6} /> : <Package size={22} strokeWidth={1.6} />}
-          title={prepOnly ? "No prep recipes yet" : "No stock items yet"}
+          title={prepOnly ? "Nothing made ahead yet" : "No stock items yet"}
           text={prepOnly
-            ? "Add a batch recipe, or open an existing item in Stock items and choose Prep recipe."
+            ? "Syrups, creams and sauces you make in batches. Enter what goes in and how much it makes, and you'll see what each unit costs."
             : "Add one here, or right from a menu item while you set it up."}
         />
       )}
@@ -333,7 +380,11 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
         </RecordGroup>
       )}
       <p className="label">
-        {props.online ? "New stock items are counted from the next shift." : `Connect to edit ${prepOnly ? "prep recipes" : "stock items"}.`}
+        {!props.online
+          ? `Connect to edit ${prepOnly ? "prep" : "stock items"}.`
+          : prepOnly
+            ? "Already counting something you make? Open it in Stock items and choose Make it."
+            : "New stock items are counted from the next shift. Things you make ahead are in Prep."}
       </p>
       {editing && (
         <StockSheet
@@ -545,10 +596,12 @@ export function UsesEditor({
   );
 }
 
-export function CostPreview({ currency, total, batch }: {
+export function CostPreview({ currency, total, batch, missing }: {
   currency: string;
   total: ReturnType<typeof menuRecipeCost>;
   batch: boolean;
+  /** What to do next when the cost can't be worked out yet. */
+  missing?: string;
 }) {
   const [target, setTarget] = useState("70");
   const [increment, setIncrement] = useState(currency === "PHP" ? "5" : "1");
@@ -561,34 +614,52 @@ export function CostPreview({ currency, total, batch }: {
     }
   }
   const formatCost = (value: number) => formatMoney(Math.round(value), currency);
+  const percent = (value: number) => new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 }).format(value);
+  if (!total)
+    return (
+      <p className="cost-missing" aria-live="polite">
+        {missing ?? "Check the quantities and costs above."}
+      </p>
+    );
   return (
-    <div className="stack gap-8 recipe-cost" aria-live="polite">
-      {total ? (
-        <dl className="stack gap-8 label">
-          {batch && <div className="between"><dt>Batch material cost</dt><dd className="strong">{formatCost(total.batchMaterialCost)}</dd></div>}
-          <div className="between"><dt>Material cost per serving</dt><dd className="strong">{formatCost(total.materialPerServing)}</dd></div>
-          <div className="between"><dt>Total cost per serving</dt><dd className="strong">{formatCost(total.cost)}</dd></div>
-          <div className="between"><dt>Gross profit per serving</dt><dd className="strong">{total.profit === undefined ? "—" : formatCost(total.profit)}</dd></div>
-          <div className="between">
-            <dt>Gross margin</dt>
-            <dd className="strong">{total.margin === undefined ? "—" : new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 }).format(total.margin)}</dd>
-          </div>
-        </dl>
-      ) : (
-        <p className="label">Cost incomplete. Check recipe quantities, serving costs, and the costs of the ingredients.</p>
-      )}
-      {total && (
-        <details className="label">
-          <summary className="strong">Suggested price{suggested === undefined ? "" : ` · ${formatMoney(suggested, currency)}`}</summary>
-          <div className="grid-2 recipe-price-fields">
-            <label className="field">
-              <span>Target margin (%)</span>
-              <input className="input" inputMode="decimal" value={target} onChange={(e) => setTarget(decimalEntry(e.target.value))} />
-            </label>
-            <MoneyField label="Round up to" value={increment} onChange={setIncrement} currency={currency} />
-          </div>
-        </details>
-      )}
+    <div className="stack gap-10" aria-live="polite">
+      <div className="cost-result">
+        <span className="label">Costs you per serving</span>
+        <span className="num">{formatCost(total.cost)}</span>
+      </div>
+      <dl className="stack gap-8 label">
+        <div className="between">
+          <dt>You keep per serving</dt>
+          <dd className="strong">{total.profit === undefined ? "—" : formatCost(total.profit)}</dd>
+        </div>
+        <div className="between">
+          <dt className="field-head">
+            Margin
+            <Explain title="Margin">
+              <p>The share of the price you keep after what it costs to make.</p>
+              <p>A {formatMoney(currency === "PHP" ? 16000 : 500, currency)} drink that costs {formatMoney(currency === "PHP" ? 4000 : 125, currency)} to make keeps {formatMoney(currency === "PHP" ? 12000 : 375, currency)}: a <strong>75%</strong> margin.</p>
+              <p>Rent, salaries and other shift costs aren't counted here. The shift report covers those.</p>
+            </Explain>
+          </dt>
+          <dd className="strong">{total.margin === undefined ? "—" : percent(total.margin)}</dd>
+        </div>
+        {batch && (
+          <div className="between"><dt>Ingredients for the batch</dt><dd className="strong">{formatCost(total.batchMaterialCost)}</dd></div>
+        )}
+        {batch && (
+          <div className="between"><dt>Ingredients per serving</dt><dd className="strong">{formatCost(total.materialPerServing)}</dd></div>
+        )}
+      </dl>
+      <details className="label">
+        <summary className="strong">Suggested price{suggested === undefined ? "" : ` · ${formatMoney(suggested, currency)}`}</summary>
+        <div className="grid-2 recipe-price-fields">
+          <label className="field">
+            <span>Margin you want (%)</span>
+            <input className="input" inputMode="decimal" value={target} onChange={(e) => setTarget(decimalEntry(e.target.value))} />
+          </label>
+          <MoneyField label="Round up to" value={increment} onChange={setIncrement} currency={currency} />
+        </div>
+      </details>
     </div>
   );
 }

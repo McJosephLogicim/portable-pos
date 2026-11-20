@@ -8,7 +8,7 @@ import { isSimpleMode } from "@/lib/settings";
 import { maxBatchServings, menuRecipeCost } from "@/lib/stock";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
-import { blankUseDraft, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
+import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
@@ -249,6 +249,13 @@ export function ItemSheet({
     }
   }
 
+  const costMissing = costGap(costRows, batchEnabled ? "batch" : "sale")
+    ?? (batchEnabled && !(Number.isInteger(Number(batchServings)) && Number(batchServings) >= 1)
+      ? "Enter how many servings one batch makes."
+      : !costRows.some(({ draft }) => draft.name.trim())
+        ? batchEnabled ? "Add what goes into the batch." : "Pick the stock items one sale uses, under Stock."
+        : undefined);
+
   function readCosting(): ProductCosting | undefined {
     const laborPerServing = optionalMoney(labor);
     const otherPerServing = optionalMoney(other);
@@ -398,16 +405,19 @@ export function ItemSheet({
         )}
       </div>}
 
-      {!simple && <section className="card card-pad stack gap-14" aria-label="Recipe costing">
-        <h3 className="strong">Recipe costing</h3>
-        <div className="between gap-8">
-          <span>Cost a batch</span>
-          <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Cost a batch" />
+      {!simple && <section className="card card-pad stack gap-14" aria-label="Cost and margin">
+        <h3 className="strong">Cost and margin</h3>
+        <div className="between gap-12">
+          <span className="row-text">
+            <span>Made in batches</span>
+            <span className="label">Like a pitcher that pours 10 cups</span>
+          </span>
+          <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Made in batches" />
         </div>
         {batchEnabled && (
           <>
             <label className="field">
-              <span>Servings per batch</span>
+              <span>One batch makes (servings)</span>
               <input
                 className="input"
                 inputMode="numeric"
@@ -416,13 +426,22 @@ export function ItemSheet({
                 onChange={(e) => setBatchServings(e.target.value)}
               />
             </label>
-            <p className="label">Enter ingredients for the whole batch. The Stock section controls what the till deducts per sale.</p>
-            <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
+            <div className="field">
+              <span>What goes into the whole batch</span>
+              <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
+            </div>
+            <p className="label">This is for costing only. What the till takes off per sale is set under Stock.</p>
           </>
         )}
-        <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
-        <MoneyField label="Other variable cost per serving" value={other} onChange={setOther} currency={currency} />
-        {showCostPreview && <CostPreview currency={currency} total={totalCost} batch={batchEnabled} />}
+        <div className="grid-2">
+          <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
+          <MoneyField label="Cups, lids, other" value={other} onChange={setOther} currency={currency} />
+        </div>
+        {showCostPreview ? (
+          <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} />
+        ) : (
+          <p className="cost-missing">Set Stock to Uses stock, or turn on Made in batches, to see what it costs you.</p>
+        )}
       </section>}
 
       {groups.map((g) => (

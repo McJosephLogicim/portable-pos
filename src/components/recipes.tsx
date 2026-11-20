@@ -33,16 +33,50 @@ export function RecipesScreen(props: RecipesProps) {
   return (
     <div className="page narrow">
       <div className="page-top"><h1 className="headline">Recipes</h1></div>
+      <p className="group-title">Menu</p>
       <div className="card card-list">
-        <Row icon={<LayoutGrid size={18} />} title="Menu items" detail={count(state.menu.length)} onClick={() => onPage("menu")} />
-        <Row icon={<Tag size={18} />} title="Categories" detail={count(categoriesOf(state.menu).length)} onClick={() => onPage("categories")} />
-        <Row icon={<ListPlus size={18} />} title="Choices" detail={count(choicesOf(state.menu).length)} onClick={() => onPage("choices")} />
+        <Row
+          icon={<LayoutGrid size={18} />}
+          title="Menu items"
+          description="What you sell, with prices and photos"
+          detail={count(state.menu.length)}
+          onClick={() => onPage("menu")}
+        />
+        <Row
+          icon={<Tag size={18} />}
+          title="Categories"
+          description="The tabs on Sell, like Coffee or Bakery"
+          detail={count(categoriesOf(state.menu).length)}
+          onClick={() => onPage("categories")}
+        />
+        <Row
+          icon={<ListPlus size={18} />}
+          title="Choices"
+          description="Sizes, milks and add-ons, set up once"
+          detail={count(choicesOf(state.menu).length)}
+          onClick={() => onPage("choices")}
+        />
       </div>
       {!simple && (
-        <div className="card card-list">
-          <Row icon={<Package size={18} />} title="Stock items" detail={count(stock.length)} onClick={() => onPage("stock")} />
-          <Row icon={<CookingPot size={18} />} title="Prep recipes" detail={count(stock.filter((item) => item.prep).length)} onClick={() => onPage("prep")} />
-        </div>
+        <>
+          <p className="group-title">Stock and costing</p>
+          <div className="card card-list">
+            <Row
+              icon={<Package size={18} />}
+              title="Stock items"
+              description="What you buy and count each shift"
+              detail={count(stock.filter((item) => !item.prep).length)}
+              onClick={() => onPage("stock")}
+            />
+            <Row
+              icon={<CookingPot size={18} />}
+              title="Prep"
+              description="What you make ahead, like syrups and creams"
+              detail={count(stock.filter((item) => item.prep).length)}
+              onClick={() => onPage("prep")}
+            />
+          </div>
+        </>
       )}
     </div>
   );
