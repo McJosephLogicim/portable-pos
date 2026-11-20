@@ -2082,20 +2082,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 
 /* ---------- sales filters ---------- */
-.back-row {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  min-height: 36px;
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  color: var(--ink-secondary);
-  font-size: 14px;
-  font-weight: 500;
-}
 .chips.filter-chips {
   flex-wrap: wrap;
   overflow: visible;

@@ -615,15 +615,6 @@ export function Workspace() {
         onReverse={reverse}
         onSell={() => go("sell")}
         focus={salesFocus}
-        onBack={() => {
-          const bookingId = salesFocus?.back?.bookingId;
-          setSalesFocus(null);
-          if (!bookingId) return;
-          buzz.tap();
-          setSharedSchedule({ bookingId });
-          setTab("schedule");
-          window.scrollTo(0, 0);
-        }}
       />
     );
   else if (view === "shift" || !sellable)
