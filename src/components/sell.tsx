@@ -44,6 +44,7 @@ import {
   Sheet,
   Tip,
 } from "./ui";
+import { blocked as blockedBy } from "@/lib/reject";
 import styles from "./sell.module.css";
 
 /* Bills in major units. Quick cash buttons round the total up to the next bill. */
@@ -237,7 +238,7 @@ function ItemOptions({
               {group.options.map((option) => {
                 const out = soldOut.includes(option.id);
                 return (
-                  <label key={option.id} className={`list-row ${styles.option}`}>
+                  <label key={option.id} className={`list-row ${styles.option}`} {...blockedBy(out && `${option.name} is sold out.`)}>
                     <input
                       className="sr-only"
                       type="radio"
@@ -483,6 +484,8 @@ function Checkout({
     ? `Take a photo of the ${discount.name} ID first.`
     : `Take a photo of the ${chosen?.name ?? ""} payment first.`;
   const canPay = !busy && !blocked && lines.length > 0 && !missing;
+  // Why Charge can't go ahead, said when the button is tapped anyway.
+  const payRefusal = blocked ? "Remove the sold-out item to charge." : missing ? missingText : !lines.length && "The order is empty.";
 
   let typed: number | undefined;
   if (cash.trim()) {
@@ -588,7 +591,12 @@ function Checkout({
         busy={busy}
         footer={
           <>
-            <button className="btn block" disabled={!canPay || review < total} onClick={() => void pay(review)}>
+            <button
+              className="btn block"
+              disabled={busy}
+              {...blockedBy(payRefusal || (review < total && "That's less than the total."))}
+              onClick={() => void pay(review)}
+            >
               {busy ? "Saving…" : "Confirm sale"}
             </button>
             <button
@@ -662,7 +670,8 @@ function Checkout({
         chosen && chosen.kind !== "cash" ? (
           <button
             className="btn block"
-            disabled={!canPay}
+            disabled={busy}
+            {...blockedBy(payRefusal)}
             onClick={() => ask(total)}
           >
             {missing ? "Take the photo first ·" : `${chosen.name} received ·`}
@@ -671,7 +680,8 @@ function Checkout({
         ) : chosen && typed !== undefined ? (
           <button
             className="btn block"
-            disabled={!canPay || typed < total}
+            disabled={busy}
+            {...blockedBy(payRefusal || (typed < total && "That's less than the total."))}
             onClick={() => ask(typed)}
           >
             {typed < total ? (
@@ -802,7 +812,8 @@ function Checkout({
           <div className={`quick ${styles.quickCash}`} role="group" aria-label="Cash received">
             <button
               type="button"
-              disabled={!canPay}
+              disabled={busy}
+              {...blockedBy(payRefusal)}
               onClick={() => ask(total)}
             >
               Exact
@@ -811,7 +822,8 @@ function Checkout({
               <button
                 key={amount}
                 type="button"
-                disabled={!canPay}
+                disabled={busy}
+                {...blockedBy(payRefusal)}
                 onClick={() => ask(amount)}
               >
                 {formatMoney(amount, currency)}
@@ -1137,7 +1149,10 @@ export function SellScreen({
                     (!marking && qty ? `, ${qty} in order` : "")
                   }
                   aria-busy={adding}
-                  disabled={busy || (!marking && out)}
+                  disabled={busy}
+                  {...blockedBy(!marking && out && (canMake(model, left, product.id) === 0
+                    ? `No stock left for ${product.name}.`
+                    : `${product.name} is sold out.`))}
                   onClick={() => {
                     if (marking) {
                       if (product.groups.length) setPicked(product);
@@ -1176,7 +1191,7 @@ export function SellScreen({
             {canEdit && !marking && !q && !category && (
               <button
                 className="item add-tile"
-                disabled={!online}
+                {...blockedBy(!online && "Connect to the internet to add items.")}
                 onClick={() => setAdding(true)}
                 aria-label="Add an item to the menu"
               >
@@ -1199,7 +1214,7 @@ export function SellScreen({
                 : "Ask the owner to add items."}
           >
             {canEdit && !menu.length && (
-              <button className="btn compact" disabled={!online} onClick={() => setAdding(true)}>
+              <button className="btn compact" {...blockedBy(!online && "Connect to the internet to add items.")} onClick={() => setAdding(true)}>
                 <Plus size={16} /> Add
               </button>
             )}

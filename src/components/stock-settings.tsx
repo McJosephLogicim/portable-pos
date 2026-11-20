@@ -31,6 +31,7 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 /** A stock item's details: its name and the unit it's counted in. */
 /** Units already used, then the usual ones, so a unit is picked once and reused. */
@@ -608,14 +609,14 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       onBack={() => props.onPage(null)}
     >
       {!select.on && <div className="row gap-8">
-        <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || list.length >= 100} onClick={() => setEditing("new")} />
+        <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || (list.length >= 100 && "A list holds up to 100 items.")} onClick={() => setEditing("new")} />
         <button type="button" className="btn ghost" onClick={() => props.onPage("stock-lists")}>
           <Tags size={16} /> Stock lists
         </button>
       </div>}
       {!select.on && props.onMergeStock && mergeable.length > 0 && (
         <div className="card card-list">
-          <button type="button" className="list-row" disabled={!props.online} aria-haspopup="dialog" onClick={() => setMerging(true)}>
+          <button type="button" className="list-row" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setMerging(true)}>
             <span className="well">
               <Merge size={18} strokeWidth={1.8} />
             </span>
@@ -704,7 +705,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             return (
               <RecordRow
                 key={i.id}
-                disabled={!props.online || !product}
+                disabled={!props.online || (!product && "This menu item was removed.")}
                 onClick={() => props.onPage("menu")}
                 lead={
                   <span className="well">
@@ -978,7 +979,7 @@ export function UsesEditor({
         type="button"
         className="btn secondary compact"
         aria-label={batch ? "Add ingredient" : "Add stock item"}
-        disabled={uses.length >= 20}
+        {...blocked(uses.length >= 20 && "An item can use up to 20 stock items.")}
         onClick={() => onChange([...uses, blankUseDraft()])}
       >
         <Plus size={16} /> Add

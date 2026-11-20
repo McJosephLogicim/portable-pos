@@ -3,6 +3,7 @@
 import { Check, Plus } from "lucide-react";
 import type { BusinessSummary, RegisterState } from "@/lib/types";
 import { Sheet } from "./ui";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 export function initialsOf(name: string) {
   return (
@@ -89,7 +90,7 @@ export function BusinessSwitcher({
         </>
       }
       footer={
-        <button className="btn secondary block" disabled={demo || !online} onClick={onAdd}>
+        <button className="btn secondary block" {...blocked(demo ? "Sign in to run more than one business." : !online && OFFLINE)} onClick={onAdd}>
           <Plus size={18} /> Add
         </button>
       }
@@ -101,7 +102,7 @@ export function BusinessSwitcher({
             type="button"
             className="list-row"
             aria-current={b.id === current}
-            disabled={b.id !== current && !online}
+            {...blocked(b.id !== current && !online && "Connect to the internet to switch business.")}
             onClick={() => (b.id === current ? onClose() : onSwitch(b.id))}
           >
             <BusinessMark name={b.name} logo={b.logo} brand={b.brand} />

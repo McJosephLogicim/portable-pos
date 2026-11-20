@@ -96,28 +96,28 @@
   box-shadow: none;
 }
 
-.quickCash:global(.quick) > button:disabled {
+.quickCash:global(.quick) > button:disabled, .quickCash:global(.quick) > button[aria-disabled="true"] {
   opacity: .45;
 }
 
-.product:global(.item):active:not(:disabled),
-.stepper:global(.stepper) > button:active:not(:disabled),
-.paymentMethod:global(.method):active:not(:disabled),
-.quickCash:global(.quick) > button:active:not(:disabled):not(:first-child) {
+.product:global(.item):active:not(:disabled):not([aria-disabled="true"]),
+.stepper:global(.stepper) > button:active:not(:disabled):not([aria-disabled="true"]),
+.paymentMethod:global(.method):active:not(:disabled):not([aria-disabled="true"]),
+.quickCash:global(.quick) > button:active:not(:disabled):not([aria-disabled="true"]):not(:first-child) {
   background: var(--surface-muted);
 }
 
-.product:global(.item):active:not(:disabled) {
+.product:global(.item):active:not(:disabled):not([aria-disabled="true"]) {
   transform: none;
 }
 
-.quickCash:global(.quick) > button:first-child:active:not(:disabled),
-.chargeBar:global(.charge-bar):active:not(:disabled) {
+.quickCash:global(.quick) > button:first-child:active:not(:disabled):not([aria-disabled="true"]),
+.chargeBar:global(.charge-bar):active:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in srgb, var(--accent), var(--on-accent) 12%);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  :global(html:not([data-input="keyboard"])) .product:global(.item):active:not(:disabled) {
+  :global(html:not([data-input="keyboard"])) .product:global(.item):active:not(:disabled):not([aria-disabled="true"]) {
     transform: scale(.985);
   }
 

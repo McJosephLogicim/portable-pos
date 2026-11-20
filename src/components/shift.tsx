@@ -17,6 +17,7 @@ import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
 import { bookingTitle, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
+import { blocked, type Reason } from "@/lib/reject";
 import {
   ConfirmSheet,
   errorText,
@@ -39,7 +40,14 @@ import styles from "./operations.module.css";
 export type CloseInput = Omit<Closing, "action" | "pin">;
 export type ExpenseInput = { label: string; amount: number; source: Expense["source"] };
 
-function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zone: string; note?: string; onClick?: () => void }) {
+function BookingRow({ booking: b, zone, note, onClick, refuse }: {
+  booking: Booking;
+  zone: string;
+  note?: string;
+  onClick?: () => void;
+  /** Why it can't be tapped yet. The row stays tappable so it can say so. */
+  refuse?: Reason;
+}) {
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
   const today = day.format(Date.now()) === day.format(new Date(b.startsAt));
@@ -60,7 +68,11 @@ function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zon
       {onClick && <ChevronRight size={18} className="chev" />}
     </>
   );
-  return onClick ? (
+  return refuse ? (
+    <button type="button" className="list-row plain" {...blocked(refuse)}>
+      {body}
+    </button>
+  ) : onClick ? (
     <button type="button" className="list-row" onClick={onClick}>
       {body}
     </button>
@@ -110,6 +122,9 @@ function NoShift({
   const ready = list.filter((b) => !running.has(b.id) && !startProblem(b, zone));
   const next = list.find((b) => !running.has(b.id) && startProblem(b, zone));
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
+  const weekday = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "long" });
+  const opensAt = next ? Date.parse(next.startsAt) - OPEN_EARLY : 0;
+  const opensToday = next && weekday.format(opensAt) === weekday.format(Date.now()) && opensAt - Date.now() < 86_400_000;
   return (
     <div className="stack gap-18">
       <h1 className="headline">Open till</h1>
@@ -159,7 +174,10 @@ function NoShift({
             <BookingRow
               booking={next}
               zone={zone}
-              note={`Till opens from ${time.format(Date.parse(next.startsAt) - OPEN_EARLY)}`}
+              note={`Till opens from ${time.format(opensAt)}`}
+              refuse={Date.parse(next.endsAt) <= Date.now()
+                ? "This shift already ended."
+                : `Not yet. The till opens ${opensToday ? "" : weekday.format(opensAt) + " "}at ${time.format(opensAt)}.`}
             />
           </div>
         </div>
@@ -205,7 +223,6 @@ function OpenShift({
   const value = cash.amount;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
-  const ready = value !== undefined && !unticked && !uncounted;
   const celebrate = useCelebrate();
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
   return (
@@ -308,7 +325,13 @@ function OpenShift({
         )}
         <button
           className="btn block"
-          disabled={!online || busy || !ready}
+          disabled={busy}
+          {...blocked(
+            value === undefined ? "Count the starting cash first."
+              : uncounted ? `Count ${uncounted === 1 ? "the item" : `the ${uncounted} items`} marked Count it first.`
+                : unticked ? `Tick ${unticked === 1 ? "the last checklist item" : `the ${unticked} checklist items left`} first.`
+                  : !online && "Connect to the internet to open the shift.",
+          )}
           onClick={async (event) => {
             const origin = event.detail > 0 ? centerOf(event.currentTarget) : undefined;
             setBusy(true);
@@ -388,7 +411,11 @@ function CloseSheet({
           )}
           <button
             className="btn block"
-            disabled={counted === undefined || uncounted > 0 || busy}
+            disabled={busy}
+            {...blocked(
+              counted === undefined ? "Count the cash in the drawer first."
+                : uncounted > 0 && `Count ${uncounted === 1 ? "the last item" : `the ${uncounted} items left`} first.`,
+            )}
             onClick={async () => {
               setBusy(true);
               setError("");
@@ -467,7 +494,6 @@ function ExpenseSheet({
   try {
     value = amount.trim() ? parseMoney(amount, currency) : undefined;
   } catch {}
-  const ready = label.trim() && value;
   return (
     <Sheet
       title="Log an expense"
@@ -476,7 +502,8 @@ function ExpenseSheet({
       footer={
         <button
           className="btn block"
-          disabled={!ready || busy}
+          disabled={busy}
+          {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
           onClick={async () => {
             setBusy(true);
             setError("");
@@ -812,7 +839,12 @@ export function ShiftScreen({
             )}
           </div>
           <div className="stack gap-8">
-              <button className="btn secondary block" disabled={!canClose} aria-haspopup="dialog" onClick={() => setClosing(true)}>
+              <button
+                className="btn secondary block"
+                {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the shift."))}
+                aria-haspopup="dialog"
+                onClick={() => setClosing(true)}
+              >
                 Count drawer and close
               </button>
               {!canClose && (

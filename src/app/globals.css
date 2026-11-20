@@ -38,6 +38,9 @@
   --exit-fade: 120ms;
   --exit-collapse: 180ms;
   --exit-sheet: 160ms;
+  /* A refused tap: red tint fades over --reject-tint, the shake takes --reject-shake. */
+  --reject-tint: 720ms;
+  --reject-shake: 320ms;
   --gutter: 20px;
   /* One content width for every page and the account bar above it. */
   --page-max: 640px;
@@ -98,7 +101,7 @@ a.btn,
 [role="button"] {
   touch-action: manipulation;
 }
-button:disabled {
+button:disabled, button[aria-disabled="true"] {
   cursor: default;
 }
 img {
@@ -275,11 +278,11 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   white-space: nowrap;
   text-decoration: none;
 }
-.btn:active:not(:disabled) {
+.btn:active:not(:disabled):not([aria-disabled="true"]) {
   opacity: 0.8;
   transition-duration: 0ms;
 }
-.btn:disabled {
+.btn:disabled, .btn[aria-disabled="true"] {
   opacity: 0.35;
 }
 .btn.compact {
@@ -345,7 +348,7 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   box-shadow: var(--shadow-float);
   transition: opacity var(--dur-fast) var(--ease-out);
 }
-.round:active:not(:disabled) {
+.round:active:not(:disabled):not([aria-disabled="true"]) {
   opacity: 0.72;
   transition-duration: 0ms;
 }
@@ -644,7 +647,7 @@ button.list-row:not(.sell-option):active {
   border: 1.5px dashed var(--ink-tertiary);
   padding: 0 16px 0 12px;
 }
-.chips > button.chip-new:disabled {
+.chips > button.chip-new:disabled, .chips > button.chip-new[aria-disabled="true"] {
   opacity: 0.4;
 }
 
@@ -1030,6 +1033,16 @@ button.list-row:not(.sell-option):active {
   align-items: center;
   gap: 8px;
   pointer-events: none;
+  /* It's a popover, so it shows above open sheets. Undo the popover defaults. */
+  top: auto;
+  right: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  overflow: visible;
 }
 .toast {
   padding: 6px 14px;
@@ -1168,7 +1181,7 @@ button.list-row:not(.sell-option):active {
   user-select: none;
   -webkit-user-select: none;
 }
-.item:active:not(:disabled) {
+.item:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(0.97);
 }
 .item .photo {
@@ -2112,8 +2125,8 @@ button.booking-body:active {
 .picker {
   min-width: 0;
 }
-.picker-trigger:disabled,
-.chips.wrap.picker-options > button:disabled {
+.picker-trigger:disabled, .picker-trigger[aria-disabled="true"],
+.chips.wrap.picker-options > button:disabled, .chips.wrap.picker-options > button[aria-disabled="true"] {
   opacity: 0.5;
 }
 .picker-trigger > svg {
@@ -2184,18 +2197,18 @@ button.list-row,
   transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast);
   -webkit-tap-highlight-color: transparent;
 }
-button.list-row:not(.sell-option):active:not(:disabled),
+button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true"]),
 .list-row[role="button"]:active {
   transform: scale(0.985);
 }
 .btn {
   -webkit-tap-highlight-color: transparent;
 }
-.btn:active:not(:disabled) {
+.btn:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(0.97);
 }
-:root[data-input="keyboard"] .btn:active:not(:disabled),
-:root[data-input="keyboard"] button.list-row:active:not(:disabled) {
+:root[data-input="keyboard"] .btn:active:not(:disabled):not([aria-disabled="true"]),
+:root[data-input="keyboard"] button.list-row:active:not(:disabled):not([aria-disabled="true"]) {
   transform: none;
 }
 
@@ -2271,7 +2284,7 @@ button.list-row:not(.sell-option):active:not(:disabled),
   padding: 0;
   transition: transform var(--dur-fast) var(--ease-out);
 }
-.photo-slot:active:not(:disabled) {
+.photo-slot:active:not(:disabled):not([aria-disabled="true"]) {
   transform: scale(0.95);
 }
 .photo-slot.has {
@@ -2531,10 +2544,10 @@ button.list-row:not(.sell-option):active:not(:disabled),
   .confetti i {
     animation: none;
   }
-  .btn:active:not(:disabled),
-  button.list-row:not(.sell-option):active:not(:disabled),
+  .btn:active:not(:disabled):not([aria-disabled="true"]),
+  button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true"]),
   .list-row[role="button"]:active,
-  .photo-slot:active:not(:disabled) {
+  .photo-slot:active:not(:disabled):not([aria-disabled="true"]) {
     transform: none;
   }
 }
@@ -2840,7 +2853,7 @@ html {
   min-height: 36px;
   background: var(--surface-muted);
 }
-.stepper .round:disabled {
+.stepper .round:disabled, .stepper .round[aria-disabled="true"] {
   opacity: 0.35;
 }
 .stepper .input.count {
@@ -2910,7 +2923,7 @@ html {
   align-items: center;
   gap: 8px;
 }
-.stock-count-controls .round:disabled {
+.stock-count-controls .round:disabled, .stock-count-controls .round[aria-disabled="true"] {
   opacity: 0.35;
 }
 .input.stock-count-value {
@@ -3316,8 +3329,12 @@ html {
   width: 40px;
   height: 40px;
 }
-.list-row:disabled {
+.list-row:disabled, .list-row[aria-disabled="true"] {
   opacity: 0.5;
+}
+/* A row that can't be tapped yet but still reads as information (the next shift). */
+.list-row.plain[aria-disabled="true"] {
+  opacity: 1;
 }
 /* ---------- fit any phone, any brand font ---------- */
 .segmented > button {
@@ -3557,7 +3574,7 @@ html {
   color: var(--ink);
   font-size: 14px;
 }
-.chip-button:disabled {
+.chip-button:disabled, .chip-button[aria-disabled="true"] {
   opacity: 0.6;
 }
 .map.movable {

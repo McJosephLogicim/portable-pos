@@ -9,6 +9,7 @@ import type { RecipesProps } from "./recipes";
 import { RecordFilters } from "./filter-controls";
 import { matches, namesText, plural, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { SubPage, useCommit } from "./settings";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 const groups = [
   { field: "category", Icon: Tag },
@@ -116,7 +117,7 @@ export function StockListsPage(props: RecipesProps) {
                 end={plural(items.length, "item")}
               />
             ))}
-            <button type="button" className="list-row" disabled={!props.online} onClick={() => setEditing({ field })}>
+            <button type="button" className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing({ field })}>
               <span className="well"><Plus size={18} /></span>
               <span className="grow row-title">Add</span>
             </button>

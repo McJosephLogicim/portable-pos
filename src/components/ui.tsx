@@ -1037,10 +1037,13 @@ function PinSheet({
 export function Toast({
   text,
   undo,
+  stamp,
   onDone,
 }: {
   text: string;
   undo?: (pin: string) => Promise<void>;
+  /** Changes when the same text is shown again, so it stays up for the full time. */
+  stamp?: number;
   onDone: (restored?: boolean) => void;
 }) {
   const done = useRef(onDone);
@@ -1056,9 +1059,10 @@ export function Toast({
   const [error, setError] = useState("");
   useEffect(() => {
     if (busy || hover || focused || pressed) return;
-    const t = setTimeout(() => done.current(), undo ? 10000 : 2200);
+    // Longer text (the reason a tap was refused) needs a moment more to read.
+    const t = setTimeout(() => done.current(), undo ? 10000 : text.length > 32 ? 3200 : 2200);
     return () => clearTimeout(t);
-  }, [text, undo, busy, hover, focused, pressed]);
+  }, [text, undo, stamp, busy, hover, focused, pressed]);
 
   function endGesture(event: ReactPointerEvent<HTMLDivElement>, cancelled = false) {
     const start = gesture.current;

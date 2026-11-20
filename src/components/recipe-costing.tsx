@@ -10,6 +10,7 @@ import { Row, SubPage, useCommit } from "./settings";
 import { useRecordSave } from "./records";
 import { EmptyState, Explain, formatMoney, MoneyField } from "./ui";
 import styles from "./settings.module.css";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 const percent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 });
 const asPercent = (value: number | undefined) => value === undefined ? "—" : percent.format(value);
@@ -51,7 +52,7 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
           <div className="card card-list">
             {overview.rows.map(({ item, cost, suggested }) => (
               <article className="costing-entry" key={item.id}>
-                <button className="costing-title between gap-8" disabled={!online} onClick={() => onEdit(item)}>
+                <button className="costing-title between gap-8" {...blocked(!online && OFFLINE)} onClick={() => onEdit(item)}>
                   <span className="stack grow gap-4">
                     <span className="strong">{item.name}</span>
                     <span className="label">{[item.costing?.sku ?? catalogSku("product", item.id), item.category].filter(Boolean).join(" · ")}</span>
