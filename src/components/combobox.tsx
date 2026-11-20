@@ -49,7 +49,7 @@ export function SuggestInput({
   const visible = open && shown.length > 0;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const place = useFloatingList(inputRef, listRef, visible);
+  useFloatingList(inputRef, listRef, visible);
 
   function pick(s: Suggestion) {
     if (onPick) onPick(s);
@@ -105,7 +105,7 @@ export function SuggestInput({
       {visible && (
         <div
           ref={listRef}
-          className={"combo-list combo-float card " + place}
+          className="combo-list combo-float card"
           id={id + "-list"}
           role="listbox"
           aria-label={label}
@@ -140,48 +140,57 @@ export function SuggestInput({
   );
 }
 
-const GAP = 6;
+const GAP = 4;
 const EDGE = 8;
 const MAX = 280;
-/** Below this much room under the field, the list opens upward if there is more room above. */
-const MIN_BELOW = 168;
+/** The list always wants at least this much room under its field. */
+const WANT = 200;
 
 /**
- * Keeps the list pinned to its field as an overlay: it sits in the top layer (above open
- * sheets) when the browser supports popovers, follows the field while anything scrolls, and
- * measures against the visual viewport so the on-screen keyboard counts as no room.
+ * Keeps the list pinned right under its field, like a native dropdown: it overlays what is
+ * below (in the top layer, above open sheets), follows the field while anything scrolls, and
+ * never covers the field. When the keyboard or the screen edge leaves too little room, the
+ * field's scroll box is scrolled up to make room instead of moving the list.
  */
 function useFloatingList(
   inputRef: React.RefObject<HTMLInputElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
-): "below" | "above" {
-  const [place, setPlace] = useState<"below" | "above">("below");
-
+) {
   const update = useCallback(() => {
     const input = inputRef.current;
     const list = listRef.current;
     if (!input || !list) return;
     const r = input.getBoundingClientRect();
     const vv = window.visualViewport;
-    const top = vv ? vv.offsetTop : 0;
     const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-    const below = bottom - r.bottom - GAP - EDGE;
-    const above = r.top - top - GAP - EDGE;
-    const up = below < MIN_BELOW && above > below;
+    const room = Math.max(88, Math.min(MAX, bottom - r.bottom - GAP - EDGE));
     list.style.visibility = clipped(input, r) ? "hidden" : "";
-    const room = Math.max(96, Math.min(MAX, up ? above : below));
     list.style.left = `${r.left}px`;
     list.style.width = `${r.width}px`;
+    list.style.top = `${r.bottom + GAP}px`;
     list.style.maxHeight = `${room}px`;
-    if (up) {
-      list.style.top = "auto";
-      list.style.bottom = `${window.innerHeight - r.top + GAP}px`;
-    } else {
-      list.style.bottom = "auto";
-      list.style.top = `${r.bottom + GAP}px`;
-    }
-    setPlace(up ? "above" : "below");
+  }, [inputRef, listRef]);
+
+  /** Scrolls the field's scroll box so the list has room under it, where content allows. */
+  const makeRoom = useCallback(() => {
+    const input = inputRef.current;
+    const list = listRef.current;
+    if (!input || !list) return;
+    const box = scrollBox(input);
+    if (!box) return;
+    const r = input.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const page = box === document.scrollingElement;
+    const area = page ? { top: 0, bottom: Infinity } : box.getBoundingClientRect();
+    // The visible part of the scroll box, so a sheet's footer and the keyboard both count.
+    const bottom = Math.min(area.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
+    const want = Math.min(WANT, list.scrollHeight);
+    const short = r.bottom + GAP + want + EDGE - bottom;
+    if (short <= 0) return;
+    // Never push the field itself above the top of its scroll box.
+    const top = area.top;
+    box.scrollTop += Math.min(short, Math.max(0, r.top - top - EDGE));
   }, [inputRef, listRef]);
 
   useLayoutEffect(() => {
@@ -204,21 +213,33 @@ function useFloatingList(
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
+    // The keyboard opening shrinks the visible area, so make room again then.
+    const resized = () => {
+      makeRoom();
+      schedule();
+    };
+    makeRoom();
     const vv = window.visualViewport;
     window.addEventListener("scroll", schedule, true);
-    window.addEventListener("resize", schedule);
-    vv?.addEventListener("resize", schedule);
+    window.addEventListener("resize", resized);
+    vv?.addEventListener("resize", resized);
     vv?.addEventListener("scroll", schedule);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("scroll", schedule, true);
-      window.removeEventListener("resize", schedule);
-      vv?.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", resized);
+      vv?.removeEventListener("resize", resized);
       vv?.removeEventListener("scroll", schedule);
     };
-  }, [visible, update]);
+  }, [visible, update, makeRoom]);
+}
 
-  return place;
+function scrollBox(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const { overflowY } = getComputedStyle(p);
+    if ((overflowY === "auto" || overflowY === "scroll") && p.scrollHeight > p.clientHeight) return p;
+  }
+  return document.scrollingElement as HTMLElement | null;
 }
 
 /** True once the field has scrolled out of a box that clips it, like a sheet's body. */

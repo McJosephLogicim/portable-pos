@@ -1796,19 +1796,10 @@ button.notice {
   -webkit-overflow-scrolling: touch;
   animation: combo-in var(--dur-fast, 120ms) var(--ease-out);
 }
-.combo-float.above {
-  animation-name: combo-in-up;
-}
 @keyframes combo-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
-  }
-}
-@keyframes combo-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
