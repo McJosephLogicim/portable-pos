@@ -17,7 +17,7 @@
  */
 
 const BULK = 6;
-const fallback = { fade: 180, collapse: 240, sheet: 240 };
+const fallback = { fade: 120, collapse: 180, sheet: 160 };
 type Kind = keyof typeof fallback;
 
 function duration(kind: Kind) {
@@ -145,8 +145,9 @@ export function fadeOnExit(node: HTMLElement | null) {
   mountedAt.set(node, performance.now());
   return () => {
     if (skip() || justMounted(node) || !node.parentNode || !node.offsetHeight) return;
-    const transform = getComputedStyle(node).transform;
+    const { transform, opacity } = getComputedStyle(node);
     const base = transform === "none" ? "" : transform;
+    const settle = node.classList.contains("combo-drop") ? "scaleY(0.97)" : "translateY(6px)";
     const ghost = ghostOf(node);
     ghost.style.pointerEvents = "none";
     node.parentNode.insertBefore(ghost, node.nextSibling);
@@ -154,14 +155,23 @@ export function fadeOnExit(node: HTMLElement | null) {
       const still = reduced();
       const animation = ghost.animate(
         [
-          { opacity: 1, transform: base || "none" },
-          { opacity: 0, transform: still ? base || "none" : (base + " translateY(6px)").trim() },
+          { opacity, transform: base || "none" },
+          { opacity: 0, transform: still ? base || "none" : (base + " " + settle).trim() },
         ],
-        { duration: duration("fade"), easing: curve("--ease-out"), fill: "forwards" },
+        { duration: still ? 80 : duration("fade"), easing: curve("--ease-out"), fill: "forwards" },
       );
       finish(ghost, animation);
     });
   };
+}
+
+let sheetExit: { layer: HTMLElement; animations: Animation[] } | null = null;
+
+export function clearSheetExit() {
+  if (!sheetExit) return;
+  sheetExit.layer.remove();
+  sheetExit.animations.forEach((animation) => animation.cancel());
+  sheetExit = null;
 }
 
 /**
@@ -176,7 +186,10 @@ export function exitSheet(node: HTMLDialogElement | null) {
     if (skip() || justMounted(node) || !node.open) return;
     const box = node.getBoundingClientRect();
     if (!box.height) return;
+    clearSheetExit();
     const scrolls = [...node.querySelectorAll<HTMLElement>(".sheet-body")].map((el) => el.scrollTop);
+    const { opacity } = getComputedStyle(node);
+    const backdropOpacity = getComputedStyle(node, "::backdrop").opacity;
 
     const layer = document.createElement("div");
     layer.className = "exit-layer";
@@ -206,22 +219,23 @@ export function exitSheet(node: HTMLDialogElement | null) {
     panel.querySelectorAll<HTMLElement>(".sheet-body").forEach((el, i) => (el.scrollTop = scrolls[i] ?? 0));
 
     const still = reduced();
-    const time = duration("sheet");
-    const drawer = window.matchMedia("(max-width: 899px)").matches;
-    // On a phone the sheet stays solid and slides all the way back down, like it came; only the
-    // backdrop fades. On a wide screen the centered dialog fades and settles slightly.
-    backdrop.animate([{ opacity: 1 }, { opacity: 0 }], { duration: time, easing: "linear", fill: "forwards" });
-    const animation = panel.animate(
-      still
-        ? [{ opacity: 1 }, { opacity: 0 }]
-        : drawer
-          ? [{ transform: "none" }, { transform: "translateY(100%)" }]
-          : [
-              { opacity: 1, transform: "none" },
-              { opacity: 0, transform: "scale(0.97)" },
-            ],
-      { duration: time, easing: curve(drawer && !still ? "--ease-drawer" : "--ease-out"), fill: "forwards" },
+    const time = still ? 80 : duration("sheet");
+    const scrim = backdrop.animate(
+      [{ opacity: backdropOpacity }, { opacity: 0 }],
+      { duration: time, easing: "linear", fill: "forwards" },
     );
-    finish(layer, animation);
+    const closing = panel.animate(
+      [
+        { opacity, transform: "none" },
+        { opacity: 0, transform: still ? "none" : "translateY(32px)" },
+      ],
+      { duration: time, easing: curve("--ease-drawer"), fill: "forwards" },
+    );
+    sheetExit = { layer, animations: [scrim, closing] };
+    const finishSheet = () => {
+      layer.remove();
+      if (sheetExit?.layer === layer) sheetExit = null;
+    };
+    closing.finished.then(finishSheet, finishSheet);
   };
 }

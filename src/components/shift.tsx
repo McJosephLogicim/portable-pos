@@ -34,6 +34,7 @@ import {
   useCountUp,
   usePin,
 } from "./ui";
+import styles from "./operations.module.css";
 
 export type CloseInput = Omit<Closing, "action" | "pin">;
 export type ExpenseInput = { label: string; amount: number; source: Expense["source"] };
@@ -355,46 +356,42 @@ function OpenShift({
               {checked.length} of {checklist.length}
             </span>
           </div>
-          <span className="bar wide" aria-hidden="true">
+          <span className={`bar wide ${styles.openingProgress}`} aria-hidden="true">
             <i style={progressStyle((checked.length / checklist.length) * 100)} />
           </span>
           <div className="card card-list">
             {checklist.map((c) => {
               const on = checked.includes(c.id);
               return (
-                <button
-                  key={c.id}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={on}
-                  className="list-row"
-                  onClick={(e) => {
-                    const next = on ? checked.filter((x) => x !== c.id) : [...checked, c.id];
-                    setChecked(next);
-                    if (on) buzz.tap();
-                    else if (next.length === checklist.length) celebrate(centerOf(e.currentTarget));
-                    else buzz.tick();
-                  }}
-                >
-                  <span className={"tick" + (on ? " on" : "")}>
-                    <Check size={14} strokeWidth={2.6} />
-                  </span>
-                  <span className={"grow check-text" + (on ? " done" : "")}>{c.text}</span>
+                <div key={c.id} className={styles.checklistRow}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    className="list-row"
+                    onClick={() => {
+                      setChecked(on ? checked.filter((x) => x !== c.id) : [...checked, c.id]);
+                      if (on) buzz.tap();
+                      else buzz.tick();
+                    }}
+                  >
+                    <span className={"tick" + (on ? " on" : "")} aria-hidden="true">
+                      <Check size={14} strokeWidth={2.6} />
+                    </span>
+                    <span className={"grow check-text" + (on ? " done" : "")}>{c.text}</span>
+                  </button>
                   {c.image && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="check-photo"
+                    <button
+                      type="button"
+                      className={styles.checklistPhoto}
                       aria-label={"See photo for " + c.text}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPhoto(c);
-                      }}
+                      aria-haspopup="dialog"
+                      onClick={() => setPhoto(c)}
                     >
                       <img src={c.image} alt="" />
-                    </span>
+                    </button>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -415,11 +412,11 @@ function OpenShift({
         <button
           className="btn block"
           disabled={!online || busy || !ready}
-          onClick={async () => {
+          onClick={async (event) => {
+            const origin = event.detail > 0 ? centerOf(event.currentTarget) : undefined;
             setBusy(true);
             setError("");
             try {
-              const button = document.activeElement;
               await onOpen({
                 openingCash: value!,
                 ...(cash.count ? { openingCount: cash.count } : {}),
@@ -427,7 +424,8 @@ function OpenShift({
                 checked,
                 ...(booking ? { bookingId: booking.id } : {}),
               });
-              celebrate(centerOf(button));
+              if (origin) celebrate(origin);
+              else buzz.success();
             } catch (e) {
               setError(errorText(e));
             } finally {
@@ -598,7 +596,7 @@ function ExpenseSheet({
             }
           }}
         >
-          {value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
+          {busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
         </button>
       }
     >
@@ -763,6 +761,9 @@ export function ShiftScreen({
               {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
             </span>
           </div>
+          {!compact && !state.closingShiftId && (
+            <button className="btn block" onClick={onSell}>Back to selling</button>
+          )}
           <div className="grid-2">
             <div className="tile">
               <span className="label">Sales</span>
@@ -822,12 +823,12 @@ export function ShiftScreen({
                 <EmptyRow title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
               )}
               {shiftExpenses.length > 5 && (
-                <button type="button" className="list-row" onClick={() => setAllExpenses(!allExpenses)} aria-expanded={allExpenses}>
+                  <button type="button" className="list-row" onClick={() => setAllExpenses(!allExpenses)} aria-expanded={allExpenses}>
                   <span className="grow">{allExpenses ? "Show less" : `Show ${shiftExpenses.length - 5} more`}</span>
-                  <ChevronDown size={18} className="chev" style={{ transform: allExpenses ? "rotate(180deg)" : undefined }} />
+                    <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
                 </button>
               )}
-              <button type="button" className="list-row" onClick={() => setAddingExpense(true)}>
+                <button type="button" className="list-row" aria-haspopup="dialog" onClick={() => setAddingExpense(true)}>
                 <span className="well">
                   <Plus size={18} strokeWidth={1.8} />
                 </span>
@@ -863,7 +864,7 @@ export function ShiftScreen({
                 {remainingStock.length > 5 && (
                   <button type="button" className="list-row" onClick={() => setAllStock(!allStock)} aria-expanded={allStock}>
                     <span className="grow">{allStock ? "Show less" : `Show ${remainingStock.length - 5} more`}</span>
-                    <ChevronDown size={18} className="chev" style={{ transform: allStock ? "rotate(180deg)" : undefined }} />
+                    <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
                   </button>
                 )}
               </div>
@@ -907,7 +908,7 @@ export function ShiftScreen({
               {paymentMethods.length > 5 && (
                 <button type="button" className="list-row" onClick={() => setAllPayments(!allPayments)} aria-expanded={allPayments}>
                   <span className="grow">{allPayments ? "Show less" : `Show ${paymentMethods.length - 5} more`}</span>
-                  <ChevronDown size={18} className="chev" style={{ transform: allPayments ? "rotate(180deg)" : undefined }} />
+                  <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
                 </button>
               )}
             </div>
@@ -927,7 +928,7 @@ export function ShiftScreen({
             )}
           </div>
           <div className="stack gap-8">
-              <button className="btn block" disabled={!canClose} onClick={() => setClosing(true)}>
+              <button className="btn secondary block" disabled={!canClose} aria-haspopup="dialog" onClick={() => setClosing(true)}>
                 Count drawer and close
               </button>
               {!canClose && (
@@ -935,11 +936,8 @@ export function ShiftScreen({
                   {online ? "Waiting for sales to sync." : "Connect to close the shift."}
                 </p>
               )}
-              <button className="btn secondary" onClick={() => setReport(true)}>
+              <button className="btn secondary" aria-haspopup="dialog" onClick={() => setReport(true)}>
                 <FileText size={17} /> Report so far
-              </button>
-              <button className="btn ghost compact" onClick={onSell}>
-                Back to selling
               </button>
             </div>
         </>
@@ -1029,7 +1027,7 @@ export function ShiftScreen({
           state={state}
           business={business}
           justClosed={detail?.justClosed}
-          title={detailShift.closedAt ? `Shift ${detailShift.number} closed` : undefined}
+          title={detail?.justClosed ? `Shift ${detailShift.number} closed` : undefined}
           onDismiss={() => setDetail(null)}
         />
       )}

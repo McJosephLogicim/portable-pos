@@ -49,6 +49,7 @@ import {
   Switch,
   usePin,
 } from "./ui";
+import styles from "./settings.module.css";
 
 export type SettingsInput = {
   name: string;
@@ -95,6 +96,7 @@ export function Row({
   description,
   detail,
   onClick,
+  priority = false,
 }: {
   icon: ReactNode;
   title: string;
@@ -102,10 +104,11 @@ export function Row({
   description?: string;
   detail?: ReactNode;
   onClick: () => void;
+  priority?: boolean;
 }) {
   return (
-    <button className="list-row" onClick={onClick}>
-      <span className="well">{icon}</span>
+    <button type="button" className={priority ? "list-row " + styles.priorityRow : "list-row"} onClick={onClick}>
+      <span className="well" aria-hidden="true">{icon}</span>
       {description ? (
         <span className="row-text">
           <span>{title}</span>
@@ -115,8 +118,31 @@ export function Row({
         <span className="grow row-title">{title}</span>
       )}
       {detail !== undefined && <span className="record-end">{detail}</span>}
-      <ChevronRight size={18} className="chev" />
+      <ChevronRight size={18} className="chev" aria-hidden="true" />
     </button>
+  );
+}
+
+export function SetupDetails({ title, description, children, className = "", onOpen }: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  className?: string;
+  onOpen?: () => void;
+}) {
+  return (
+    <details className={styles.disclosure + " " + className} onToggle={onOpen && ((event) => {
+      if (event.currentTarget.open) onOpen();
+    })}>
+      <summary>
+        <span className="stack gap-4">
+          <span className="strong">{title}</span>
+          {description && <span className="label">{description}</span>}
+        </span>
+        <ChevronRight size={16} className={styles.disclosureIcon} aria-hidden="true" />
+      </summary>
+      <div className={styles.disclosureContent}>{children}</div>
+    </details>
   );
 }
 
@@ -139,15 +165,15 @@ export function SubPage({
   return (
     <div className="page narrow">
       <div className="page-top">
-        <button className="round" aria-label={backLabel} onClick={onBack}>
-          <ArrowLeft size={19} />
+        <button type="button" className="round" aria-label={backLabel} onClick={onBack}>
+          <ArrowLeft size={19} aria-hidden="true" />
         </button>
-        <span className="strong grow page-title">
-          {title}
+        <div className="grow page-title">
+          <h1 className={"strong " + styles.subPageTitle}>{title}</h1>
           {help && <Explain title={title}>{help}</Explain>}
-        </span>
+        </div>
       </div>
-      {sentence && <h1 className="headline">{sentence}</h1>}
+      {sentence && <p className="headline">{sentence}</p>}
       {children}
     </div>
   );
@@ -169,9 +195,12 @@ export function useDraft(
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const saving = useRef(false);
   const withPin = usePin();
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
   async function save() {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError("");
     try {
@@ -179,6 +208,7 @@ export function useDraft(
     } catch (e) {
       setError(errorText(e));
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -191,7 +221,9 @@ export function useDraft(
           </p>
         )}
         <button
+          type="button"
           className="btn"
+          aria-busy={busy}
           disabled={!dirty || busy || !props.online}
           onClick={() => void save()}
         >
@@ -241,8 +273,7 @@ const advancedAdds = [
 ];
 
 /**
- * The mode lives at the top of Settings as one switch, like any on/off setting. Flipping it
- * says exactly what appears or goes out of sight before anything changes.
+ * Show which capabilities change before the owner confirms a mode switch.
  */
 function ModeCard(props: SettingsProps) {
   const simple = isSimpleMode(props.state.business!.settings);
@@ -326,6 +357,16 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
 
 const brands = ["#0a0a0a", "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8", "#6d28d9", "#be185d"];
 
+function loadFontSamples() {
+  const id = "brand-font-all";
+  if (document.getElementById(id)) return;
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = "https://fonts.googleapis.com/css2?" + fonts.filter((font) => font.google).map((font) => "family=" + font.google).join("&") + "&display=swap";
+  document.head.appendChild(link);
+}
+
 function BusinessPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
   const setBrand = (patch: Partial<Settings>) => {
@@ -356,16 +397,6 @@ function BusinessPage(props: SettingsProps) {
   const savedRef = useRef(saved);
   savedRef.current = saved;
   useEffect(() => () => applyTheme(savedRef.current), []);
-  useEffect(() => {
-    // Load every font once so the picker shows each in its own face.
-    const id = "brand-font-all";
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?" + fonts.filter((f) => f.google).map((f) => "family=" + f.google).join("&") + "&display=swap";
-    document.head.appendChild(link);
-  }, []);
   return (
     <SubPage
       title="Business"
@@ -376,6 +407,32 @@ function BusinessPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
+      <div className="card card-pad stack gap-14">
+        <label className="field">
+          <span>Business name</span>
+          <input
+            className="input"
+            maxLength={80}
+            value={draft.name}
+            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Receipt footer</span>
+          <input
+            className="input"
+            maxLength={200}
+            placeholder="Thank you! Find us at the Sunday market."
+            value={draft.settings.receiptNote}
+            onChange={(e) =>
+              setDraft({
+                ...draft,
+                settings: { ...draft.settings, receiptNote: e.target.value },
+              })
+            }
+          />
+        </label>
+      </div>
       <div className="brand-preview" style={{ background: brand }}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
@@ -422,95 +479,73 @@ function BusinessPage(props: SettingsProps) {
             />
             <span className="label">Or pick any color</span>
           </label>
-          <div className="field">
-            <span>Font</span>
-            <div className="font-grid" role="group" aria-label="Font">
-              {fonts.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={(draft.settings.font ?? "geist") === f.id}
-                  style={{ fontFamily: `${f.family}, system-ui, sans-serif` }}
-                  onClick={() => {
-                    buzz.tap();
-                    setBrand({ font: f.id });
-                  }}
-                >
-                  <span className="font-sample">Aa</span>
-                  <span className="font-name">{f.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <span>Corners</span>
-            <div className="segmented" role="group" aria-label="Corners">
-              {radii.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  aria-pressed={(draft.settings.radius ?? "round") === r.id}
-                  onClick={() => {
-                    buzz.tap();
-                    setBrand({ radius: r.id });
-                  }}
-                >
-                  {r.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <span>Text color</span>
-            <div className="swatches" role="group" aria-label="Text color">
-              {inks.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={"Text color " + c}
-                  aria-pressed={(draft.settings.ink ?? inks[0]) === c}
-                  style={{ background: c }}
-                  onClick={() => {
-                    buzz.tap();
-                    setBrand({ ink: c });
-                  }}
-                >
-                  {(draft.settings.ink ?? inks[0]) === c && <Check size={16} strokeWidth={2.6} />}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="row gap-8 brand-sample">
-            <button type="button" className="btn grow">Charge ₱170</button>
-            <button type="button" className="btn secondary grow">Cancel</button>
-          </div>
         </div>
-      </div>
-      <div className="card card-pad stack gap-14">
-        <label className="field">
-          <span>Business name</span>
-          <input
-            className="input"
-            maxLength={80}
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-        </label>
-        <label className="field">
-          <span>Receipt footer</span>
-          <input
-            className="input"
-            maxLength={200}
-            placeholder="Thank you! Find us at the Sunday market."
-            value={draft.settings.receiptNote}
-            onChange={(e) =>
-              setDraft({
-                ...draft,
-                settings: { ...draft.settings, receiptNote: e.target.value },
-              })
-            }
-          />
-        </label>
+        <SetupDetails title="More appearance options" description="Font, corners and text color" className="card card-pad" onOpen={loadFontSamples}>
+          <div className="stack gap-16">
+            <div className="field">
+              <span>Font</span>
+              <div className="font-grid" role="group" aria-label="Font">
+                {fonts.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    aria-pressed={(draft.settings.font ?? "geist") === f.id}
+                    style={{ fontFamily: `${f.family}, system-ui, sans-serif` }}
+                    onClick={() => {
+                      buzz.tap();
+                      setBrand({ font: f.id });
+                    }}
+                  >
+                    <span className="font-sample">Aa</span>
+                    <span className="font-name">{f.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span>Corners</span>
+              <div className="segmented" role="group" aria-label="Corners">
+                {radii.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    aria-pressed={(draft.settings.radius ?? "round") === r.id}
+                    onClick={() => {
+                      buzz.tap();
+                      setBrand({ radius: r.id });
+                    }}
+                  >
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span>Text color</span>
+              <div className="swatches" role="group" aria-label="Text color">
+                {inks.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={"Text color " + c}
+                    aria-pressed={(draft.settings.ink ?? inks[0]) === c}
+                    style={{ background: c }}
+                    onClick={() => {
+                      buzz.tap();
+                      setBrand({ ink: c });
+                    }}
+                  >
+                    {(draft.settings.ink ?? inks[0]) === c && <Check size={16} strokeWidth={2.6} />}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="row gap-8 brand-sample" aria-hidden="true">
+              <span className="btn grow">Charge {formatMoney(170 * 10 ** currencyDigits(draft.currency), draft.currency)}</span>
+              <span className="btn secondary grow">Cancel</span>
+            </div>
+          </div>
+        </SetupDetails>
       </div>
       <div className="stack gap-10">
         <p className="group-title">Receipt preview</p>
@@ -1211,7 +1246,6 @@ export function SettingsScreen(props: SettingsProps) {
         <h1 className="headline">Settings</h1>
       </div>
       <ProfileCard {...props} />
-      <ModeCard {...props} />
       <div className="card card-list">
         <button className="list-row" onClick={() => onPage("business")}>
           <BusinessMark name={business.name} logo={s.logo} brand={s.brand} />
@@ -1228,7 +1262,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={props.onBusinesses}
         />
       </div>
-      <p className="group-title">Checkout</p>
+      <h2 className="group-title">Checkout</h2>
       <div className="card card-list">
         <Row
           icon={<Coins size={18} strokeWidth={1.8} />}
@@ -1243,7 +1277,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("discounts")}
         />
       </div>
-      <p className="group-title">Shifts</p>
+      <h2 className="group-title">Shifts</h2>
       <div className="card card-list">
         <Row
           icon={<Users size={18} strokeWidth={1.8} />}
@@ -1266,7 +1300,8 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("organizers")}
         />
       </div>
-      <p className="group-title">Register</p>
+      <h2 className="group-title">Register setup</h2>
+      <ModeCard {...props} />
       <div className="card card-list">
         <Row
           icon={<Store size={18} strokeWidth={1.8} />}
@@ -1275,7 +1310,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("currency")}
         />
       </div>
-      <p className="group-title">This phone</p>
+      <h2 className="group-title">This phone</h2>
       <div className="card card-list">
         <div className="list-row">
           <span className="grow">Connection</span>

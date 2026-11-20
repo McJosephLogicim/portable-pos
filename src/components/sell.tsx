@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, Trash2, X } from "lucide-react";
 import type {
   CartLine,
@@ -13,7 +13,6 @@ import type {
 import { canMake, shiftStock } from "@/lib/stock";
 import { bookingTitle } from "./shift";
 import {
-  amountText,
   parseMoney,
   priceLines,
   priceOrder,
@@ -44,6 +43,7 @@ import {
   Sheet,
   Tip,
 } from "./ui";
+import styles from "./sell.module.css";
 
 /* Bills in major units. Quick cash buttons round the total up to the next bill. */
 const bills: Record<string, number[]> = {
@@ -98,7 +98,7 @@ function Stepper({
   removable?: boolean;
 }) {
   return (
-    <div className="stepper" role="group" aria-label={name + " quantity"}>
+    <div className={`stepper ${styles.stepper}`} role="group" aria-label={name + " quantity"}>
       <button
         type="button"
         aria-label={value === 1 && removable ? "Remove " + name : "One less " + name}
@@ -184,6 +184,7 @@ function ItemOptions({
   );
   const [quantity, setQuantity] = useState(1);
   const [error, setError] = useState("");
+  const optionGroupId = useId();
   const unit =
     product.price +
     product.groups
@@ -235,43 +236,28 @@ function ItemOptions({
               const out = soldOut.includes(option.id);
               const on = selected.includes(option.id);
               return (
-                <button
+                <label
                   key={option.id}
-                  type="button"
-                  className="list-row sell-option"
-                  role={group.required ? "radio" : "checkbox"}
-                  aria-checked={on}
-                  disabled={out || busy}
-                  onClick={() =>
-                    setSelected((prev) =>
-                      group.required
-                        ? [
-                            ...prev.filter(
-                              (id) => !group.options.some((o) => o.id === id),
-                            ),
-                            option.id,
-                          ]
-                        : prev.includes(option.id)
-                          ? prev.filter((id) => id !== option.id)
-                          : [...prev, option.id],
-                    )
-                  }
+                  className={`list-row ${styles.option}`}
                 >
-                  {on ? (
-                    <span className="badge" style={{ width: 26, height: 26, padding: 0 }}>
-                      <Check size={15} />
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "50%",
-                        boxShadow: "inset 0 0 0 1.5px var(--line-strong)",
-                        flex: "none",
-                      }}
-                    />
-                  )}
+                  <input
+                    className="sr-only"
+                    type={group.required ? "radio" : "checkbox"}
+                    name={group.required ? `${optionGroupId}-${group.id}` : undefined}
+                    checked={on}
+                    disabled={out || busy}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setSelected((prev) => {
+                        if (group.required)
+                          return [...prev.filter((id) => !group.options.some((o) => o.id === id)), option.id];
+                        return checked ? [...prev, option.id] : prev.filter((id) => id !== option.id);
+                      });
+                    }}
+                  />
+                  <span className={styles.optionMark} aria-hidden="true">
+                    <Check size={15} />
+                  </span>
                   <span className={"grow" + (out ? " g" : "")}>
                     {option.name}
                   </span>
@@ -282,7 +268,7 @@ function ItemOptions({
                         ? "+" + formatMoney(option.price, currency)
                         : ""}
                   </span>
-                </button>
+                </label>
               );
             })}
           </div>
@@ -383,6 +369,7 @@ function ProofShot({
         type="button"
         className="proof-slot"
         aria-label={(value ? "Retake " : "Take ") + label}
+        aria-busy={busy}
         disabled={busy}
         onClick={() => {
           buzz.tap();
@@ -396,10 +383,12 @@ function ProofShot({
           {label}
           {required && !value ? <span className="proof-tag">Needed</span> : null}
         </span>
-        <span className="label">{error || (value ? "Tap the photo to retake it." : hint)}</span>
+        <span className="label" role="status">
+          {error || (busy ? "Preparing photo…" : value ? "Photo ready. Tap to retake." : hint)}
+        </span>
       </span>
       {value && (
-        <button type="button" className="round flat" aria-label={"Remove " + label} onClick={() => onChange(undefined)}>
+        <button type="button" className="round flat" aria-label={"Remove " + label} disabled={busy} onClick={() => onChange(undefined)}>
           <X size={16} />
         </button>
       )}
@@ -434,6 +423,7 @@ function Checkout({
   state,
   lines,
   busy,
+  blocked,
   onQuantity,
   onClear,
   onPay,
@@ -443,7 +433,8 @@ function Checkout({
   state: RegisterState;
   lines: ReceiptLine[];
   busy: boolean;
-  onQuantity: (index: number, value: number) => void;
+  blocked: boolean;
+  onQuantity: (index: number, value: number) => Promise<void>;
   onClear: () => void;
   onPay: (tender: Tender, received: number, discountId?: string, proofs?: string[]) => Promise<Sale | null>;
   onClose: () => void;
@@ -461,6 +452,14 @@ function Checkout({
   /** Cash received, once a payment is picked. The sale is saved only after Confirm. */
   const [review, setReview] = useState<number | null>(null);
   const chosen = methods.find((m) => m.id === method);
+  const stage = done ? "done" : review !== null && chosen ? "review" : "charge";
+  const previousStage = useRef(stage);
+  const stageTarget = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (previousStage.current === stage) return;
+    previousStage.current = stage;
+    stageTarget.current?.focus();
+  }, [stage]);
   const order = lines.length ? priceOrder(shift, lines, discountId) : null;
   const total = order?.total ?? 0;
   const [payPhoto, setPayPhoto] = useState<string>();
@@ -474,6 +473,7 @@ function Checkout({
   const missingText = discount?.proof && !idPhoto
     ? `Take a photo of the ${discount.name} ID first.`
     : `Take a photo of the ${chosen?.name ?? ""} payment first.`;
+  const canPay = !busy && !blocked && lines.length > 0 && !missing;
 
   let typed: number | undefined;
   if (cash.trim()) {
@@ -485,19 +485,14 @@ function Checkout({
   }
 
   function ask(received: number) {
-    if (!chosen || busy) return;
-    if (missing) {
-      setError(missingText);
-      buzz.error();
-      return;
-    }
+    if (!chosen || !canPay) return;
     setError("");
     buzz.tap();
     setReview(received);
   }
 
   async function pay(received: number) {
-    if (!chosen || busy) return;
+    if (!chosen || !canPay || received < total) return;
     setError("");
     try {
       const sale = await onPay(chosen.id, received, discountId, proofs);
@@ -523,6 +518,9 @@ function Checkout({
     const { sale } = done;
     const cash = sale.payment.kind === "cash";
     const showChange = cash && sale.change > 0;
+    const number = receiptNumber(done.shiftNumber, sale.sequence);
+    const itemCount = sale.lines.reduce((n, l) => n + l.quantity, 0);
+    const resultLabel = showChange ? "Change to give" : cash ? "Exact cash, no change" : "Paid with " + sale.payment.name;
     return (
       <Sheet
         title="Sale complete"
@@ -539,13 +537,19 @@ function Checkout({
         }
       >
         <div className="confirm-sale">
-          <div className="hero stack gap-8 sale-hero">
+          <div
+            className={`hero stack gap-8 sale-hero ${styles.stageFocus}`}
+            ref={stageTarget}
+            tabIndex={-1}
+            role="group"
+            aria-label={`Sale complete. Receipt ${number}. ${resultLabel}. ${formatMoney(showChange ? sale.change : sale.total, currency)}.`}
+          >
             <span className="row gap-8 hero-label">
               <DoneCheck small />
-              Saved · {receiptNumber(done.shiftNumber, sale.sequence)}
+              Saved · {number}
             </span>
             <span className="hero-label sale-hero-what">
-              {showChange ? "Change to give" : cash ? "Exact cash, no change" : "Paid with " + sale.payment.name}
+              {resultLabel}
             </span>
             <Money value={showChange ? sale.change : sale.total} currency={currency} className="due-num" />
             <span className="hero-label">
@@ -554,11 +558,10 @@ function Checkout({
                 : new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(sale.createdAt))}
             </span>
           </div>
-          <div className="row gap-10 sale-items">
+          <div className={`row gap-10 sale-items ${styles.resultDetails}`}>
             <ItemFaces items={faces(sale.lines)} />
             <span className="label">
-              {sale.lines.reduce((n, l) => n + l.quantity, 0)}{" "}
-              {sale.lines.reduce((n, l) => n + l.quantity, 0) === 1 ? "item" : "items"}
+              {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>
           </div>
         </div>
@@ -576,7 +579,7 @@ function Checkout({
         busy={busy}
         footer={
           <>
-            <button className="btn block" disabled={busy || !lines.length} onClick={() => void pay(review)}>
+            <button className="btn block" disabled={!canPay || review < total} onClick={() => void pay(review)}>
               {busy ? "Saving…" : "Confirm sale"}
             </button>
             <button
@@ -593,7 +596,7 @@ function Checkout({
         }
       >
         <div className="confirm-sale">
-          <div className="stack gap-8 confirm-main">
+          <div className={`stack gap-8 confirm-main ${styles.stageFocus}`} ref={stageTarget} tabIndex={-1}>
             <p className="headline">
               <Money value={isCash && change > 0 ? change : total} currency={currency} />{" "}
               <span className="g">
@@ -624,6 +627,8 @@ function Checkout({
             </p>
           )}
         </div>
+        {blocked && <p className="notice" role="alert">An item sold out. Go back and remove it to charge.</p>}
+        {review < total && <p className="notice" role="alert">The total changed. Go back to review the new total.</p>}
         {error && (
           <p className="alert" role="alert">
             {error}
@@ -634,14 +639,13 @@ function Checkout({
   }
 
   const quick = quickCash(total, currency);
-  const exactText = amountText(total, currency);
   return (
     <Sheet
       title="Charge"
       onClose={onClose}
       busy={busy}
       action={
-        <button className="btn ghost small" disabled={busy} onClick={onClear}>
+        <button className="btn ghost compact" disabled={busy} onClick={onClear}>
           Clear order
         </button>
       }
@@ -649,23 +653,23 @@ function Checkout({
         chosen && chosen.kind !== "cash" ? (
           <button
             className="btn block"
-            disabled={busy || !lines.length || missing}
+            disabled={!canPay}
             onClick={() => ask(total)}
           >
-            {busy ? "Saving…" : missing ? "Take the photo first ·" : `${chosen.name} received ·`}
+            {missing ? "Take the photo first ·" : `${chosen.name} received ·`}
             {!busy && <Money value={total} currency={currency} />}
           </button>
-        ) : typed !== undefined && cash !== exactText ? (
+        ) : chosen && typed !== undefined ? (
           <button
             className="btn block"
-            disabled={busy || typed < total || missing}
-            onClick={() => ask(typed!)}
+            disabled={!canPay || typed < total}
+            onClick={() => ask(typed)}
           >
             {typed < total ? (
               <>
                 Short by <Money value={total - typed} currency={currency} />
               </>
-            ) : (
+            ) : typed === total ? "Next · exact cash" : (
               <>
                 Next · change{" "}
                 <Money value={typed - total} currency={currency} />
@@ -680,34 +684,14 @@ function Checkout({
           lines={lines}
           currency={currency}
           busy={busy}
-          onQuantity={onQuantity}
+          onQuantity={(index, value) => {
+            setError("");
+            void onQuantity(index, value).catch((error) => setError(errorText(error)));
+          }}
         />
       </div>
-      {discounts.length > 0 && (
-        <div className="chips" role="group" aria-label="Discount">
-          <button
-            type="button"
-            aria-pressed={!discountId}
-            onClick={() => setDiscountId(undefined)}
-          >
-            No discount
-          </button>
-          {discounts.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              aria-pressed={discountId === d.id}
-              onClick={() => setDiscountId(d.id)}
-            >
-              {d.name} ·{" "}
-              {d.type === "percent"
-                ? d.value + "%"
-                : formatMoney(d.value, currency)}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="due">
+      {blocked && <p className="notice" role="alert">Remove the sold-out item to charge.</p>}
+      <div className={`due ${styles.stageFocus}`} ref={stageTarget} tabIndex={-1}>
         <span className="stack">
           <span className="strong">Total</span>
           {order?.discount && (
@@ -721,6 +705,44 @@ function Checkout({
         </span>
         <Money value={total} currency={currency} />
       </div>
+      {discounts.length > 0 && (
+        <details className={styles.discount}>
+          <summary>
+            {discount ? `Discount · ${discount.name}` : "Discount"}
+            <ChevronDown size={16} aria-hidden="true" />
+          </summary>
+          <div className={`chips ${styles.discountChoices}`} role="group" aria-label="Discount">
+            <button
+              type="button"
+              aria-pressed={!discountId}
+              disabled={busy}
+              onClick={() => {
+                setDiscountId(undefined);
+                setError("");
+              }}
+            >
+              No discount
+            </button>
+            {discounts.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                aria-pressed={discountId === d.id}
+                disabled={busy}
+                onClick={() => {
+                  setDiscountId(d.id);
+                  setError("");
+                }}
+              >
+                {d.name} ·{" "}
+                {d.type === "percent"
+                  ? d.value + "%"
+                  : formatMoney(d.value, currency)}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
       <div
         className={"methods" + (methods.length % 3 === 0 ? " three" : "")}
         role="group"
@@ -730,8 +752,9 @@ function Checkout({
           <button
             key={m.id}
             type="button"
-            className="method"
+            className={`method ${styles.paymentMethod}`}
             aria-pressed={method === m.id}
+            disabled={busy}
             onClick={() => {
               setMethod(m.id);
               setError("");
@@ -767,10 +790,10 @@ function Checkout({
       {chosen?.kind === "cash" && (
         <div className="stack gap-10">
           <p className="label">{missing ? missingText : "Cash received"}</p>
-          <div className="quick">
+          <div className={`quick ${styles.quickCash}`} role="group" aria-label="Cash received">
             <button
               type="button"
-              disabled={busy || !total || missing}
+              disabled={!canPay}
               onClick={() => ask(total)}
             >
               Exact
@@ -779,7 +802,7 @@ function Checkout({
               <button
                 key={amount}
                 type="button"
-                disabled={busy || missing}
+                disabled={!canPay}
                 onClick={() => ask(amount)}
               >
                 {formatMoney(amount, currency)}
@@ -891,6 +914,7 @@ export function SellScreen({
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
+  const [addingProduct, setAddingProduct] = useState<string | null>(null);
   const lock = useRef(false);
   const shift = state.shift!;
   const business = state.business!;
@@ -912,11 +936,12 @@ export function SellScreen({
   } catch {
     cartMenuError = true;
   }
-  const count = state.cart.reduce((s, l) => s + l.quantity, 0);
-  const inCart = (id: string) =>
-    state.cart
-      .filter((l) => l.productId === id)
-      .reduce((s, l) => s + l.quantity, 0);
+  let count = 0;
+  const quantities = new Map<string, number>();
+  for (const line of state.cart) {
+    count += line.quantity;
+    quantities.set(line.productId, (quantities.get(line.productId) ?? 0) + line.quantity);
+  }
   const blocked = state.cart.some((l) =>
     [l.productId, ...l.optionIds].some((id) => state.soldOut.includes(id)),
   );
@@ -961,16 +986,23 @@ export function SellScreen({
         : state.cart.map((l, i) =>
             i === same ? { ...l, quantity: l.quantity + quantity } : l,
           );
-    haptic();
-    return write(() => onCart(cart));
+    return write(async () => {
+      haptic();
+      setAddingProduct(product.id);
+      try {
+        await onCart(cart);
+      } finally {
+        setAddingProduct(null);
+      }
+    });
   }
-  function setQuantity(index: number, value: number) {
+  async function setQuantity(index: number, value: number, reportOnPage = true) {
     const next =
       value === 0
         ? state.cart.filter((_, i) => i !== index)
         : state.cart.map((l, i) => (i === index ? { ...l, quantity: value } : l));
-    void write(() => onCart(next));
-    if (!next.length) setCharging(false);
+    const saved = await write(() => onCart(next), reportOnPage);
+    if (saved && !next.length) setCharging(false);
   }
   const left = stockLeft(shift, state.sales);
   const model = shiftStock(shift);
@@ -992,7 +1024,7 @@ export function SellScreen({
         <h2 className="section">Order</h2>
         {count > 0 && (
           <button
-            className="btn ghost small"
+            className="btn ghost compact"
             disabled={busy}
             onClick={() => setConfirmClear(true)}
           >
@@ -1001,9 +1033,7 @@ export function SellScreen({
         )}
       </div>
       <div className="order-scroll">
-        {cartMenuError ? (
-          <p className="notice" role="alert">The menu changed. Clear the order and add its items again.</p>
-        ) : lines.length ? (
+        {cartMenuError ? null : lines.length ? (
           <OrderLines
             lines={lines}
             currency={currency}
@@ -1080,7 +1110,7 @@ export function SellScreen({
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
-            <button className="btn small" onClick={() => setMarking(false)}>
+            <button className="btn compact" onClick={() => setMarking(false)}>
               Done
             </button>
           </div>
@@ -1103,6 +1133,17 @@ export function SellScreen({
           {error}
         </p>
       )}
+      <span className="sr-only" role="status" aria-atomic="true">
+        {cartMenuError ? "" : count ? `Order: ${count} ${count === 1 ? "item" : "items"}. Total ${formatMoney(total, currency)}.` : "Order empty."}
+      </span>
+      {cartMenuError && (
+        <div className="notice between" role="alert">
+          <span>The menu changed. Clear the order and add its items again.</span>
+          <button className="btn ghost compact" disabled={busy} onClick={() => setConfirmClear(true)}>
+            Clear order
+          </button>
+        </div>
+      )}
       {blocked && (
         <p className="notice" role="alert">
           <span className="dot danger" />
@@ -1114,11 +1155,13 @@ export function SellScreen({
           <div className="items">
             {items.map((product) => {
               const out = isOut(product);
-              const qty = inCart(product.id);
+              const making = canMake(model, afterCart, product.id);
+              const qty = quantities.get(product.id) ?? 0;
+              const adding = addingProduct === product.id;
               return (
                 <button
                   key={product.id}
-                  className={"item" + (out ? " out" : "")}
+                  className={`item ${styles.product}` + (out ? " out" : "")}
                   aria-label={
                     (marking
                       ? out
@@ -1127,8 +1170,10 @@ export function SellScreen({
                       : "Add ") +
                     product.name +
                     ", " +
-                    formatMoney(product.price, currency)
+                    formatMoney(product.price, currency) +
+                    (!marking && qty ? `, ${qty} in order` : "")
                   }
+                  aria-busy={adding}
                   disabled={busy || (!marking && out)}
                   onClick={() => {
                     if (marking) {
@@ -1154,12 +1199,14 @@ export function SellScreen({
                   <span className="name">{product.name}</span>
                   <span className="price">{formatMoney(product.price, currency)}</span>
                   {out && <span className="out-tag">Sold out</span>}
-                  {!out && canMake(model, afterCart, product.id) !== undefined && (
-                    <span className={"stock-tag" + (canMake(model, afterCart, product.id)! <= 3 ? " low" : "")}>
-                      {Math.max(0, canMake(model, afterCart, product.id)!)} left
+                  {!out && making !== undefined && (
+                    <span className={"stock-tag" + (making <= 3 ? " low" : "")}>
+                      {Math.max(0, making)} left
                     </span>
                   )}
-                  {qty > 0 && !marking && <span className="badge qty">{qty}</span>}
+                  {!marking && (qty > 0 || adding) && (
+                    <span className="badge qty" aria-hidden="true">{adding ? "…" : qty}</span>
+                  )}
                 </button>
               );
             })}
@@ -1204,17 +1251,17 @@ export function SellScreen({
           {orderSummary}
         </aside>
       </div>
-      {count > 0 && !marking && (
+      {count > 0 && !marking && !cartMenuError && (
         <button
-          className="charge-bar"
+          className={`charge-bar ${styles.chargeBar}`}
           ref={fadeOnExit}
-          disabled={busy && !charging}
+          disabled={busy}
           onClick={() => { setPaid(false); setCharging(true); }}
-          aria-label={`Charge ${formatMoney(total, currency)} for ${count} items`}
+          aria-label={blocked ? "Review order with sold-out items" : `Charge ${formatMoney(total, currency)} for ${count} ${count === 1 ? "item" : "items"}`}
         >
           <span className="badge">{count}</span>
           <span className="grow" style={{ textAlign: "left" }}>
-            Charge
+            {blocked ? "Review order" : "Charge"}
           </span>
           <Money value={total} currency={currency} />
           <span style={{ width: 8 }} />
@@ -1239,13 +1286,14 @@ export function SellScreen({
             onClose={() => setPicked(null)}
           />
         ))}
-      {charging && (paid || (!cartMenuError && count > 0)) && (
+      {charging && (paid || (!cartMenuError && (count > 0 || busy))) && (
         <Checkout
           key={shift.menuVersion ?? "opening"}
           state={state}
           lines={lines}
           busy={busy}
-          onQuantity={setQuantity}
+          blocked={blocked}
+          onQuantity={(index, value) => setQuantity(index, value, false)}
           onClear={() => setConfirmClear(true)}
           onPay={async (tender, received, discountId, proofs) => {
             if (lock.current || pending) return null;
@@ -1263,7 +1311,6 @@ export function SellScreen({
           onClose={() => {
             setCharging(false);
             setPaid(false);
-            setQuery("");
           }}
           onReceipt={(sale) => {
             setCharging(false);

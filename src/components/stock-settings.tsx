@@ -9,7 +9,7 @@ import { currencyDigits } from "@/lib/settings";
 import { stockListFields, stockListKey, stockListsOf } from "@/lib/stock-lists";
 import { catalogSku, menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units } from "@/lib/stock";
 import type { PricingRules, Product, StockItem, StockItemDetails, StockListField, StockPrep, StockPurchase, StockUse } from "@/lib/types";
-import { SubPage, useCommit } from "./settings";
+import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
 import type { RecipesProps } from "./recipes";
 import { buzz, Explain, formatMoney, MoneyField, Sheet } from "./ui";
@@ -288,9 +288,12 @@ export function StockSheet({
           )}
         </div>
       )}
-      <details className="card card-pad">
-        <summary className="strong">{prepared ? "Recipe details" : "Purchasing details"}</summary>
-        <div className="stack gap-14 recipe-details-fields">
+      <SetupDetails
+        title={prepared ? "Recipe details" : "Purchasing details"}
+        description={prepared ? "SKU, category and notes" : "SKU, supplier and notes"}
+        className="card card-pad"
+      >
+        <div className="stack gap-14">
           <label className="field">
             <span>SKU</span>
             <input className="input" maxLength={64} value={details.sku ?? generatedSku} onChange={(e) => setDetails({ ...details, sku: e.target.value })} />
@@ -334,7 +337,7 @@ export function StockSheet({
             <textarea className="input" aria-label="Notes" rows={2} maxLength={400} value={details.notes ?? ""} onChange={(e) => setDetails({ ...details, notes: e.target.value })} />
           </label>
         </div>
-      </details>
+      </SetupDetails>
       {item && (
         <p className="label">
           {users.length
@@ -844,8 +847,8 @@ export function CostPreview({ currency, total, batch, missing, pricing, target }
       </p>
     );
   return (
-    <div className="stack gap-10" aria-live="polite">
-      <div className="cost-result">
+    <div className="stack gap-10">
+      <div className="cost-result" aria-live="polite" aria-atomic="true">
         <span className="label">Costs you per serving</span>
         <span className="num">{formatCost(total.cost)}</span>
       </div>
@@ -876,17 +879,18 @@ export function CostPreview({ currency, total, batch, missing, pricing, target }
           <div className="between"><dt>Ingredients per serving</dt><dd className="strong">{formatCost(total.materialPerServing)}</dd></div>
         )}
       </dl>
-      <details className="label">
-        <summary className="strong">Suggested price{suggested === undefined ? "" : ` · ${formatMoney(suggested, currency)}`}</summary>
-        <p className="label">Try different values for this estimate.</p>
-        <div className="grid-2 recipe-price-fields">
+      <SetupDetails
+        title={suggested === undefined ? "Suggested price" : `Suggested price · ${formatMoney(suggested, currency)}`}
+        description="Try another margin or rounding amount"
+      >
+        <div className="grid-2">
           <label className="field">
             <span>Try a margin (%)</span>
             <input className="input" inputMode="decimal" placeholder={target?.toString()} value={trialMargin ?? ""} onChange={(e) => setTrialMargin(decimalEntry(e.target.value))} />
           </label>
           <MoneyField label="Try rounding up to" placeholder={amountText(pricing.roundingIncrement, currency)} value={trialIncrement ?? ""} onChange={setTrialIncrement} currency={currency} />
         </div>
-      </details>
+      </SetupDetails>
     </div>
   );
 }

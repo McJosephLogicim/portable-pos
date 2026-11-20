@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { BookOpen, CalendarDays, ReceiptText, Settings as SettingsIcon, ShoppingBag, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
@@ -773,24 +773,38 @@ export function Workspace() {
       )}
       <main>{screen}</main>
       {business && (
-        <nav className="tabbar" aria-label="Main">
+        <nav
+          className="tabbar"
+          aria-label="Main"
+          style={{
+            "--tab-count": shown.length,
+            "--tab-offset": `${shown.findIndex((item) => item.id === view) * 100}%`,
+          } as CSSProperties}
+        >
+          <span className="tab-selection" aria-hidden="true" />
           {shown.map((t) => (
             <button
               key={t.id}
+              type="button"
               aria-current={view === t.id ? "page" : undefined}
-              aria-label={t.name}
+              aria-description={t.id === "settings" ? (syncErr ? "Sync paused" : !online ? "Offline" : undefined) : undefined}
               onClick={() => {
                 setSalesFocus(null);
                 go(t.id);
               }}
             >
-              <t.icon size={23} strokeWidth={view === t.id ? 2.1 : 1.7} aria-hidden="true" />
-              <span className="sr-only">{t.name}</span>
-              {t.id === "settings" && (syncErr || !online) && <span className="tab-dot" />}
+              <t.icon size={20} strokeWidth={view === t.id ? 2.1 : 1.7} aria-hidden="true" />
+              <span>{t.name}</span>
+              {t.id === "settings" && (syncErr || !online) && (
+                <span className="tab-dot" aria-hidden="true" />
+              )}
             </button>
           ))}
         </nav>
       )}
+      <div className="sr-only" role="status" aria-atomic="true">
+        {toast || undoNotices.at(-1)?.text}
+      </div>
       {(toast || undoNotices.length > 0) && (
         <div className="toast-viewport">
           {toast && <Toast text={toast} onDone={() => setToast("")} />}

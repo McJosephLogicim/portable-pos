@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SyntheticEvent,
 } from "react";
@@ -28,7 +29,7 @@ import {
 import { createPortal } from "react-dom";
 import { RequestFailure } from "@/lib/client";
 import { currencyDigits } from "@/lib/settings";
-import { collapseOnExit, exitSheet, fadeOnExit } from "@/lib/exit";
+import { clearSheetExit, collapseOnExit, exitSheet, fadeOnExit } from "@/lib/exit";
 import type { PaymentKind } from "@/lib/types";
 import { activeTextEntry } from "./input-experience";
 
@@ -112,7 +113,7 @@ export const buzz = {
 /* ---------- celebration ---------- */
 
 const CelebrateContext = createContext<(origin?: { x: number; y: number }) => void>(() => {});
-/** A short burst of confetti from a point, for a finished sale, a full checklist or a quota hit. */
+/** A short burst of confetti from a point for an occasional milestone. */
 export function useCelebrate() {
   return useContext(CelebrateContext);
 }
@@ -121,20 +122,21 @@ export function CelebrateProvider({ children }: { children: ReactNode }) {
   const [bursts, setBursts] = useState<{ id: number; x: number; y: number }[]>([]);
   const fire = useCallback((origin?: { x: number; y: number }) => {
     buzz.success();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (document.documentElement.dataset.input === "keyboard" ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const id = Date.now() + Math.random();
     const x = origin?.x ?? innerWidth / 2;
     const y = origin?.y ?? innerHeight * 0.4;
-    setBursts((b) => [...b, { id, x, y }]);
-    setTimeout(() => setBursts((b) => b.filter((p) => p.id !== id)), 1400);
+    setBursts([{ id, x, y }]);
+    setTimeout(() => setBursts((b) => b.filter((p) => p.id !== id)), 900);
   }, []);
   return (
     <CelebrateContext.Provider value={fire}>
       {children}
       {bursts.map((b) => (
         <div key={b.id} className="confetti" style={{ left: b.x, top: b.y }} aria-hidden="true">
-          {Array.from({ length: 22 }, (_, i) => {
-            const angle = (i / 22) * Math.PI * 2 + (i % 3) * 0.2;
+          {Array.from({ length: 14 }, (_, i) => {
+            const angle = (i / 14) * Math.PI * 2 + (i % 3) * 0.2;
             const distance = 70 + ((i * 37) % 70);
             return (
               <i
@@ -169,12 +171,13 @@ export function progressStyle(percent: number): CSSProperties {
 }
 
 /** Counts up to a number when it changes, like a scoreboard. */
-export function useCountUp(value: number, ms = 600) {
+export function useCountUp(value: number, ms = 260) {
   const [shown, setShown] = useState(value);
   const from = useRef(value);
   useEffect(() => {
     const start = from.current;
-    if (start === value || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (start === value || document.documentElement.dataset.input === "keyboard" ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches) {
       from.current = value;
       setShown(value);
       return;
@@ -184,15 +187,12 @@ export function useCountUp(value: number, ms = 600) {
     const step = (now: number) => {
       const t = Math.min(1, (now - began) / ms);
       const eased = 1 - Math.pow(1 - t, 3);
-      setShown(Math.round(start + (value - start) * eased));
+      from.current = Math.round(start + (value - start) * eased);
+      setShown(from.current);
       if (t < 1) frame = requestAnimationFrame(step);
-      else from.current = value;
     };
     frame = requestAnimationFrame(step);
-    return () => {
-      cancelAnimationFrame(frame);
-      from.current = value;
-    };
+    return () => cancelAnimationFrame(frame);
   }, [value, ms]);
   return shown;
 }
@@ -268,6 +268,7 @@ export function PhotoPicker({
         type="button"
         className={"photo-slot" + (value ? " has" : "")}
         aria-label={value ? "Change " + label : "Add " + label}
+        aria-busy={busy || undefined}
         disabled={busy || disabled}
         onClick={() => {
           buzz.tap();
@@ -275,11 +276,12 @@ export function PhotoPicker({
         }}
       >
         {value ? <img src={value} alt="" /> : <Camera size={size === "large" ? 26 : 18} strokeWidth={1.6} />}
-        {busy && <span className="photo-busy" />}
+        {busy && <span className="photo-busy" aria-hidden="true" />}
       </button>
+      <span className="sr-only" role="status">{busy ? "Saving photo…" : ""}</span>
       {size === "small" && value && !busy && (
         <button type="button" className="photo-clear" aria-label={"Remove " + label} disabled={disabled} onClick={() => setRemoving(true)}>
-          <X size={12} strokeWidth={2.6} />
+          <X size={16} aria-hidden="true" />
         </button>
       )}
       {size === "large" && (
@@ -290,7 +292,7 @@ export function PhotoPicker({
           {error ? (
             <span className="label alert" role="alert">{error}</span>
           ) : (
-            <span className="label">{value ? "Tap it to take another." : "Take one or pick from your gallery."}</span>
+            <span className="label">{busy ? "Saving photo…" : value ? "Tap it to take another." : "Take one or pick from your gallery."}</span>
           )}
           {value && (
             <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} disabled={disabled || busy} onClick={() => setRemoving(true)}>
@@ -360,6 +362,15 @@ if (typeof window !== "undefined") {
   window.addEventListener("pointerdown", () => mark(false), true);
 }
 
+type SheetDrag = {
+  pointer: number;
+  start: number;
+  offset: number;
+  lastY: number;
+  lastAt: number;
+  velocity: number;
+};
+
 /** Bottom sheet at every screen size. Uses the native dialog for focus. */
 export function Sheet({
   title,
@@ -383,6 +394,9 @@ export function Sheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
+  const backdropPressed = useRef(false);
+  const drag = useRef<SheetDrag | null>(null);
+  const rebound = useRef<Animation | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
   // However the sheet is closed (X, backdrop, Save, or the page moving on), it slides back down.
@@ -397,6 +411,7 @@ export function Sheet({
   useEffect(() => {
     const node = ref.current;
     const trigger = document.activeElement;
+    clearSheetExit();
     node?.showModal();
     // showModal focuses the first button (often Edit or Close), and Safari rings it. Focus the
     // sheet itself instead, so nothing looks selected; Tab still moves into it from there.
@@ -415,6 +430,58 @@ export function Sheet({
     return event.clientY < box.top || event.clientY > box.bottom ||
       event.clientX < box.left || event.clientX > box.right;
   }
+  function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const node = ref.current;
+    if (!node || busy || drag.current || !event.isPrimary || event.button !== 0 ||
+      activeTextEntry() || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const transform = getComputedStyle(node).transform;
+    const offset = transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42;
+    rebound.current?.cancel();
+    node.dataset.dragging = "";
+    node.style.transform = `translateY(${offset}px)`;
+    drag.current = {
+      pointer: event.pointerId,
+      start: event.clientY,
+      offset,
+      lastY: event.clientY,
+      lastAt: event.timeStamp,
+      velocity: 0,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const motion = drag.current;
+    const node = ref.current;
+    if (!node || motion?.pointer !== event.pointerId) return;
+    const distance = motion.offset + event.clientY - motion.start;
+    // Beyond either edge, extra pointer travel produces progressively less movement.
+    const offset = distance < 0 ? distance / (1 - distance / 28) :
+      distance > 112 ? 112 + (distance - 112) / (1 + (distance - 112) / 96) : distance;
+    node.style.transform = `translateY(${offset}px)`;
+    motion.velocity = (event.clientY - motion.lastY) / Math.max(1, event.timeStamp - motion.lastAt);
+    motion.lastY = event.clientY;
+    motion.lastAt = event.timeStamp;
+  }
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>, released: boolean) {
+    const motion = drag.current;
+    const node = ref.current;
+    if (!node || motion?.pointer !== event.pointerId) return;
+    drag.current = null;
+    const distance = event.clientY - motion.start;
+    const flick = distance > 20 && motion.velocity > 0.55 && event.timeStamp - motion.lastAt < 80;
+    if (released && !busy && (distance >= 96 || flick)) {
+      close.current();
+      // Some screens guard closing while a save is in flight. Restore the pose if still open.
+    }
+    const transform = node.style.transform;
+    node.style.removeProperty("transform");
+    delete node.dataset.dragging;
+    if (!node.isConnected || !transform || !node.animate) return;
+    rebound.current = node.animate([{ transform }, { transform: "none" }], {
+      duration: 200,
+      easing: getComputedStyle(node).getPropertyValue("--ease-drawer").trim(),
+    });
+  }
   return (
     <dialog
       ref={setRef}
@@ -428,17 +495,31 @@ export function Sheet({
         if (!busy) close.current();
       }}
       onPointerDown={(event) => {
+        backdropPressed.current = isBackdrop(event);
         // Handle the first backdrop tap with the field still focused.
-        if (isBackdrop(event) && activeTextEntry()) event.preventDefault();
+        if (backdropPressed.current && activeTextEntry()) event.preventDefault();
       }}
+      onPointerCancel={() => { backdropPressed.current = false; }}
       onClick={(event) => {
-        if (event.target !== ref.current) return;
+        const tappedBackdrop = backdropPressed.current && isBackdrop(event);
+        backdropPressed.current = false;
+        if (!tappedBackdrop) return;
         const field = activeTextEntry();
         if (field) field.blur();
-        else if (!busy && isBackdrop(event)) close.current();
+        else if (!busy) close.current();
       }}
     >
       <div className="sheet-head">
+        <div
+          className="sheet-grip"
+          aria-hidden="true"
+          data-disabled={busy || undefined}
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={(event) => endDrag(event, true)}
+          onPointerCancel={(event) => endDrag(event, false)}
+          onLostPointerCapture={(event) => endDrag(event, false)}
+        />
         {help ? (
           <div className="sheet-title">
             <h2 id={id}>{title}</h2>
@@ -962,7 +1043,7 @@ export function Toast({
       onFocus={() => setFocused(true)}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
     >
-      <span role={error ? "alert" : "status"}>{error || text}</span>
+      <span role={error ? "alert" : undefined}>{error || text}</span>
       {undo && (
         <button type="button" className="toast-action" disabled={busy} onClick={() => void restore()}>
           {busy ? "Restoring…" : "Undo"}

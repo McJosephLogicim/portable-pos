@@ -39,13 +39,14 @@ export function RecipesScreen(props: RecipesProps) {
   return (
     <div className="page narrow">
       <div className="page-top"><h1 className="headline">Recipes</h1></div>
-      <p className="group-title">Menu</p>
+      <h2 className="group-title">Menu</h2>
       <div className="card card-list">
         <Row
           icon={<LayoutGrid size={18} />}
           title="Menu items"
           description="What you sell, with prices and photos"
           detail={count(state.menu.length)}
+          priority
           onClick={() => onPage("menu")}
         />
         <Row
@@ -65,14 +66,8 @@ export function RecipesScreen(props: RecipesProps) {
       </div>
       {!simple && (
         <>
-          <p className="group-title">Stock and costing</p>
+          <h2 className="group-title">Stock and prep</h2>
           <div className="card card-list">
-            <Row
-              icon={<Calculator size={18} />}
-              title="Menu costing"
-              description="Compare costs, margins and suggested prices"
-              onClick={() => onPage("costing")}
-            />
             <Row
               icon={<Package size={18} />}
               title="Stock items"
@@ -86,6 +81,12 @@ export function RecipesScreen(props: RecipesProps) {
               description="What you make ahead, like syrups and creams"
               detail={count(stock.filter((item) => item.prep).length)}
               onClick={() => onPage("prep")}
+            />
+            <Row
+              icon={<Calculator size={18} />}
+              title="Menu costing"
+              description="Compare costs, margins and suggested prices"
+              onClick={() => onPage("costing")}
             />
             <Row
               icon={<Tags size={18} />}

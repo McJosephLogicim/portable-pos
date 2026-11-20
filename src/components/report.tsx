@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Download, Share2 } from "lucide-react";
-import { reportText, shiftReport } from "@/lib/report";
+import { reportText, shiftReport, type ShiftReport } from "@/lib/report";
 import { reportImage } from "@/lib/report-image";
 import type { Business, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { buzz, DoneCheck, errorText, facesOf, formatMoney, Money, Sheet } from "./ui";
+import styles from "./operations.module.css";
+
+type Preview = { report: ShiftReport } & ({ blob: Blob; url: string } | { error: string });
 
 /** The end-of-shift report: a picture to send to the group chat, or the same as text. */
 export function ReportSheet({
@@ -39,10 +42,11 @@ export function ReportSheet({
   );
   const fmt = (n: number) => formatMoney(n, currency);
   const text = reportText(report, fmt);
-  const [blob, setBlob] = useState<Blob | null>(null);
-  const [url, setUrl] = useState("");
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [action, setAction] = useState<"copy" | "image" | null>(null);
+  const details = useRef<HTMLDetailsElement>(null);
   const name = `${business.name} shift ${shift.number}.png`.replace(/[^\w .-]/g, "");
 
   useEffect(() => {
@@ -52,17 +56,23 @@ export function ReportSheet({
       .then((b) => {
         if (!live) return;
         made = URL.createObjectURL(b);
-        setBlob(b);
-        setUrl(made);
+        setPreview({ report, blob: b, url: made });
       })
-      .catch((e) => live && setError(errorText(e)));
+      .catch(() => {
+        if (!live) return;
+        setPreview({ report, error: "The image couldn’t be prepared. You can still copy the report as text." });
+        if (details.current) details.current.open = true;
+      });
     return () => {
       live = false;
       if (made) URL.revokeObjectURL(made);
     };
   }, [report, currency]);
 
-  const file = blob ? new File([blob], name, { type: "image/png" }) : null;
+  const current = preview?.report === report ? preview : null;
+  const image = current && "blob" in current ? current : null;
+  const previewError = current && "error" in current ? current.error : "";
+  const file = image ? new File([image.blob], name, { type: "image/png" }) : null;
   const canShare = Boolean(
     file && typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] }),
   );
@@ -70,7 +80,6 @@ export function ReportSheet({
   function flash(message: string) {
     setDone(message);
     buzz.success();
-    setTimeout(() => setDone(""), 2200);
   }
 
   return (
@@ -79,48 +88,57 @@ export function ReportSheet({
       onClose={onDismiss}
       footer={
         <div className="stack gap-8">
-          {done && (
-            <p className="label" role="status" style={{ textAlign: "center" }}>
-              {done}
-            </p>
-          )}
-          <div className="grid-2">
+          <p className={done ? `label ${styles.reportStatus}` : "sr-only"} role="status">{done}</p>
+          <div className={`grid-2 ${styles.reportActions}`}>
             <button
+              type="button"
               className="btn secondary"
+              disabled={Boolean(action)}
               onClick={async () => {
+                setAction("copy");
                 setError("");
+                setDone("");
                 try {
                   await navigator.clipboard.writeText(text);
                   flash("Copied. Paste it in your group chat.");
                 } catch {
                   setError("Couldn't copy here. Press and hold the text below to copy it.");
+                  if (details.current) details.current.open = true;
+                } finally {
+                  setAction(null);
                 }
               }}
             >
-              <Copy size={17} /> Copy text
+              <Copy size={17} /> {action === "copy" ? "Copying…" : "Copy text"}
             </button>
             <button
+              type="button"
               className="btn"
-              disabled={!blob}
+              disabled={!image || Boolean(action)}
               onClick={async () => {
-                if (!blob || !file) return;
+                if (!image || !file) return;
+                setAction("image");
                 setError("");
+                setDone("");
                 try {
                   if (canShare) {
                     await navigator.share({ files: [file], title: name });
                     return;
                   }
                   const a = document.createElement("a");
-                  a.href = url;
+                  a.href = image.url;
                   a.download = name;
                   a.click();
-                  flash("Image saved.");
+                  flash("Image download started.");
                 } catch (e) {
                   if ((e as Error).name !== "AbortError") setError(errorText(e));
+                } finally {
+                  setAction(null);
                 }
               }}
             >
-              {canShare ? <Share2 size={17} /> : <Download size={17} />} {canShare ? "Send image" : "Save image"}
+              {canShare ? <Share2 size={17} /> : <Download size={17} />}
+              {previewError ? "Image unavailable" : !image ? "Preparing…" : action === "image" ? "Opening…" : canShare ? "Share image" : "Save image"}
             </button>
           </div>
         </div>
@@ -139,13 +157,26 @@ export function ReportSheet({
               {report.sales.count} {report.sales.count === 1 ? "sale" : "sales"} recorded
             </span>
             <Money value={report.sales.total} currency={currency} className="big-num" />
+            {report.cash.difference !== undefined && (
+              <span className="hero-label">
+                {report.cash.difference === 0
+                  ? "Drawer balanced"
+                  : `${fmt(Math.abs(report.cash.difference))} ${report.cash.difference > 0 ? "over" : "short"} in the drawer`}
+              </span>
+            )}
           </div>
         </div>
       )}
-      <div className="report-preview">
-        {url ? <img src={url} alt={`Shift ${shift.number} report`} /> : <div className="report-wait">Making the picture…</div>}
+      <div className="report-preview" aria-busy={!current}>
+        {image ? (
+          <img src={image.url} alt={`Shift ${shift.number} report`} />
+        ) : (
+          <div className={`report-wait ${styles.reportWait}`} role={previewError ? "alert" : "status"}>
+            {previewError || "Preparing the report image…"}
+          </div>
+        )}
       </div>
-      <details className="report-text">
+      <details ref={details} className={`report-text ${styles.details}`}>
         <summary>Show as text</summary>
         <pre>{text}</pre>
       </details>

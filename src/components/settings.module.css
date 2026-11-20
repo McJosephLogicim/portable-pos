@@ -1,0 +1,53 @@
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink);
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.disclosureIcon {
+  flex: none;
+  color: var(--ink-secondary);
+  transition: transform var(--dur-base) var(--ease-move);
+}
+
+.disclosure[open] > summary > .disclosureIcon {
+  transform: rotate(90deg);
+}
+
+.disclosureContent {
+  padding-top: 8px;
+}
+
+.disclosureContent textarea {
+  resize: vertical;
+}
+
+.priorityRow > :global(.well) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.subPageTitle {
+  font-size: inherit;
+}
+
+.primaryMetric {
+  background: var(--surface-muted);
+  border-radius: var(--radius-xs);
+  padding: 8px;
+}

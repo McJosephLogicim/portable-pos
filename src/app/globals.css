@@ -35,9 +35,9 @@
   /* Exits (src/lib/exit.ts). Content fades first, then the space it held closes up. */
   --ease-move: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --exit-fade: 180ms;
-  --exit-collapse: 240ms;
-  --exit-sheet: 240ms;
+  --exit-fade: 120ms;
+  --exit-collapse: 180ms;
+  --exit-sheet: 160ms;
   --gutter: 20px;
   --scrim: rgb(0 0 0 / 0.32);
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
@@ -90,6 +90,11 @@ textarea {
 }
 button {
   cursor: pointer;
+}
+button,
+a.btn,
+[role="button"] {
+  touch-action: manipulation;
 }
 button:disabled {
   cursor: default;
@@ -264,12 +269,13 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   letter-spacing: -0.01em;
   transition:
     transform var(--dur-fast) var(--ease-out),
-    opacity var(--dur-base) var(--ease-out);
+    opacity var(--dur-fast) var(--ease-out);
   white-space: nowrap;
   text-decoration: none;
 }
 .btn:active:not(:disabled) {
-  transform: scale(0.98);
+  opacity: 0.8;
+  transition-duration: 0ms;
 }
 .btn:disabled {
   opacity: 0.35;
@@ -318,10 +324,11 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-float);
-  transition: transform var(--dur-fast) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
-.round:active {
-  transform: scale(0.94);
+.round:active:not(:disabled) {
+  opacity: 0.72;
+  transition-duration: 0ms;
 }
 .round.flat {
   box-shadow: none;
@@ -533,7 +540,13 @@ button.list-row:not(.sell-option):active {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
-  transition: transform var(--dur-base) var(--ease-out);
+  pointer-events: none;
+  transition: transform var(--dur-base) var(--ease-move);
+}
+.switch::before {
+  content: "";
+  position: absolute;
+  inset: -7px -3px;
 }
 .switch[aria-checked="true"] {
   background: var(--accent);
@@ -560,7 +573,7 @@ button.list-row:not(.sell-option):active {
 }
 .segmented > button {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -586,7 +599,7 @@ button.list-row:not(.sell-option):active {
 }
 .chips > button {
   flex: none;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -632,11 +645,31 @@ button.list-row:not(.sell-option):active {
   display: flex;
   top: var(--keyboard-top, 0px);
   bottom: var(--keyboard-bottom, 0px);
-  animation: rise var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-drawer), opacity var(--dur-fast) var(--ease-out);
 }
 .sheet::backdrop {
   background: var(--scrim);
-  animation: fade var(--dur-base) var(--ease-out);
+  opacity: 1;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+@starting-style {
+  .sheet[open] {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  .sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
+.sheet[open][data-dragging],
+:root[data-input="keyboard"] .sheet[open],
+:root[data-input="keyboard"] .sheet::backdrop {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  @starting-style {
+    .sheet[open] { transform: none; }
+  }
 }
 .sheet-head {
   display: flex;
@@ -646,16 +679,35 @@ button.list-row:not(.sell-option):active {
   padding: 10px 16px 6px 20px;
   position: relative;
 }
-.sheet-head::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  width: 36px;
-  height: 5px;
-  margin-left: -18px;
-  border-radius: 3px;
-  background: rgb(0 0 0 / 0.12);
+.sheet-grip {
+  display: none;
+}
+@media (max-width: 899px) and (prefers-reduced-motion: no-preference) {
+  .sheet-grip {
+    position: absolute;
+    inset: 0 calc(50% - 42px) auto;
+    height: 22px;
+    z-index: 1;
+    display: grid;
+    justify-items: center;
+    padding-top: 7px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sheet-grip::before {
+    content: "";
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / 0.18);
+  }
+  .sheet-grip:active {
+    cursor: grabbing;
+  }
+  .sheet-grip[data-disabled] {
+    opacity: 0.5;
+    cursor: default;
+  }
 }
 .sheet-head h2 {
   flex: 1;
@@ -713,25 +765,6 @@ button.list-row:not(.sell-option):active {
   inset: 0;
   background: var(--scrim);
 }
-@keyframes rise {
-  from {
-    transform: translateY(28px);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* ---------- completion check ---------- */
 .done-check {
   position: relative;
@@ -749,14 +782,14 @@ button.list-row:not(.sell-option):active {
   height: 26px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .done-check {
-    animation: check-in var(--dur-fast) var(--ease-out) both;
+  :root:not([data-input="keyboard"]) .done-check:not(.small) {
+    animation: check-in var(--dur-base) var(--ease-out) both;
   }
-  .done-check path {
+  :root:not([data-input="keyboard"]) .done-check:not(.small) path {
     stroke-dasharray: 1;
     animation: check-draw var(--dur-base) 50ms var(--ease-out) both;
   }
-  .done-check:not(.small)::after {
+  :root:not([data-input="keyboard"]) .done-check:not(.small)::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -767,7 +800,9 @@ button.list-row:not(.sell-option):active {
   }
 }
 @keyframes check-in {
-  from { opacity: 0; transform: scale(0.92); }
+  0% { opacity: 0; transform: scale(1.06, 0.92); }
+  55% { opacity: 1; transform: scale(0.98, 1.04); }
+  100% { transform: scale(1); }
 }
 @keyframes check-draw {
   from { stroke-dashoffset: 1; }
@@ -777,17 +812,6 @@ button.list-row:not(.sell-option):active {
   from { opacity: 0.52; transform: scale(1); }
   to { opacity: 0; transform: scale(1.4); }
 }
-@keyframes pop {
-  from {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
 /* ---------- pin pad ---------- */
 .pin-dots {
   display: flex;
@@ -808,7 +832,7 @@ button.list-row:not(.sell-option):active {
   box-shadow: none;
 }
 .pin-dots.shake {
-  animation: shake 320ms var(--ease-out);
+  animation: shake 240ms var(--ease-out);
 }
 @keyframes shake {
   25% { transform: translateX(-8px); }
@@ -830,10 +854,8 @@ button.list-row:not(.sell-option):active {
   box-shadow: var(--shadow-card);
   display: grid;
   place-items: center;
-  transition: transform var(--dur-fast) var(--ease-out);
 }
 .keypad button:active {
-  transform: scale(0.96);
   background: var(--surface-muted);
 }
 .keypad .quiet {
@@ -865,9 +887,9 @@ button.list-row:not(.sell-option):active {
   transform: translateX(-50%);
   bottom: max(18px, env(safe-area-inset-bottom));
   z-index: 30;
-  display: flex;
-  max-width: calc(100% - 24px);
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(var(--tab-count), minmax(0, 1fr));
+  width: min(calc(100% - 20px), calc(var(--tab-count) * 60px + 12px));
   padding: 6px;
   border-radius: var(--radius-pill);
   background: rgb(255 255 255 / 0.88);
@@ -881,24 +903,41 @@ button.list-row:not(.sell-option):active {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  min-width: 62px;
-  min-height: 52px;
-  padding: 0 8px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  font-size: 11px;
-  color: #7a7a7a;
+  font-size: 10.5px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--ink-secondary);
   position: relative;
 }
 .tabbar button[aria-current="page"] {
-  background: var(--canvas);
   color: var(--ink);
+}
+.tabbar button:active {
+  opacity: 0.7;
+}
+.tab-selection {
+  position: absolute;
+  inset: 6px auto 6px 6px;
+  width: calc((100% - 12px) / var(--tab-count));
+  border-radius: var(--radius-pill);
+  background: var(--canvas);
+  transform: translateX(var(--tab-offset));
+  pointer-events: none;
+  transition: transform var(--dur-fast) var(--ease-move);
+}
+:root[data-input="keyboard"] .tab-selection {
+  transition: none;
 }
 .tabbar .tab-dot {
   position: absolute;
   top: 8px;
-  right: 22px;
+  left: calc(50% + 7px);
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -945,9 +984,12 @@ button.list-row:not(.sell-option):active {
   align-items: center;
   gap: 12px;
   box-shadow: var(--shadow-float);
-  animation: rise var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out);
   overflow-wrap: anywhere;
   pointer-events: auto;
+}
+@starting-style {
+  .toast { opacity: 0; }
 }
 .toast-action {
   flex: none;
@@ -1094,7 +1136,6 @@ button.list-row:not(.sell-option):active {
   height: 30px;
   font-size: 14px;
   box-shadow: 0 0 0 3px var(--surface);
-  animation: pop 220ms var(--ease-out);
 }
 .item.out {
   opacity: 1;
@@ -1144,7 +1185,6 @@ button.list-row:not(.sell-option):active {
   box-shadow: 0 14px 34px rgb(0 0 0 / 0.22);
   font-size: 16px;
   font-weight: 500;
-  animation: rise var(--dur-base) var(--ease-out);
 }
 .charge-bar .badge {
   background: var(--on-accent);
@@ -1304,7 +1344,15 @@ button.list-row:not(.sell-option):active {
   bottom: calc(max(18px, env(safe-area-inset-bottom)) + 74px);
   z-index: 29;
   width: min(560px, calc(100% - 2 * var(--gutter)));
-  animation: rise var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out), translate var(--dur-fast) var(--ease-out);
+}
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    :root:not([data-input="keyboard"]) .save-bar {
+      opacity: 0;
+      translate: 0 6px;
+    }
+  }
 }
 .save-bar .btn {
   width: 100%;
@@ -1372,7 +1420,6 @@ button.list-row:not(.sell-option):active {
 }
 .confirm-main {
   padding: 8px 4px 0;
-  animation: nudge 220ms var(--ease-out);
 }
 @keyframes nudge {
   from {
@@ -1380,18 +1427,8 @@ button.list-row:not(.sell-option):active {
     transform: translateY(6px);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .confirm-main {
-    animation: none;
-  }
-}
 .sale-hero {
   padding: 22px 22px 20px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .sale-hero {
-    animation: nudge var(--dur-base) var(--ease-out) both;
-  }
 }
 .sale-hero .due-num {
   color: var(--on-accent);
@@ -1880,19 +1917,14 @@ button.notice {
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 50%;
   background: none;
   color: var(--ink-tertiary);
   display: grid;
   place-items: center;
-}
-.place-button .combo-clear {
-  position: static;
-  transform: none;
-  margin-right: -10px;
 }
 .combo-list {
   padding: 4px;
@@ -1939,7 +1971,7 @@ button.notice {
   gap: 6px;
 }
 .weekdays button {
-  height: 42px;
+  min-height: 44px;
   border: 0;
   border-radius: 50%;
   background: var(--surface-muted);
@@ -1992,7 +2024,9 @@ button.notice {
   -webkit-overflow-scrolling: touch;
   background: var(--surface);
   color: var(--ink);
-  animation: combo-in var(--dur-fast, 120ms) var(--ease-out);
+  --popup-origin: top center;
+  transform-origin: var(--popup-origin);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 /* While typing, bottom action bars stay down behind the keyboard instead of riding up on
    top of it, so the form keeps the room. They come back as soon as the keyboard closes. */
@@ -2002,15 +2036,10 @@ button.notice {
 :root[data-keyboard] .tabbar {
   display: none;
 }
-@keyframes combo-in {
-  from {
+@starting-style {
+  :root:not([data-input="keyboard"]) .combo-drop {
     opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .combo-drop {
-    animation: none;
+    transform: scaleY(0.97);
   }
 }
 .suggest .combo-pick {
@@ -2060,8 +2089,8 @@ button.notice {
   gap: 2px;
 }
 .picker-pages > button.round {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
 }
 .picker-list {
   max-height: 168px;
@@ -2099,31 +2128,6 @@ button.notice {
   object-fit: cover;
 }
 
-/* ---------- tab bar: icons only ---------- */
-.tabbar button {
-  min-width: 44px;
-  width: 56px;
-  min-height: 52px;
-  padding: 0;
-  transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
-}
-.tabbar button:active {
-  transform: scale(0.9);
-}
-.tabbar button[aria-current="page"] svg {
-  animation: tab-pop 360ms var(--ease-out);
-}
-.tabbar .tab-dot {
-  top: 10px;
-  right: 12px;
-}
-@keyframes tab-pop {
-  0% { transform: scale(0.8); }
-  55% { transform: scale(1.14); }
-  100% { transform: scale(1); }
-}
-
 /* ---------- press feedback ---------- */
 button.list-row,
 .list-row[role="button"] {
@@ -2139,6 +2143,10 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 .btn:active:not(:disabled) {
   transform: scale(0.97);
+}
+:root[data-input="keyboard"] .btn:active:not(:disabled),
+:root[data-input="keyboard"] button.list-row:active:not(:disabled) {
+  transform: none;
 }
 
 /* ---------- rows never overflow ---------- */
@@ -2172,10 +2180,15 @@ button.list-row:not(.sell-option):active:not(:disabled),
   width: 8px;
   height: 10px;
   opacity: 0;
-  animation: confetti 1100ms cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+  animation: confetti 800ms linear forwards;
 }
 @keyframes confetti {
-  0% { transform: translate(0, 0) rotate(0) scale(0.6); opacity: 1; }
+  0% { transform: translate(0, 0) rotate(0) scale(0.8); opacity: 1; }
+  30% {
+    transform: translate(calc(var(--dx) * 0.52), calc(var(--dy) * 0.52 - 22px))
+      rotate(calc(var(--r) * 0.42)) scale(1.06);
+    animation-timing-function: var(--ease-move);
+  }
   70% { opacity: 1; }
   100% { transform: translate(var(--dx), calc(var(--dy) + 90px)) rotate(var(--r)) scale(1); opacity: 0; }
 }
@@ -2191,6 +2204,9 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 .photo-pick.large {
   flex: 1;
+}
+.photo-pick.small {
+  gap: 4px;
 }
 .photo-slot {
   position: relative;
@@ -2222,8 +2238,8 @@ button.list-row:not(.sell-option):active:not(:disabled),
   height: 84px;
 }
 .small .photo-slot {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
 }
 .photo-busy {
@@ -2248,19 +2264,18 @@ button.list-row:not(.sell-option):active:not(:disabled),
   to { transform: rotate(360deg); }
 }
 .photo-clear {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 20px;
-  height: 20px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 50%;
-  background: var(--ink);
-  color: var(--on-accent);
+  background: transparent;
+  color: var(--ink-secondary);
   display: grid;
   place-items: center;
   padding: 0;
-  box-shadow: 0 0 0 2px var(--surface);
+}
+.photo-clear:active:not(:disabled) {
+  background: var(--surface-muted);
 }
 .photo-full {
   width: 100%;
@@ -2372,7 +2387,7 @@ button.list-row:not(.sell-option):active:not(:disabled),
   align-items: center;
   gap: 2px;
   padding: 0;
-  min-height: 32px;
+  min-height: 44px;
   font-size: 13px;
   text-decoration: none;
 }
@@ -2388,15 +2403,10 @@ button.list-row:not(.sell-option):active:not(:disabled),
   height: 100%;
   background: var(--ink);
   clip-path: inset(0 calc(100% - var(--progress, 0%)) 0 0 round 99px);
-  transform-origin: left;
-  animation: bar-grow 600ms var(--ease-out) both;
-  transition: clip-path 400ms var(--ease-out);
+  transition: clip-path var(--dur-base) var(--ease-move);
 }
 .bar.wide {
   height: 8px;
-}
-@keyframes bar-grow {
-  from { transform: scaleX(0); }
 }
 .rank-num {
   flex: none;
@@ -2428,9 +2438,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
   font-weight: 600;
   flex: none;
 }
-.board .rank {
-  animation: rank-in 420ms var(--ease-out) both;
-}
 .board .rank.me {
   background: var(--surface-muted);
   margin: 0 -12px;
@@ -2438,9 +2445,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
   padding-right: 12px;
   width: calc(100% + 24px);
   border-radius: 12px;
-}
-@keyframes rank-in {
-  from { opacity: 0; transform: translateY(8px); }
 }
 .hours {
   display: flex;
@@ -2464,8 +2468,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
   max-width: 22px;
   border-radius: 5px 5px 2px 2px;
   background: #d4d4d4;
-  transform-origin: bottom;
-  animation: hour-grow 600ms var(--ease-out) both;
 }
 .hour i.peak {
   background: var(--ink);
@@ -2477,15 +2479,25 @@ button.list-row:not(.sell-option):active:not(:disabled),
   line-height: 12px;
   white-space: nowrap;
 }
-@keyframes hour-grow {
-  from { transform: scaleY(0); }
-}
 @media (prefers-reduced-motion: reduce) {
-  .bar i,
-  .hour i,
-  .board .rank,
-  .tabbar button[aria-current="page"] svg {
+  .pin-dots.shake,
+  .photo-busy::after,
+  .confetti i {
     animation: none;
+  }
+  .btn:active:not(:disabled),
+  button.list-row:not(.sell-option):active:not(:disabled),
+  .list-row[role="button"]:active,
+  .photo-slot:active:not(:disabled) {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-input="keyboard"]) .board:not([data-browsing]) .rank:nth-child(-n + 3) {
+    animation: rank-in 160ms var(--ease-out) both;
+  }
+  @keyframes rank-in {
+    from { opacity: 0; transform: translateY(5px); }
   }
 }
 
@@ -2571,8 +2583,8 @@ button.list-row:not(.sell-option):active:not(:disabled),
   gap: 10px;
 }
 .swatches button {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 0;
   padding: 0;
@@ -2586,7 +2598,7 @@ button.list-row:not(.sell-option):active:not(:disabled),
   box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink);
 }
 .swatches button:active {
-  transform: scale(0.9);
+  opacity: 0.72;
 }
 .brand-preview {
   border-radius: var(--radius-lg);
@@ -2629,7 +2641,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
 .proof.needed .proof-slot {
   border-color: var(--ink);
   color: var(--ink);
-  animation: proof-nudge 1.6s var(--ease-out) infinite;
 }
 .proof.has .proof-slot {
   border: 0;
@@ -2648,11 +2659,6 @@ button.list-row:not(.sell-option):active:not(:disabled),
   font-size: 11px;
   font-weight: 600;
   vertical-align: 1px;
-}
-@keyframes proof-nudge {
-  0%, 70%, 100% { transform: scale(1); }
-  80% { transform: scale(1.08); }
-  90% { transform: scale(0.97); }
 }
 .proof-row {
   display: flex;
@@ -2678,18 +2684,11 @@ button.list-row:not(.sell-option):active:not(:disabled),
   height: 100%;
   object-fit: cover;
 }
-@media (prefers-reduced-motion: reduce) {
-  .proof.needed .proof-slot {
-    animation: none;
-  }
-}
-
 /* ---------- brand tint ---------- */
 .branded .hero {
   background: radial-gradient(130% 150% at 0% 0%, color-mix(in srgb, var(--brand) 88%, #000) 0%, color-mix(in srgb, var(--brand) 35%, #0b0b0b) 55%, #060606 100%);
 }
-.branded .tabbar button[aria-current="page"] {
-  color: var(--brand);
+.branded .tab-selection {
   background: color-mix(in srgb, var(--brand) 10%, var(--canvas));
 }
 .branded .bar i,
@@ -2779,7 +2778,6 @@ html {
   object-fit: contain;
   -webkit-user-drag: none;
   user-select: none;
-  transition: transform var(--dur-fast) var(--ease-out);
 }
 .denom.photo.bill {
   width: 100%;
@@ -2792,7 +2790,7 @@ html {
   box-shadow: 0 0 0 1px var(--line);
 }
 .denom.photo:active img {
-  transform: scale(0.94);
+  opacity: 0.76;
 }
 .stepper {
   display: flex;
@@ -2909,7 +2907,7 @@ html {
   line-height: 1;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .shift-complete + .report-preview {
+  :root:not([data-input="keyboard"]) .shift-complete + .report-preview {
     animation: nudge var(--dur-base) 60ms var(--ease-out) both;
   }
 }
@@ -3019,13 +3017,6 @@ html {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.recipe-price-fields,
-.recipe-details-fields {
-  margin-top: 10px;
-}
-.recipe-details-fields textarea {
-  resize: vertical;
-}
 .costing-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3096,15 +3087,15 @@ html {
   transform-origin: var(--transform-origin);
   transition:
     opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-base) cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform var(--dur-base) var(--ease-out);
 }
 .add-shift-menu[data-starting-style],
 .add-shift-menu[data-ending-style] {
   opacity: 0;
-  transform: scale(0.9);
+  transform: scale(0.96);
 }
 .add-shift-menu[data-ending-style] {
-  transition-timing-function: var(--ease-out);
+  transition-duration: var(--dur-fast);
 }
 .add-shift-menu[data-keyboard] {
   transition: none;

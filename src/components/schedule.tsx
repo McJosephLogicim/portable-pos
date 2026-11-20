@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   CalendarPlus,
@@ -52,6 +52,7 @@ import { bookingTitle } from "./shift";
 import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
 import { buzz, centerOf, ConfirmSheet, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
+import styles from "./operations.module.css";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -108,6 +109,15 @@ function MonthCalendar({
   const start = addDays(month, -first);
   const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
   const rows = days[35].slice(0, 7) === month.slice(0, 7) ? 6 : 5;
+  const visibleDays = days.slice(0, rows * 7);
+  const focusDay = visibleDays.includes(selected) ? selected : month;
+  const focused = useRef<HTMLButtonElement>(null);
+  const moveFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!moveFocus.current) return;
+    moveFocus.current = false;
+    focused.current?.focus({ preventScroll: true });
+  }, [focusDay]);
   const shift = (n: number) => {
     const [y, m] = month.split("-").map(Number);
     const d = new Date(Date.UTC(y, m - 1 + n, 1));
@@ -116,7 +126,7 @@ function MonthCalendar({
   return (
     <div className="card calendar">
       <div className="between cal-head">
-        <span className="strong">{plainDay(month, { month: "long", year: "numeric" })}</span>
+        <span className="strong" role="status">{plainDay(month, { month: "long", year: "numeric" })}</span>
         <span className="row gap-4">
           <button type="button" className="round flat" aria-label="Previous month" onClick={() => shift(-1)}>
             <ChevronLeft size={19} />
@@ -126,32 +136,45 @@ function MonthCalendar({
           </button>
         </span>
       </div>
-      <div className="cal-grid" role="grid" aria-label="Shifts by day">
+      <div className="cal-grid" role="group" aria-label="Shifts by day">
         {weekdayLetters.map((d, i) => (
           <span key={i} className="cal-dow" aria-hidden="true">
             {d}
           </span>
         ))}
-        {days.slice(0, rows * 7).map((day) => {
+        {visibleDays.map((day) => {
           const mark = marks.get(day);
           const outside = day.slice(0, 7) !== month.slice(0, 7);
           return (
             <button
               key={day}
               type="button"
-              role="gridcell"
+              ref={day === focusDay ? focused : undefined}
+              tabIndex={day === focusDay ? 0 : -1}
               className={
-                "cal-day" +
+                "cal-day " + styles.calendarDay +
                 (outside ? " outside" : "") +
                 (day === today ? " today" : "") +
                 (mark?.mine ? " mine" : "")
               }
-              aria-selected={day === selected}
+              aria-pressed={day === selected}
+              aria-current={day === today ? "date" : undefined}
               aria-label={
                 plainDay(day, { weekday: "long", month: "long", day: "numeric" }) +
                 (mark ? `, ${mark.count} ${mark.count === 1 ? "shift" : "shifts"}${mark.open ? ", open seats" : ""}` : "")
               }
               onClick={() => onSelect(day)}
+              onKeyDown={(event) => {
+                const delta = {
+                  ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7,
+                  Home: -weekday(day), End: 6 - weekday(day),
+                }[event.key];
+                if (delta === undefined) return;
+                event.preventDefault();
+                if (!delta) return;
+                moveFocus.current = true;
+                onSelect(addDays(day, delta));
+              }}
             >
               <span className="cal-num">{Number(day.slice(8))}</span>
               <span className="cal-dots" aria-hidden="true">
@@ -189,7 +212,7 @@ function BookingCard({
   const past = Date.parse(b.endsAt) < Date.now();
   const p = me?.owner && sales !== undefined ? bookingProfit({ ...b, sales }) : null;
   return (
-    <button type="button" className={"card booking" + (past ? " past" : "")} onClick={onOpen}>
+    <button type="button" className={"card booking" + (past ? " past" : "")} onClick={onOpen} aria-haspopup="dialog">
       <span className="booking-time">
         <span className="strong">{f.time.format(new Date(b.startsAt))}</span>
         <span className="label">{f.time.format(new Date(b.endsAt))}</span>
@@ -384,6 +407,7 @@ function BookingSheet({
   );
 
   async function run(input: OwnerAction, label: string, owner = true, from?: Element | null) {
+    const origin = centerOf(from);
     setBusy(true);
     setError("");
     try {
@@ -392,7 +416,7 @@ function BookingSheet({
         : (await props.onAction(input), true);
       if (done) {
         props.onSaved(label);
-        if (from) celebrate(centerOf(from));
+        if (origin) celebrate(origin);
         else buzz.tick();
       }
       return done;
@@ -424,7 +448,7 @@ function BookingSheet({
             !over && (
               <div className="grid-2">
                 <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
-                  Change role
+                  {busy ? "Updating…" : "Change role"}
                 </button>
                 <button
                   className="btn secondary block"
@@ -437,7 +461,7 @@ function BookingSheet({
             )
           ) : joinable ? (
             <button className="btn block" disabled={!online || busy} onClick={() => setJoining(true)}>
-              Join this shift
+              {busy ? "Joining…" : "Join this shift"}
             </button>
           ) : null)
         }
@@ -470,27 +494,31 @@ function BookingSheet({
             People · {b.staff.length} of {b.seats}
           </p>
           <div className="card card-list">
-            {b.staff.map((s) => (
-              <div
-                className="list-row"
-                key={s.memberId}
-                role={me.owner ? "button" : undefined}
-                tabIndex={me.owner ? 0 : undefined}
-                onClick={me.owner && online && !busy ? () => setManaging(s) : undefined}
-              >
-                <Avatar id={s.memberId} name={s.name} />
-                <span className="grow stack">
-                  <span className="ellipsis">
-                    {s.memberId === me.memberId ? s.name + " (you)" : s.name}
+            {b.staff.map((s) => {
+              const Row = me.owner ? "button" : "div";
+              return (
+                <Row
+                  className="list-row"
+                  key={s.memberId}
+                  type={me.owner ? "button" : undefined}
+                  disabled={me.owner ? !online || busy : undefined}
+                  aria-haspopup={me.owner ? "dialog" : undefined}
+                  onClick={me.owner ? () => setManaging(s) : undefined}
+                >
+                  <Avatar id={s.memberId} name={s.name} />
+                  <span className="grow stack">
+                    <span className="ellipsis">
+                      {s.memberId === me.memberId ? s.name + " (you)" : s.name}
+                    </span>
+                    <span className="label">
+                      {shiftRoleNames[s.role]}
+                      {s.salary !== undefined ? " · " + formatMoney(s.salary, currency) : ""}
+                    </span>
                   </span>
-                  <span className="label">
-                    {shiftRoleNames[s.role]}
-                    {s.salary !== undefined ? " · " + formatMoney(s.salary, currency) : ""}
-                  </span>
-                </span>
-                {me.owner && <ChevronRight size={18} className="chev" />}
-              </div>
-            ))}
+                  {me.owner && <ChevronRight size={18} className="chev" />}
+                </Row>
+              );
+            })}
             {Array.from({ length: open }, (_, i) => (
               <div className="list-row" key={"open" + i}>
                 <span className="avatar seat" aria-hidden="true" />
@@ -910,6 +938,7 @@ function BookingEditor({
   }
 
   async function save(from?: Element) {
+    const origin = centerOf(from);
     setBusy(true);
     setError("");
     try {
@@ -945,8 +974,8 @@ function BookingEditor({
       });
       if (done) {
         props.onSaved(bulk ? `Added ${days.length} shifts` : booking ? "Shift saved" : "Shift added");
-        if (booking) buzz.tick();
-        else celebrate(from ? centerOf(from) : undefined);
+        if (!booking && origin) celebrate(origin);
+        else buzz.tick();
         onClose();
       }
     } catch (e) {
@@ -964,7 +993,7 @@ function BookingEditor({
         onClose={onClose}
         busy={busy}
         footer={
-          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={(e) => void save(e.currentTarget)}>
+          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={(e) => void save(e.detail > 0 ? e.currentTarget : undefined)}>
             {busy
               ? "Saving…"
               : bulk
@@ -1013,26 +1042,24 @@ function BookingEditor({
           </div>
           <div className="field">
             <span>Location</span>
-            <button type="button" className="input place-button" onClick={() => setLocating(true)}>
-              <MapPin size={18} strokeWidth={1.8} />
-              <span className={"grow ellipsis" + (d.place ? "" : " g")}>
-                {d.place ? d.place.name : "Search a venue or address"}
-              </span>
+            <div className={styles.locationRow}>
+              <button type="button" className="input place-button" aria-haspopup="dialog" onClick={() => setLocating(true)}>
+                <MapPin size={18} strokeWidth={1.8} />
+                <span className={"grow ellipsis" + (d.place ? "" : " g")}>
+                  {d.place ? d.place.name : "Search a venue or address"}
+                </span>
+              </button>
               {d.place && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="combo-clear"
+                <button
+                  type="button"
+                  className="round flat"
                   aria-label="Clear location"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    set({ place: null });
-                  }}
+                  onClick={() => set({ place: null })}
                 >
                   <X size={16} />
-                </span>
+                </button>
               )}
-            </button>
+            </div>
             {d.place?.address && <p className="label">{d.place.address}</p>}
           </div>
         </div>
@@ -1282,6 +1309,7 @@ function ShareSchedule({
   const [range, setRange] = useState<"upcoming" | "month">("upcoming");
   const [copied, setCopied] = useState("");
   const [error, setError] = useState("");
+  const [copying, setCopying] = useState(false);
   const shown =
     range === "upcoming"
       ? bookings.filter((b) => Date.parse(b.endsAt) > Date.now())
@@ -1289,13 +1317,15 @@ function ShareSchedule({
   const text = scheduleText(shown, zone, { origin: location.origin, businessId });
   async function copy() {
     setError("");
+    setCopying(true);
     try {
       await navigator.clipboard.writeText(text);
       buzz.success();
       setCopied(text);
-      setTimeout(() => setCopied(""), 2000);
     } catch {
       setError("Couldn't copy here. Press and hold the text to copy it.");
+    } finally {
+      setCopying(false);
     }
   }
   return (
@@ -1303,16 +1333,19 @@ function ShareSchedule({
       title="Share the schedule"
       onClose={onClose}
       footer={
-        <button type="button" className="btn block" disabled={!shown.length} onClick={() => void copy()}>
-          <Copy size={17} /> {shown.length && copied === text ? "Copied" : "Copy schedule"}
-        </button>
+        <>
+          <p className="sr-only" role="status">{shown.length && copied === text ? "Schedule copied" : ""}</p>
+          <button type="button" className="btn block" disabled={copying || !shown.length} onClick={() => void copy()}>
+            <Copy size={17} /> {copying ? "Copying…" : shown.length && copied === text ? "Copied" : "Copy schedule"}
+          </button>
+        </>
       }
     >
       <div className="segmented" role="group" aria-label="Which shifts">
-        <button aria-pressed={range === "upcoming"} onClick={() => setRange("upcoming")}>
+        <button aria-pressed={range === "upcoming"} disabled={copying} onClick={() => setRange("upcoming")}>
           Upcoming
         </button>
-        <button aria-pressed={range === "month"} onClick={() => setRange("month")}>
+        <button aria-pressed={range === "month"} disabled={copying} onClick={() => setRange("month")}>
           {plainDay(month, { month: "long" })}
         </button>
       </div>
@@ -1344,8 +1377,8 @@ function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "n
         setKeyboard(event instanceof KeyboardEvent || (event.type === "click" && "detail" in event && event.detail === 0));
       }}
     >
-      <Menu.Trigger className="btn add-shift" aria-label="Add" disabled={disabled}>
-        <Plus size={20} aria-hidden="true" />
+      <Menu.Trigger className={`btn add-shift ${styles.addShift}`} disabled={disabled}>
+        <Plus size={18} aria-hidden="true" /> Add
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner className="add-shift-positioner" align="end" sideOffset={8}>
@@ -1456,11 +1489,12 @@ export function ScheduleScreen(props: ScheduleProps) {
 
   return (
     <div className="page narrow">
-      <div className="page-top tight">
+      <div className={`page-top tight ${styles.scheduleHeader}`}>
         <h1 className="headline grow">Shifts</h1>
         <button
           className="round"
           aria-label="Share the schedule"
+          aria-haspopup="dialog"
           onClick={() => {
             buzz.tap();
             setSharing(true);
@@ -1471,6 +1505,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         <button
           className="round"
           aria-label="Leaderboard"
+          aria-haspopup="dialog"
           onClick={() => {
             buzz.tap();
             setBoard(true);
@@ -1483,7 +1518,7 @@ export function ScheduleScreen(props: ScheduleProps) {
 
       {me?.owner && (
         <Tip id="shifts" title="Plan who works where">
-          Tap + to add a shift, or a run of them for a bazaar. The trophy ranks your events, places and people.
+          Use Add to schedule a shift or a series. The trophy ranks your events, places and people.
         </Tip>
       )}
 
@@ -1509,9 +1544,13 @@ export function ScheduleScreen(props: ScheduleProps) {
         selected={selected}
         today={today}
         marks={marks}
-        onMonth={setMonth}
+        onMonth={(nextMonth) => {
+          setMonth(nextMonth);
+          setSelected(today.startsWith(nextMonth.slice(0, 7)) ? today : nextMonth);
+        }}
         onSelect={(day) => {
           setSelected(day);
+          setMonth(day.slice(0, 8) + "01");
           setFilter("day");
         }}
       />

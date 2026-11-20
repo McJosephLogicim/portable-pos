@@ -9,6 +9,7 @@ import type { RecipesProps } from "./recipes";
 import { Row, SubPage, useCommit } from "./settings";
 import { RecordEmpty, useRecordSave } from "./records";
 import { Explain, formatMoney, MoneyField } from "./ui";
+import styles from "./settings.module.css";
 
 const percent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 });
 const asPercent = (value: number | undefined) => value === undefined ? "—" : percent.format(value);
@@ -25,24 +26,28 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
   const pricing = pricingRules(currency, settings.pricing);
   const overview = menuCostingOverview(menu, settings.stockItems ?? [], pricing);
   const money = (value: number | undefined) => value === undefined ? "—" : formatMoney(Math.round(value), currency);
+  const rulesRow = (
+    <div className="card card-list">
+      <Row
+        icon={<SlidersHorizontal size={18} />}
+        title="Pricing rules"
+        description="Defaults for suggested prices"
+        detail={`${pricing.targetMargin}% · ${money(pricing.roundingIncrement)}`}
+        onClick={onPricing}
+      />
+    </div>
+  );
   return (
     <>
-      <div className="card card-list">
-        <Row
-          icon={<SlidersHorizontal size={18} />}
-          title="Pricing rules"
-          detail={`${pricing.targetMargin}% · ${money(pricing.roundingIncrement)}`}
-          onClick={onPricing}
-        />
-      </div>
       {menu.length ? (
         <>
           <dl className="card card-pad costing-grid costing-summary" aria-label="Menu cost summary">
+            <div className={styles.primaryMetric}><dt>Avg. gross margin</dt><dd>{asPercent(overview.averageMargin)}</dd></div>
             <div><dt>Items costed</dt><dd>{overview.costed} of {menu.length}</dd></div>
             <div><dt>Avg. cost per serving</dt><dd>{money(overview.averageCost)}</dd></div>
             <div><dt>Avg. cost % of price</dt><dd>{asPercent(overview.averageCostRatio)}</dd></div>
-            <div><dt>Avg. gross margin</dt><dd>{asPercent(overview.averageMargin)}</dd></div>
           </dl>
+          {rulesRow}
           <div className="card card-list">
             {overview.rows.map(({ item, cost, suggested }) => (
               <article className="costing-entry" key={item.id}>
@@ -72,7 +77,8 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
       ) : (
         <>
           <RecordEmpty icon={<Calculator size={22} />} title="No menu items yet" text="Add a menu item to see its cost and margin here." />
-          <button className="btn secondary" onClick={onMenu}>Go to menu items</button>
+          <button type="button" className="btn" onClick={onMenu}>Go to menu items</button>
+          {rulesRow}
         </>
       )}
     </>
@@ -91,8 +97,9 @@ export function PricingRulesPage(props: RecipesProps) {
   const dirty = target !== String(current.targetMargin) || increment !== amountText(current.roundingIncrement, currency);
   return (
     <SubPage title="Pricing rules" backLabel="Back to menu costing" onBack={back}>
-      <form className="stack gap-14" onSubmit={(event) => {
+      <form className="stack gap-14" aria-busy={busy} onSubmit={(event) => {
         event.preventDefault();
+        if (busy || !props.online || !dirty) return;
         void run(() => {
           const targetMargin = readTargetMargin(target);
           const roundingIncrement = parseMoney(increment, currency);
@@ -111,7 +118,7 @@ export function PricingRulesPage(props: RecipesProps) {
           <MoneyField label="Round suggested prices up to" value={increment} onChange={setIncrement} currency={currency} />
         </div>
         {error && <p className="alert" role="alert">{error}</p>}
-        <button className="btn block" disabled={busy || !props.online || !dirty}>
+        <button type="submit" className="btn block" disabled={busy || !props.online || !dirty}>
           {busy ? "Saving…" : props.online ? "Save pricing rules" : "Connect to save"}
         </button>
       </form>

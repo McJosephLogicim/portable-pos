@@ -7,6 +7,7 @@ import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
 import { Avatar } from "./team";
 import { buzz, Explain, formatMoney, Money, progressStyle, Sheet } from "./ui";
+import styles from "./operations.module.css";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
 
@@ -31,12 +32,12 @@ export function HourChart({
           Busiest {hourName(busiest.hour)} · {formatMoney(busiest.total, currency)}
         </span>
       </div>
-      <div className="hours" role="img" aria-label={`Sales by hour, busiest at ${hourName(busiest.hour)}`}>
+      <div className={`hours ${styles.hourBars}`} role="img" aria-label={`Sales by hour, busiest at ${hourName(busiest.hour)}`}>
         {hours.map((h) => (
           <span key={h.hour} className="hour">
             <i
               className={h.hour === busiest.hour ? "peak" : ""}
-              style={{ height: `${Math.max(4, (h.total / peak) * 100)}%` }}
+              style={{ transform: `scaleY(${Math.max(0.04, h.total / peak)})` }}
             />
             <small>{h.hour % 3 === 0 || hours.length <= 8 ? hourName(h.hour) : ""}</small>
           </span>
@@ -88,6 +89,7 @@ export function ShiftSales({
             key={s.productId}
             type="button"
             className="list-row seller"
+            aria-haspopup="dialog"
             onClick={() => {
               buzz.tap();
               setPicked(s.productId);
@@ -303,6 +305,7 @@ export function ItemsSold({
               key={s.productId}
               type="button"
               className="list-row"
+              aria-haspopup="dialog"
               onClick={() => {
                 buzz.tap();
                 setPicked(s.productId);
@@ -325,7 +328,7 @@ export function ItemsSold({
         {sellers.length > 5 && (
           <button type="button" className="list-row" onClick={() => setAll(!all)} aria-expanded={all}>
             <span className="grow">{all ? "Show less" : `Show ${sellers.length - 5} more`}</span>
-            <ChevronDown size={18} className="chev" style={{ transform: all ? "rotate(180deg)" : undefined }} />
+            <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
           </button>
         )}
       </div>
@@ -358,6 +361,7 @@ const boards: { id: Board; name: string }[] = [
 export function Leaderboards({ state, demo, empty = false }: { state: RegisterState; demo: boolean; empty?: boolean }) {
   const [board, setBoard] = useState<Board>("event");
   const [range, setRange] = useState<"month" | "all">("month");
+  const [browsing, setBrowsing] = useState(false);
   const business = state.business!;
   const me = state.me;
   const zone = business.timeZone;
@@ -390,15 +394,16 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
           {empty ? "Ranked by " + (owner ? "sales" : "quotas hit") : "Leaderboard"}
           {!owner && !empty && <Explain title="Leaderboard">Ranked by quotas hit, then shifts worked.</Explain>}
         </p>
-        <button
-          className="link small-link"
-          onClick={() => {
-            buzz.tap();
-            setRange(range === "month" ? "all" : "month");
-          }}
-        >
-          {range === "month" ? "This month" : "Last 60 days"}
-        </button>
+      </div>
+      <div className={`segmented ${styles.rankRange}`} role="group" aria-label="Date range">
+        {(["month", "all"] as const).map((period) => (
+          <button key={period} type="button" aria-pressed={range === period} onClick={() => {
+            setBrowsing(true);
+            setRange(period);
+          }}>
+            {period === "month" ? "This month" : "All time"}
+          </button>
+        ))}
       </div>
       <div className="chips" role="group" aria-label="Rank by">
         {boards.map((b) => (
@@ -408,6 +413,7 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
             aria-pressed={board === b.id}
             onClick={() => {
               buzz.tap();
+              setBrowsing(true);
               setBoard(b.id);
             }}
           >
@@ -415,9 +421,9 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
           </button>
         ))}
       </div>
-      <div className="card card-list board" key={board + range}>
+      <div className="card card-list board" data-browsing={browsing || undefined}>
         {rows.slice(0, 8).map((r, i) => (
-          <div key={r.key} className={"list-row rank" + (r.me ? " me" : "")} style={{ animationDelay: `${i * 40}ms` }}>
+          <div key={`${board}:${r.key}`} className={"list-row rank" + (r.me ? " me" : "")} style={i < 3 ? { animationDelay: `${i * 30}ms` } : undefined}>
             <span className={"rank-num" + (i === 0 ? " first" : i < 3 ? " podium" : "")}>
               {i === 0 ? <Crown size={14} strokeWidth={2.2} /> : i + 1}
             </span>

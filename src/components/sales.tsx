@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
@@ -19,7 +19,8 @@ import {
 } from "@/lib/sales-filter";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { FilterBar, FilterChoices } from "./filter-controls";
-import { formatMoney, Money, Sheet } from "./ui";
+import { Money, Sheet } from "./ui";
+import styles from "./operations.module.css";
 
 /** Opens Sales already filtered, like from "All sales" on a shift. */
 export interface SalesFocus {
@@ -46,6 +47,7 @@ export function SalesScreen({
   const [filter, setFilter] = useState<SalesFilter>(() => focus?.filter ?? (shift ? { shift: [shiftKey(shift)] } : {}));
   const [filtering, setFiltering] = useState(false);
   const [searching, setSearching] = useState(false);
+  const searchButton = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState("");
   const shifts = useMemo(
     () => new Map<string, Shift>([...state.shifts, ...(state.shift ? [state.shift] : [])].map((s) => [s.id, s])),
@@ -84,6 +86,7 @@ export function SalesScreen({
   const live = sales.filter((s) => !s.reversedAt);
   const sum = live.reduce((t, s) => t + s.total, 0);
   const tills = [...new Set(live.map((x) => x.shiftId))];
+  const hours = !searching && live.length >= 3 ? salesByHour(live, tills, business.timeZone) : [];
   const multiDay = new Set(sales.map((s) => s.shiftId)).size > 1;
   const currency = shiftCurrency(shift ?? undefined, business);
   const time = new Intl.DateTimeFormat("en", {
@@ -136,8 +139,9 @@ export function SalesScreen({
         {state.sales.length > 0 && (
           <button
             className="round"
-            aria-label="Search receipts"
-            aria-pressed={searching}
+            ref={searchButton}
+            aria-label={searching ? "Close receipt search" : "Search receipts"}
+            aria-expanded={searching}
             onClick={() => {
               setSearching(!searching);
               setQuery("");
@@ -156,6 +160,12 @@ export function SalesScreen({
           aria-label="Search receipts"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            setSearching(false);
+            setQuery("");
+            searchButton.current?.focus({ preventScroll: true });
+          }}
         />
       )}
       {all.length > 0 && (
@@ -167,12 +177,11 @@ export function SalesScreen({
           onOpen={() => setFiltering(true)}
         />
       )}
-      {!searching && live.length >= 3 && (
-        <HourChart
-          hours={salesByHour(live, tills, business.timeZone)}
-          currency={currency}
-          title={active ? "These sales by hour" : "By hour, all shifts"}
-        />
+      {hours.length >= 2 && (
+        <details className={`card ${styles.details} ${styles.analytics}`}>
+          <summary>Sales by hour</summary>
+          <HourChart hours={hours} currency={currency} title={active ? "Filtered sales" : "All shifts"} />
+        </details>
       )}
       {sales.length ? (
         <div className="card card-list">
@@ -185,10 +194,12 @@ export function SalesScreen({
             return (
               <button
                 key={sale.id}
+                type="button"
                 className="list-row"
                 onClick={() => setOpenId(sale.id)}
-                aria-label={`Receipt ${receiptNumber(sh.number, sale.sequence)}, ${formatMoney(sale.total, shiftCurrency(sh, business))}`}
+                aria-haspopup="dialog"
               >
+                <span className="sr-only">Receipt {receiptNumber(sh.number, sale.sequence)}</span>
                 <span className="grow stack gap-4">
                   <span className="ellipsis" style={{ fontWeight: 500 }}>
                     {items}

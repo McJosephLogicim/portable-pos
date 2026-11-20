@@ -1,0 +1,139 @@
+.scheduleHeader :global(.round) {
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.scheduleHeader .addShift:global(.add-shift) {
+  width: auto;
+  gap: 4px;
+  padding-inline: 10px;
+}
+
+.calendarDay[aria-pressed="true"] :global(.cal-num) {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+.locationRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.locationRow :global(.input) {
+  min-width: 0;
+}
+
+.checklistRow {
+  display: flex;
+  align-items: center;
+}
+
+.checklistRow + .checklistRow {
+  border-top: 1px solid var(--line);
+}
+
+.checklistRow :global(.list-row) {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+}
+
+.checklistPhoto {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  margin-right: 12px;
+}
+
+.checklistPhoto img {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--radius-xs) - 2px);
+  object-fit: cover;
+}
+
+.disclosure {
+  transition: transform var(--dur-fast) var(--ease-move);
+}
+
+[aria-expanded="true"] > .disclosure {
+  transform: rotate(180deg);
+}
+
+.reportStatus {
+  text-align: center;
+}
+
+.reportActions :global(.btn) {
+  gap: 6px;
+  min-height: 44px;
+  padding-inline: 10px;
+}
+
+.reportWait {
+  text-align: center;
+  padding-inline: 16px;
+}
+
+.details summary {
+  min-height: 44px;
+  display: list-item;
+  align-content: center;
+}
+
+.analytics summary {
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.analytics[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.analytics[open] > :global(.card) {
+  box-shadow: none;
+}
+
+.hourBars :global(.hour) {
+  position: relative;
+  justify-content: flex-end;
+}
+
+.hourBars :global(.hour) i {
+  position: absolute;
+  bottom: 16px;
+  height: calc(100% - 16px);
+  transform-origin: bottom;
+  transition: transform var(--dur-base) var(--ease-move);
+}
+
+.openingProgress:global(.bar) i {
+  transition-duration: var(--dur-fast);
+}
+
+.rankRange > button {
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure,
+  .hourBars :global(.hour) i,
+  .openingProgress:global(.bar) i {
+    transition: none;
+  }
+}
+
+:global(html[data-input="keyboard"]) .disclosure,
+:global(html[data-input="keyboard"]) .hourBars :global(.hour) i,
+:global(html[data-input="keyboard"]) .openingProgress:global(.bar) i {
+  transition: none;
+}

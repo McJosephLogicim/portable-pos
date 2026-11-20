@@ -6,7 +6,7 @@ import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } fr
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
 import { batchStockUses, catalogSku, maxBatchServings, menuRecipeCost, pricingRules, readTargetMargin, unitFor } from "@/lib/stock";
-import { SubPage, useCommit } from "./settings";
+import { SetupDetails, SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { MenuCostingOverview } from "./recipe-costing";
 import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
@@ -394,9 +394,6 @@ export function ItemSheet({
       onRemove={onRemove}
       onClose={onClose}
     >
-      <div className="card card-pad">
-        <PhotoPicker value={image} onChange={setImage} label="item photo" />
-      </div>
       <div className="card card-pad stack gap-14">
         <label className="field">
           <span>Name</span>
@@ -409,7 +406,7 @@ export function ItemSheet({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        {simple && <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />}
+        <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
         <div className="field">
           <span>Category</span>
           <SuggestInput
@@ -426,6 +423,7 @@ export function ItemSheet({
             onChange={setCategory}
           />
         </div>
+        <PhotoPicker value={image} onChange={setImage} label="item photo" />
       </div>
 
       {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
@@ -544,30 +542,34 @@ export function ItemSheet({
                 )}
               </>
             )}
-            <div className="grid-2">
-              <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
-              <MoneyField
-                label="Other cost per serving"
-                value={other}
-                onChange={setOther}
-                currency={currency}
-                help={{
-                  title: "Other cost per serving",
-                  body: <p>Enter extra costs for one serving, such as cups, lids or takeaway bags. Leave out anything already included in the recipe used for costing.</p>,
-                }}
-              />
-            </div>
-            <label className="field">
-              <span>Target margin override (%)</span>
-              <input
-                className="input"
-                inputMode="decimal"
-                maxLength={12}
-                placeholder={`Business default (${pricing.targetMargin}%)`}
-                value={marginOverride}
-                onChange={(e) => setMarginOverride(e.target.value)}
-              />
-            </label>
+            <SetupDetails title="Cost adjustments" description="Labor, packaging and target margin">
+              <div className="stack gap-14">
+                <div className="grid-2">
+                  <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
+                  <MoneyField
+                    label="Other cost per serving"
+                    value={other}
+                    onChange={setOther}
+                    currency={currency}
+                    help={{
+                      title: "Other cost per serving",
+                      body: <p>Enter extra costs for one serving, such as cups, lids or takeaway bags. Leave out anything already included in the recipe used for costing.</p>,
+                    }}
+                  />
+                </div>
+                <label className="field">
+                  <span>Target margin override (%)</span>
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    maxLength={12}
+                    placeholder={`Business default (${pricing.targetMargin}%)`}
+                    value={marginOverride}
+                    onChange={(e) => setMarginOverride(e.target.value)}
+                  />
+                </label>
+              </div>
+            </SetupDetails>
             {showCostPreview && (
               <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
             )}
@@ -575,13 +577,8 @@ export function ItemSheet({
         )}
       </div>}
 
-      {!simple && <div className="card card-pad">
-        <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
-      </div>}
-
-      {!simple && <details className="card card-pad">
-        <summary className="strong">Recipe details</summary>
-        <div className="stack gap-14 recipe-details-fields">
+      {!simple && <SetupDetails title="Recipe details" description="SKU and notes" className="card card-pad">
+        <div className="stack gap-14">
           <label className="field">
             <span>SKU</span>
             <input className="input" maxLength={64} value={sku} onChange={(e) => setSku(e.target.value)} />
@@ -591,7 +588,7 @@ export function ItemSheet({
             <textarea className="input" aria-label="Notes" rows={2} maxLength={400} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
         </div>
-      </details>}
+      </SetupDetails>}
 
       {groups.map((g) => (
         <div className="card card-pad stack gap-12" key={g.id}>
