@@ -31,6 +31,7 @@ import {
   buzz,
   CategoryTabs,
   DoneCheck,
+  ItemFaces,
   errorText,
   usePin,
   formatMoney,
@@ -506,9 +507,19 @@ function Checkout({
     }
   }
 
+  const faces = (list: { productId: string; name: string }[]) => {
+    const seen = new Set<string>();
+    return list.flatMap((l) =>
+      seen.has(l.productId)
+        ? []
+        : (seen.add(l.productId), [{ id: l.productId, name: l.name, image: shift.menu.find((p) => p.id === l.productId)?.image }]),
+    );
+  };
+
   if (done) {
     const { sale } = done;
-    const showChange = sale.payment.kind === "cash" && sale.change > 0;
+    const cash = sale.payment.kind === "cash";
+    const showChange = cash && sale.change > 0;
     return (
       <Sheet
         title="Sale complete"
@@ -518,42 +529,37 @@ function Checkout({
             <button className="btn block" onClick={onClose}>
               New sale
             </button>
-            <button
-              className="btn ghost block compact"
-              onClick={() => onReceipt(sale)}
-            >
-              View receipt {receiptNumber(done.shiftNumber, sale.sequence)}
+            <button className="btn ghost block compact" onClick={() => onReceipt(sale)}>
+              View receipt
             </button>
           </>
         }
       >
-        <div
-          className="stack gap-12"
-          style={{ alignItems: "center", textAlign: "center", padding: "12px 0 8px" }}
-        >
-          <DoneCheck />
-          {showChange ? (
-            <>
-              <p className="label">Change to give</p>
-              <Money
-                value={sale.change}
-                currency={currency}
-                className="due-num"
-              />
-              <p className="muted">
-                From {formatMoney(sale.received, currency)} cash for a{" "}
-                {formatMoney(sale.total, currency)} order
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="label">Paid with {sale.payment.name}</p>
-              <Money value={sale.total} currency={currency} className="due-num" />
-              {sale.payment.kind === "cash" && (
-                <p className="muted">Exact cash, no change</p>
-              )}
-            </>
-          )}
+        <div className="confirm-sale sale-done">
+          <div className="stack gap-12 confirm-main">
+            <p className="saved-line">
+              <DoneCheck small />
+              Saved · {receiptNumber(done.shiftNumber, sale.sequence)}
+            </p>
+            <p className="headline">
+              <Money value={showChange ? sale.change : sale.total} currency={currency} />{" "}
+              <span className="g">{showChange ? "change to give." : cash ? "exact, no change." : "paid with " + sale.payment.name + "."}</span>
+            </p>
+          </div>
+          <div className="card card-list">
+            <div className="list-row">
+              <span className="grow">Items</span>
+              <ItemFaces items={faces(sale.lines)} />
+            </div>
+            <div className="list-row">
+              <span className="grow">Total</span>
+              <Money value={sale.total} currency={currency} />
+            </div>
+            <div className="list-row">
+              <span className="grow">{cash ? "Cash received" : "Paid with " + sale.payment.name}</span>
+              <Money value={sale.received} currency={currency} />
+            </div>
+          </div>
         </div>
       </Sheet>
     );
@@ -587,12 +593,18 @@ function Checkout({
       >
         <div className="confirm-sale">
           <div className="stack gap-8 confirm-main">
-            <p className="label">
-              {!isCash ? "Paid with " + chosen.name : change > 0 ? "Change to give" : "Exact cash, no change"}
+            <p className="headline">
+              <Money value={isCash && change > 0 ? change : total} currency={currency} />{" "}
+              <span className="g">
+                {!isCash ? "to receive in " + chosen.name + "." : change > 0 ? "change to give." : "exact, no change."}
+              </span>
             </p>
-            <Money value={isCash && change > 0 ? change : total} currency={currency} className="due-num" />
           </div>
           <div className="card card-list">
+            <div className="list-row">
+              <span className="grow">Items</span>
+              <ItemFaces items={faces(lines)} />
+            </div>
             <div className="list-row">
               <span className="grow">
                 Total

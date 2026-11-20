@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Crown } from "lucide-react";
+import { ChevronDown, ChevronRight, Crown } from "lucide-react";
 import { bestSellers, leaderboard, salesByHour, type Board } from "@/lib/insights";
 import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
@@ -132,47 +132,44 @@ export function ShiftSales({
   );
 }
 
-/** One best seller, over the shift sheet: how it did and the receipts it was on. Closing returns to the shift. */
-function ItemSales({
+type Receipts = RegisterState["sales"];
+
+/** A breakdown over whatever is open: one big number, a line saying what it is, and the receipts behind it. */
+function SalesSheet({
   state,
-  shiftIds,
-  productId,
   title,
+  amount,
+  summary,
+  sales,
   currency,
   onClose,
   onSales,
 }: {
   state: RegisterState;
-  shiftIds: string[];
-  productId: string;
   title: string;
+  amount: number;
+  summary: string;
+  sales: Receipts;
   currency: string;
   onClose: () => void;
   onSales?: () => void;
 }) {
-  const seller = bestSellers(state.sales, shiftIds).find((s) => s.productId === productId);
-  const sales = state.sales
-    .filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt && s.lines.some((l) => l.productId === productId))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const time = new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" });
-  if (!seller) return null;
   return (
     <Sheet
-      title={seller.name}
+      title={title}
       onClose={onClose}
       footer={
         onSales && (
-          <button type="button" className="btn ghost block compact" onClick={onSales}>
-            Open in Sales <ChevronRight size={15} />
+          <button type="button" className="btn block" onClick={onSales}>
+            See in Sales
           </button>
         )
       }
     >
       <div className="stack gap-4">
-        <Money value={seller.revenue} currency={currency} className="big-num" />
-        <p className="muted">
-          {seller.quantity} sold at {title}, in {sales.length} {sales.length === 1 ? "sale" : "sales"}
-        </p>
+        <Money value={amount} currency={currency} className="big-num" />
+        <p className="muted">{summary}</p>
       </div>
       <div className="card card-list">
         {sales.map((sale) => (
@@ -190,6 +187,163 @@ function ItemSales({
         ))}
       </div>
     </Sheet>
+  );
+}
+
+const live = (state: RegisterState, shiftIds: string[]) =>
+  state.sales
+    .filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+/** One item, over the shift or till sheet: how it did and the receipts it was on. Closing returns to where you were. */
+export function ItemSales({
+  state,
+  shiftIds,
+  productId,
+  title,
+  currency,
+  onClose,
+  onSales,
+}: {
+  state: RegisterState;
+  shiftIds: string[];
+  productId: string;
+  title: string;
+  currency: string;
+  onClose: () => void;
+  onSales?: () => void;
+}) {
+  const seller = bestSellers(state.sales, shiftIds).find((s) => s.productId === productId);
+  const sales = live(state, shiftIds).filter((s) => s.lines.some((l) => l.productId === productId));
+  if (!seller) return null;
+  return (
+    <SalesSheet
+      state={state}
+      title={seller.name}
+      amount={seller.revenue}
+      summary={`${seller.quantity} sold at ${title}, in ${sales.length} ${sales.length === 1 ? "sale" : "sales"}`}
+      sales={sales}
+      currency={currency}
+      onClose={onClose}
+      onSales={onSales}
+    />
+  );
+}
+
+/** One payment method over the till: what came in that way and the receipts. */
+export function PaymentSales({
+  state,
+  shiftIds,
+  method,
+  title,
+  currency,
+  onClose,
+  onSales,
+}: {
+  state: RegisterState;
+  shiftIds: string[];
+  method: { id: string; name: string };
+  title: string;
+  currency: string;
+  onClose: () => void;
+  onSales?: () => void;
+}) {
+  const sales = live(state, shiftIds).filter((s) => s.payment.id === method.id);
+  if (!sales.length) return null;
+  return (
+    <SalesSheet
+      state={state}
+      title={method.name}
+      amount={sales.reduce((t, s) => t + s.total, 0)}
+      summary={`${sales.length} ${sales.length === 1 ? "sale" : "sales"} at ${title}`}
+      sales={sales}
+      currency={currency}
+      onClose={onClose}
+      onSales={onSales}
+    />
+  );
+}
+
+/** The till's items by how many sold: the top few, with the rest a tap away. Each opens its own breakdown. */
+export function ItemsSold({
+  state,
+  shiftIds,
+  menu,
+  currency,
+  title,
+  onSales,
+}: {
+  state: RegisterState;
+  shiftIds: string[];
+  menu: Product[];
+  currency: string;
+  title: string;
+  onSales: (productId: string) => void;
+}) {
+  const [all, setAll] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const sellers = useMemo(() => bestSellers(state.sales, shiftIds), [state.sales, shiftIds]);
+  const shown = all ? sellers : sellers.slice(0, 5);
+  return (
+    <div className="stack gap-10">
+      <p className="group-title">Items sold</p>
+      <div className="card card-list">
+        {!sellers.length && (
+          <div className="list-row">
+            <span className="grow stack">
+              <span>No sales yet</span>
+              <span className="label">Each item adds up here as you sell.</span>
+            </span>
+          </div>
+        )}
+        {shown.map((s) => {
+          const image = menu.find((p) => p.id === s.productId)?.image;
+          return (
+            <button
+              key={s.productId}
+              type="button"
+              className="list-row"
+              onClick={() => {
+                buzz.tap();
+                setPicked(s.productId);
+              }}
+            >
+              {image ? (
+                <img src={image} alt="" width={36} height={36} className="thumb small" />
+              ) : (
+                <span className="well">{s.name.trim().slice(0, 1).toUpperCase()}</span>
+              )}
+              <span className="grow stack">
+                <span className="ellipsis">{s.name}</span>
+                <span className="label">{s.quantity} sold</span>
+              </span>
+              <Money value={s.revenue} currency={currency} />
+              <ChevronRight size={18} className="chev" />
+            </button>
+          );
+        })}
+        {sellers.length > 5 && (
+          <button type="button" className="list-row" onClick={() => setAll(!all)} aria-expanded={all}>
+            <span className="grow">{all ? "Show less" : `Show ${sellers.length - 5} more`}</span>
+            <ChevronDown size={18} className="chev" style={{ transform: all ? "rotate(180deg)" : undefined }} />
+          </button>
+        )}
+      </div>
+      {picked && (
+        <ItemSales
+          state={state}
+          shiftIds={shiftIds}
+          productId={picked}
+          title={title}
+          currency={currency}
+          onClose={() => setPicked(null)}
+          onSales={() => {
+            setPicked(null);
+            onSales(picked);
+          }}
+        />
+      )}
+    </div>
   );
 }
 
