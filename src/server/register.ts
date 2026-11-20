@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
 import { checkClosing, checkOpening, updateShiftMenu } from "../lib/domain";
 import {
@@ -240,6 +240,16 @@ export async function runCommand(
             .from(bookings)
             .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
           ensure(booking, "That scheduled shift was removed.", 404);
+          const [closed] = await tx
+            .select({ id: shifts.id })
+            .from(shifts)
+            .where(and(
+              eq(shifts.businessId, business.id),
+              eq(shifts.bookingId, bookingId),
+              isNotNull(shifts.closedAt),
+            ))
+            .limit(1);
+          ensure(!closed, "This shift already closed. Add a new one on Shifts.", 409);
           const problem = startProblem(booking, business.timeZone);
           ensure(!problem, problem ?? "", 409);
         }

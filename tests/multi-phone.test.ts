@@ -94,8 +94,12 @@ test(
     // A sold-out mark that arrives after closing is ignored instead of blocking the queue.
     await sync(phoneA, [{ type: "availability", id: randomUUID(), shiftId: shift.id, targetId: "tea", soldOut: true }]);
 
-    // Reopening still works and the shift counter moves on.
-    const next = await cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 0, stock: { tea: 1 } });
+    // The old phone can't restart the closed booking. A new shift moves the counter on.
+    await assert.rejects(
+      cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 0, stock: { tea: 1 } }),
+      /already closed/,
+    );
+    const next = await cmd({ action: "open", deviceId: phoneA, bookingId: await shiftNow(cmd, pin), openingCash: 0, stock: { tea: 1 } });
     assert.equal(next.shift!.number, 2);
   },
 );

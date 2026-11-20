@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { checkCount, countTotal, denominations } from "../src/lib/cash";
+import { demoAction, demoBootstrap, DEMO_PIN } from "../src/lib/demo";
 import { checkClosing, checkOpening, makeSale, shiftTotals, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import { joinLink, matchCode, readJoinCode, shortCode, SHIFT_CODE, TEAM_CODE } from "../src/lib/join-link";
 import { reportText, scheduleText, shiftReport } from "../src/lib/report";
 import { canMake, shiftStock } from "../src/lib/stock";
-import type { Booking, Business, Expense, Product, Shift } from "../src/lib/types";
+import type { Booking, Business, Expense, Product, RegisterState, Shift } from "../src/lib/types";
+import { defaultSettings } from "../src/lib/settings";
+import { upcomingBookings } from "../src/lib/team";
 import { runCommand } from "../src/server/register";
 import { shiftNow } from "./schedule";
 
@@ -265,6 +268,30 @@ test(
   },
 );
 
+test("a closed scheduled shift cannot be started again in the demo", () => {
+  const deviceId = randomUUID();
+  const initial = demoBootstrap(deviceId);
+  const booking: Booking = {
+    id: randomUUID(), startsAt: new Date(Date.now() - 3600000).toISOString(),
+    endsAt: new Date(Date.now() + 3600000).toISOString(),
+    place: null, organizer: null, event: null, seats: 1, staff: [], quota: 0, incentive: 0,
+  };
+  const state: RegisterState = {
+    ...initial, deviceId, cart: [], pending: [], shift: null, shifts: [],
+    business: { ...initial.business!, settings: defaultSettings("PHP") },
+    menu: [{ id: "tea", name: "Tea", category: "", price: 100, groups: [] }],
+    bookings: [booking],
+  };
+  const open = { action: "open" as const, openingCash: 0, stock: {}, checked: [], bookingId: booking.id };
+  const opened = { ...state, ...demoAction(state, open) };
+  const closed = { ...opened, ...demoAction(opened, { action: "close", countedCash: 0, pin: DEMO_PIN }) };
+  assert.deepEqual(upcomingBookings(state).map((b) => b.id), [booking.id]);
+  assert.deepEqual(upcomingBookings(closed), []);
+  assert.throws(() => demoAction(closed, open), /already closed/);
+  assert.equal(closed.shift, null);
+  assert.equal(closed.shifts.length, 1);
+});
+
 test(
   "shifts start on their schedule, one at a time",
   {
@@ -300,7 +327,28 @@ test(
     const first = await open(soon);
     assert.equal(first.shift!.bookingId, soon);
     // A second start while one runs joins it instead of opening another.
-    const second = await open(await at(-1, 3));
+    const other = await at(-1, 3);
+    const second = await open(other);
     assert.equal(second.shift!.id, first.shift!.id);
+    await cmd({ action: "close", shiftId: first.shift!.id, countedCash: 0, deviceId, pin });
+    // Closing before the scheduled end must make the booking unavailable, even
+    // for an old Start request sent by another phone.
+    await assert.rejects(
+      cmd({ action: "open", deviceId: randomUUID(), openingCash: 0, bookingId: soon }),
+      { status: 409, message: "This shift already closed. Add a new one on Shifts." },
+    );
+    const after = await cmd({ action: "bootstrap" });
+    assert.equal(after.shift, null);
+    assert.equal(after.shifts.length, 1);
+    // A different scheduled shift still starts normally.
+    const next = await open(other);
+    assert.equal(next.shift!.number, 2);
+    assert.equal(next.shift!.bookingId, other);
+    await cmd({ action: "close", shiftId: next.shift!.id, countedCash: 0, deviceId, pin });
+    // Check all history, including when the closed booking isn't the latest,
+    // and apply the same rule when a Simple till selects a scheduled shift.
+    await cmd({ action: "mode", mode: "simple", pin });
+    await assert.rejects(open(soon), /already closed/);
+    assert.equal((await open()).shift!.bookingId, undefined);
   },
 );

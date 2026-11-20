@@ -683,16 +683,6 @@ button.list-row:not(.sell-option):active {
   background: var(--canvas);
   box-shadow: 0 -1px 0 rgb(0 0 0 / 0.04);
 }
-@media (min-width: 900px) {
-  .sheet {
-    margin: auto;
-    border-radius: var(--radius-xl);
-    max-height: min(86dvh, var(--keyboard-height, 86dvh));
-  }
-  .sheet-head::before {
-    display: none;
-  }
-}
 /* ---------- exits (src/lib/exit.ts) ---------- */
 .exit-ghost,
 .exit-ghost * {
@@ -2998,6 +2988,57 @@ html {
 }
 .shift-strip.warn > svg:first-child {
   color: inherit;
+}
+.past-shift-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  padding-block: 14px;
+}
+.past-shift-icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: start;
+}
+.past-shift-info {
+  grid-column: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.past-shift-info .row {
+  flex-wrap: wrap;
+}
+.past-shift-total {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.past-shift-row > .chev {
+  grid-column: 3;
+  grid-row: 1 / 3;
+}
+.list-row.past-shift-row > .chev {
+  margin-right: 0;
+}
+@media (min-width: 480px) {
+  .past-shift-row {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto;
+  }
+  .past-shift-icon,
+  .past-shift-row > .chev {
+    grid-row: 1;
+    align-self: center;
+  }
+  .past-shift-total {
+    grid-column: 3;
+    grid-row: 1;
+    text-align: right;
+  }
+  .past-shift-row > .chev {
+    grid-column: 4;
+  }
 }
 
 /* ---------- branding ---------- */

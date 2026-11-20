@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, Check, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Plus, Receipt, Trash2, Wallet } from "lucide-react";
 import type { Booking, Business, Expense, RegisterState, Shift, StockItem } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
@@ -17,7 +17,7 @@ import { countOf, StockCount } from "./stock-settings";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
-import { OPEN_EARLY, startProblem } from "@/lib/team";
+import { OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import {
   errorText,
   formatMoney,
@@ -147,15 +147,6 @@ function Difference({ value, currency }: { value: number; currency: string }) {
   );
 }
 
-/** Scheduled shifts that haven't ended, soonest first, with the ones you're on ahead of others at the same time. */
-function upcoming(state: RegisterState) {
-  const now = Date.now();
-  const mine = (b: Booking) => (b.staff.some((s) => s.memberId === state.me?.memberId) ? 0 : 1);
-  return (state.bookings ?? [])
-    .filter((b) => Date.parse(b.endsAt) > now)
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || mine(a) - mine(b));
-}
-
 function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zone: string; note?: string; onClick?: () => void }) {
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
@@ -217,7 +208,7 @@ function NoShift({
         </div>
       </div>
     );
-  const list = upcoming(state);
+  const list = upcomingBookings(state);
   const ready = list.filter((b) => !startProblem(b, zone));
   const next = list.find((b) => startProblem(b, zone));
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -293,7 +284,7 @@ function OpenShift({
   const business = state.business!;
   const currency = business.currency;
   const readyBookings = isSimpleMode(business.settings) && !booking
-    ? upcoming(state).filter((b) => !startProblem(b, business.timeZone))
+    ? upcomingBookings(state).filter((b) => !startProblem(b, business.timeZone))
     : [];
   const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
@@ -705,18 +696,24 @@ export function ShiftScreen({
   const [starting, setStarting] = useState<string | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
   const [detail, setDetail] = useState<string | null>(null);
+  const [pastShifts, setPastShifts] = useState(false);
   const [report, setReport] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [method, setMethod] = useState<string | null>(null);
+  const [allExpenses, setAllExpenses] = useState(false);
+  const [allStock, setAllStock] = useState(false);
+  const [allPayments, setAllPayments] = useState(false);
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
-  const startingBooking = starting ? state.bookings?.find((b) => b.id === starting) : undefined;
+  const startingBooking = starting ? upcomingBookings(state).find((b) => b.id === starting) : undefined;
   const opening = simple ? state.menu.length > 0 : Boolean(startingBooking);
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const shiftExpenses = shift ? expenses.filter((e) => e.shiftId === shift.id && !e.voidedAt) : [];
+  const remainingStock = shift ? Object.entries(stockLeft(shift, state.sales)) : [];
+  const paymentMethods = totals?.methods.filter((m) => m.count) ?? [];
   const pastLabels = [...new Set([...expenses.map((e) => e.label), ...expenseIdeas])];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
@@ -748,13 +745,27 @@ export function ShiftScreen({
           Closing is waiting for the server. Reconnect and close again to finish.
         </p>
       )}
+      {(shift || (history.length > 0 && !compact && !startingBooking)) && (
+        <div className="stack gap-8">
+          {shift && (
+            <ShiftStrip
+              state={state}
+              onTillPage
+              onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
+            />
+          )}
+          {history.length > 0 && !compact && !startingBooking && (
+            <button type="button" className="shift-strip" onClick={() => setPastShifts(true)} aria-haspopup="dialog">
+              <Wallet size={16} strokeWidth={1.9} />
+              <span className="grow">Past shifts</span>
+              <span className="label">{history.length}</span>
+              <ChevronRight size={16} className="chev" />
+            </button>
+          )}
+        </div>
+      )}
       {shift && totals ? (
         <>
-          <ShiftStrip
-            state={state}
-            onTillPage
-            onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
-          />
           <h1 className="headline">
             <Money value={total} currency={currency} />{" "}
             <span className="g">
@@ -797,7 +808,7 @@ export function ShiftScreen({
               )}
             </div>
             <div className="card card-list">
-              {shiftExpenses.map((e) => (
+              {(allExpenses ? shiftExpenses : shiftExpenses.slice(0, 5)).map((e) => (
                 <div className="list-row" key={e.id}>
                   <span className="well">
                     <Receipt size={18} strokeWidth={1.8} />
@@ -840,6 +851,12 @@ export function ShiftScreen({
               {!shiftExpenses.length && (
                 <EmptyRow title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
               )}
+              {shiftExpenses.length > 5 && (
+                <button type="button" className="list-row" onClick={() => setAllExpenses(!allExpenses)} aria-expanded={allExpenses}>
+                  <span className="grow">{allExpenses ? "Show less" : `Show ${shiftExpenses.length - 5} more`}</span>
+                  <ChevronDown size={18} className="chev" style={{ transform: allExpenses ? "rotate(180deg)" : undefined }} />
+                </button>
+              )}
               <button type="button" className="list-row" onClick={() => setAddingExpense(true)}>
                 <span className="well">
                   <Plus size={18} strokeWidth={1.8} />
@@ -856,7 +873,7 @@ export function ShiftScreen({
             <div className="stack gap-10">
               <p className="group-title">Stock left</p>
               <div className="card card-list">
-                {Object.entries(stockLeft(shift, state.sales)).map(([id, left]) => {
+                {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
                   const item = shiftStock(shift).items.find((i) => i.id === id);
                   const opened = shift.stock![id];
                   return (
@@ -873,6 +890,12 @@ export function ShiftScreen({
                     </div>
                   );
                 })}
+                {remainingStock.length > 5 && (
+                  <button type="button" className="list-row" onClick={() => setAllStock(!allStock)} aria-expanded={allStock}>
+                    <span className="grow">{allStock ? "Show less" : `Show ${remainingStock.length - 5} more`}</span>
+                    <ChevronDown size={18} className="chev" style={{ transform: allStock ? "rotate(180deg)" : undefined }} />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -888,7 +911,7 @@ export function ShiftScreen({
             <p className="group-title">By payment</p>
             <div className="card card-list">
               {!totals.count && <EmptyRow title="No sales yet" detail="Each payment method adds up here as you sell." />}
-              {totals.methods.filter((m) => m.count).map((m) => (
+              {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => (
                 <button
                   type="button"
                   className="list-row"
@@ -911,6 +934,12 @@ export function ShiftScreen({
                   <ChevronRight size={18} className="chev" />
                 </button>
               ))}
+              {paymentMethods.length > 5 && (
+                <button type="button" className="list-row" onClick={() => setAllPayments(!allPayments)} aria-expanded={allPayments}>
+                  <span className="grow">{allPayments ? "Show less" : `Show ${paymentMethods.length - 5} more`}</span>
+                  <ChevronDown size={18} className="chev" style={{ transform: allPayments ? "rotate(180deg)" : undefined }} />
+                </button>
+              )}
             </div>
             {method && totals.methods.some((m) => m.id === method) && (
               <PaymentSales
@@ -961,35 +990,32 @@ export function ShiftScreen({
           <NoShift state={state} onStart={setStarting} onSchedule={onSchedule} onGoMenu={onGoMenu} />
         )
       )}
-      {history.length > 0 && !compact && !startingBooking && (
-        <div className="stack gap-10">
-          <p className="group-title">Past shifts</p>
+      {pastShifts && (
+        <Sheet title="Past shifts" onClose={() => setPastShifts(false)}>
           <div className="card card-list">
-            {history.slice(0, 30).map((s) => {
+            {history.map((s) => {
               const t = shiftTotals(s, state.sales);
               return (
-                <button key={s.id} className="list-row" onClick={() => setDetail(s.id)}>
-                  <span className="well">
+                <button key={s.id} type="button" className="list-row past-shift-row" onClick={() => setDetail(s.id)} aria-haspopup="dialog">
+                  <span className="well past-shift-icon">
                     <Wallet size={18} strokeWidth={1.8} />
                   </span>
-                  <span className="grow stack">
-                    <span>
-                      Shift {s.number}{" "}
-                      <span className="g">· {day.format(new Date(s.closedAt!))}</span>
-                    </span>
+                  <span className="past-shift-info stack">
+                    <span>Shift {s.number}</span>
+                    <span className="label">{day.format(new Date(s.closedAt!))}</span>
                     {s.difference !== undefined && (
                       <span className="label">
                         <Difference value={s.difference} currency={shiftCurrency(s, business)} />
                       </span>
                     )}
                   </span>
-                  <Money value={t.total} currency={shiftCurrency(s, business)} />
+                  <Money value={t.total} currency={shiftCurrency(s, business)} className="past-shift-total" />
                   <ChevronRight size={18} className="chev" />
                 </button>
               );
             })}
           </div>
-        </div>
+        </Sheet>
       )}
       {closing && shift && totals && (
         <CloseSheet

@@ -348,7 +348,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("pointerdown", () => mark(false), true);
 }
 
-/** Bottom sheet on phones, centered dialog on wide screens. Uses the native dialog for focus. */
+/** Bottom sheet at every screen size. Uses the native dialog for focus. */
 export function Sheet({
   title,
   onClose,

@@ -4,6 +4,7 @@ import type {
   Me,
   Member,
   Organizer,
+  RegisterState,
   Role,
   Sale,
   ShiftRole,
@@ -443,6 +444,18 @@ export function walkInBooking(
 
 /** A till can open this long before its scheduled shift starts. */
 export const OPEN_EARLY = 30 * 60000;
+
+/** Unclosed scheduled shifts that haven't ended, soonest first, then the ones you're on. */
+export function upcomingBookings(
+  state: Pick<RegisterState, "bookings" | "shifts" | "me">,
+  now = Date.now(),
+) {
+  const closed = new Set(state.shifts.filter((s) => s.closedAt && s.bookingId).map((s) => s.bookingId));
+  const mine = (b: Booking) => (b.staff.some((s) => s.memberId === state.me?.memberId) ? 0 : 1);
+  return (state.bookings ?? [])
+    .filter((b) => !closed.has(b.id) && Date.parse(b.endsAt) > now)
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || mine(a) - mine(b));
+}
 
 /** Why a scheduled shift can't start now, or null when it can. Shifts start on their schedule. */
 export function startProblem(
