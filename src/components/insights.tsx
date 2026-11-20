@@ -6,6 +6,7 @@ import { bestSellers, leaderboard, salesByHour, type Board } from "@/lib/insight
 import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
 import { Avatar } from "./team";
+import { LiquidSegments } from "./liquid-segments";
 import { buzz, Explain, formatMoney, Money, progressStyle, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -395,16 +396,15 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
           {!owner && !empty && <Explain title="Leaderboard">Ranked by quotas hit, then shifts worked.</Explain>}
         </p>
       </div>
-      <div className={`segmented ${styles.rankRange}`} role="group" aria-label="Date range">
-        {(["month", "all"] as const).map((period) => (
-          <button key={period} type="button" aria-pressed={range === period} onClick={() => {
-            setBrowsing(true);
-            setRange(period);
-          }}>
-            {period === "month" ? "This month" : "All time"}
-          </button>
-        ))}
-      </div>
+      <LiquidSegments
+        label="Date range"
+        value={range}
+        onChange={(period) => {
+          setBrowsing(true);
+          setRange(period);
+        }}
+        options={[{ value: "month", label: "This month" }, { value: "all", label: "All time" }]}
+      />
       <div className="chips" role="group" aria-label="Rank by">
         {boards.map((b) => (
           <button

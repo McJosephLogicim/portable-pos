@@ -46,6 +46,7 @@ import type {
 } from "@/lib/types";
 import { SuggestInput } from "./combobox";
 import { Leaderboards, ShiftSales } from "./insights";
+import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
@@ -1338,14 +1339,16 @@ function ShareSchedule({
         </>
       }
     >
-      <div className="segmented" role="group" aria-label="Which shifts">
-        <button aria-pressed={range === "upcoming"} disabled={copying} onClick={() => setRange("upcoming")}>
-          Upcoming
-        </button>
-        <button aria-pressed={range === "month"} disabled={copying} onClick={() => setRange("month")}>
-          {plainDay(month, { month: "long" })}
-        </button>
-      </div>
+      <LiquidSegments
+        label="Which shifts"
+        value={range}
+        onChange={setRange}
+        disabled={copying}
+        options={[
+          { value: "upcoming", label: "Upcoming" },
+          { value: "month", label: plainDay(month, { month: "long" }) },
+        ]}
+      />
       {shown.length ? (
         <pre className="schedule-text">{text}</pre>
       ) : (
@@ -1552,17 +1555,17 @@ export function ScheduleScreen(props: ScheduleProps) {
         }}
       />
 
-      <div className="segmented" role="group" aria-label="Show">
-        <button aria-pressed={filter === "day"} onClick={() => setFilter("day")}>
-          {selected === today ? "Today" : plainDay(selected, { weekday: "short", day: "numeric" })}
-        </button>
-        <button aria-pressed={filter === "open"} onClick={() => setFilter("open")}>
-          Open seats{openSeats.length ? ` · ${openSeats.length}` : ""}
-        </button>
-        <button aria-pressed={filter === "mine"} onClick={() => setFilter("mine")}>
-          Mine{mineNext.length ? ` · ${mineNext.length}` : ""}
-        </button>
-      </div>
+      <LiquidSegments
+        label="Show"
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: "day", label: selected === today ? "Today" : plainDay(selected, { weekday: "short", day: "numeric" }) },
+          { value: "open", label: openSeats.length ? `Open seats · ${openSeats.length}` : "Open seats" },
+          { value: "mine", label: mineNext.length ? `Mine · ${mineNext.length}` : "Mine" },
+        ]}
+      />
+      <p className="sr-only" role="status">{list.length} {list.length === 1 ? "shift" : "shifts"} shown</p>
 
       <div className="stack gap-10">
         {list.map((b, i) => {

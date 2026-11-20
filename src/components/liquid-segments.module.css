@@ -1,0 +1,75 @@
+.control:global(.segmented) {
+  --segment-padding: 4px;
+  --segment-gap: 8px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr));
+  gap: var(--segment-gap);
+  padding: var(--segment-padding);
+  font-size: clamp(13px, 3.7vw, 14px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.control:global(.segmented) > button,
+.highlight > span {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 2px 4px;
+  font-size: inherit;
+  text-align: center;
+  text-wrap: balance;
+  white-space: normal;
+}
+
+.control > button:disabled {
+  cursor: default;
+}
+
+.control:global(.segmented) > button[aria-pressed="false"]:active:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.highlight {
+  display: none;
+}
+
+@supports (clip-path: inset(0 round 1px)) {
+  .control:global(.segmented) > button[aria-pressed="true"] {
+    background: transparent;
+    color: var(--ink-secondary);
+  }
+
+  .highlight {
+    --segment-step: calc((100% + var(--segment-gap)) / var(--segment-count));
+    position: absolute;
+    inset: 0 var(--segment-padding);
+    display: grid;
+    grid-template-columns: inherit;
+    gap: inherit;
+    background: var(--accent);
+    color: var(--on-accent);
+    clip-path: inset(
+      var(--segment-padding)
+      calc(var(--segment-step) * (var(--segment-count) - 1 - var(--segment-index)))
+      var(--segment-padding)
+      calc(var(--segment-step) * var(--segment-index))
+      round var(--radius-pill)
+    );
+    pointer-events: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .control:global(.segmented) > button[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .highlight {
+    display: none;
+  }
+}

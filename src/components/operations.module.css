@@ -120,10 +120,6 @@
   transition-duration: var(--dur-fast);
 }
 
-.rankRange > button {
-  min-height: 44px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .disclosure,
   .hourBars :global(.hour) i,

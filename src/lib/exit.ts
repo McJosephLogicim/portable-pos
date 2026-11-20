@@ -16,15 +16,17 @@
  * - A bulk change (a filter hiding many rows at once) is instant; only single removals animate.
  */
 
+import { cssTimeMs } from "./motion";
+
 const BULK = 6;
 const fallback = { fade: 120, collapse: 180, sheet: 160 };
 type Kind = keyof typeof fallback;
 
 function duration(kind: Kind) {
-  const value = parseFloat(
+  return cssTimeMs(
     getComputedStyle(document.documentElement).getPropertyValue("--exit-" + kind),
+    fallback[kind],
   );
-  return Number.isFinite(value) ? value : fallback[kind];
 }
 function curve(name: "--ease-out" | "--ease-move" | "--ease-drawer") {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "ease-out";
