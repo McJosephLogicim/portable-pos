@@ -6,7 +6,7 @@ import { bestSellers, leaderboard, salesByHour, type Board } from "@/lib/insight
 import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
 import { Avatar } from "./team";
-import { buzz, Explain, formatMoney, Money, progressStyle } from "./ui";
+import { buzz, Explain, formatMoney, Money, progressStyle, Sheet } from "./ui";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
 
@@ -52,15 +52,19 @@ export function ShiftSales({
   shiftIds,
   menu,
   currency,
+  title,
   onSales,
 }: {
   state: RegisterState;
   shiftIds: string[];
   menu: Product[];
   currency: string;
+  /** The shift's name, for the item sheet. */
+  title: string;
   /** Opens Sales for this shift, or for one item in it. */
   onSales?: (productId?: string) => void;
 }) {
+  const [picked, setPicked] = useState<string | null>(null);
   const zone = state.business!.timeZone;
   const sellers = useMemo(() => bestSellers(state.sales, shiftIds), [state.sales, shiftIds]);
   const hours = useMemo(() => salesByHour(state.sales, shiftIds, zone), [state.sales, shiftIds, zone]);
@@ -84,10 +88,9 @@ export function ShiftSales({
             key={s.productId}
             type="button"
             className="list-row seller"
-            disabled={!onSales}
             onClick={() => {
               buzz.tap();
-              onSales?.(s.productId);
+              setPicked(s.productId);
             }}
           >
             <span className={"rank-num" + (i === 0 ? " first" : "")}>{i + 1}</span>
@@ -108,7 +111,85 @@ export function ShiftSales({
         ))}
       </div>
       <HourChart hours={hours} currency={currency} />
+      {picked && (
+        <ItemSales
+          state={state}
+          shiftIds={shiftIds}
+          productId={picked}
+          title={title}
+          currency={currency}
+          onClose={() => setPicked(null)}
+          onSales={
+            onSales &&
+            (() => {
+              setPicked(null);
+              onSales(picked);
+            })
+          }
+        />
+      )}
     </div>
+  );
+}
+
+/** One best seller, over the shift sheet: how it did and the receipts it was on. Closing returns to the shift. */
+function ItemSales({
+  state,
+  shiftIds,
+  productId,
+  title,
+  currency,
+  onClose,
+  onSales,
+}: {
+  state: RegisterState;
+  shiftIds: string[];
+  productId: string;
+  title: string;
+  currency: string;
+  onClose: () => void;
+  onSales?: () => void;
+}) {
+  const seller = bestSellers(state.sales, shiftIds).find((s) => s.productId === productId);
+  const sales = state.sales
+    .filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt && s.lines.some((l) => l.productId === productId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const time = new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" });
+  if (!seller) return null;
+  return (
+    <Sheet
+      title={seller.name}
+      onClose={onClose}
+      footer={
+        onSales && (
+          <button type="button" className="btn ghost block compact" onClick={onSales}>
+            Open in Sales <ChevronRight size={15} />
+          </button>
+        )
+      }
+    >
+      <div className="stack gap-4">
+        <Money value={seller.revenue} currency={currency} className="big-num" />
+        <p className="muted">
+          {seller.quantity} sold at {title}, in {sales.length} {sales.length === 1 ? "sale" : "sales"}
+        </p>
+      </div>
+      <div className="card card-list">
+        {sales.map((sale) => (
+          <div key={sale.id} className="list-row">
+            <span className="grow stack gap-4" style={{ minWidth: 0 }}>
+              <span className="ellipsis">
+                {sale.lines.map((l) => (l.quantity > 1 ? l.quantity + "× " : "") + l.name).join(", ")}
+              </span>
+              <span className="label">
+                {time.format(new Date(sale.createdAt))} · {sale.payment.name}
+              </span>
+            </span>
+            <Money value={sale.total} currency={currency} />
+          </div>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
