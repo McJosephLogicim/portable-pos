@@ -189,10 +189,16 @@ function MemberSheet({
           </label>
         )}
       </div>
-      <MoneyField label="Pay for one shift" value={rate} onChange={setRate} currency={currency} />
-      <p className="label">
-        Their salary when they join a shift. You can change it per shift. They pick cashier or server on each shift.
-      </p>
+      <MoneyField
+        label="Pay for one shift"
+        value={rate}
+        onChange={setRate}
+        currency={currency}
+        help={{
+          title: "Pay for one shift",
+          body: <p>What they earn each time they join a shift. You can change it for a single shift when you schedule it. They pick cashier or server on each shift.</p>,
+        }}
+      />
       {!member && (
         <p className="label">They can use their existing Portable POS account and keep any businesses they already own.</p>
       )}
@@ -243,6 +249,7 @@ export function TeamPage(props: SettingsProps) {
   return (
     <SubPage
       title="Team"
+      help={<p>Only you invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.</p>}
       sentence={
         <>
           {team.length} {team.length === 1 ? "person" : "people"}{" "}
@@ -271,9 +278,6 @@ export function TeamPage(props: SettingsProps) {
           </button>
         ))}
       </div>
-      <p className="label">
-        Only you invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.
-      </p>
       {editing && (
         <MemberSheet
           member={editing === "new" ? undefined : editing}
@@ -330,6 +334,7 @@ export function ChecklistPage(props: SettingsProps) {
   return (
     <SubPage
       title="Opening checklist"
+      help={<p>Steps the team ticks before the till opens, like setting up the QR stand. Add a photo to show how it should look. Saved steps appear the next time someone opens the till.</p>}
       sentence={
         list.length ? (
           <>
@@ -401,10 +406,7 @@ export function ChecklistPage(props: SettingsProps) {
           Add step
         </button>
       </div>
-      <p className="label">
-        {full ? "The checklist can hold up to 30 steps. " : ""}
-        Saved steps appear the next time you open the till.
-      </p>
+      {full && <p className="label">The checklist can hold up to 30 steps.</p>}
       {bar}
     </SubPage>
   );

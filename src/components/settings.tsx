@@ -46,6 +46,7 @@ import {
   MoneyField,
   PhotoPicker,
   Sheet,
+  Explain,
   Switch,
   usePin,
 } from "./ui";
@@ -125,12 +126,15 @@ export function SubPage({
   sentence,
   onBack,
   backLabel = "Back to settings",
+  help,
   children,
 }: {
   title: string;
   sentence?: ReactNode;
   onBack: () => void;
   backLabel?: string;
+  /** How the page works, behind an (i) beside its title instead of a note at the bottom. */
+  help?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -139,7 +143,10 @@ export function SubPage({
         <button className="round" aria-label={backLabel} onClick={onBack}>
           <ArrowLeft size={19} />
         </button>
-        <span className="strong grow">{title}</span>
+        <span className="strong grow page-title">
+          {title}
+          {help && <Explain title={title}>{help}</Explain>}
+        </span>
       </div>
       {sentence && <h1 className="headline">{sentence}</h1>}
       {children}
@@ -383,7 +390,13 @@ function BusinessPage(props: SettingsProps) {
         </span>
       </div>}
       {!simple && <div className="stack gap-10">
-        <p className="group-title">Branding</p>
+        <p className="group-title field-head">
+          Branding
+          <Explain title="Branding">
+            <p>Your color, font and corners show across the app, on receipts and on shift reports.</p>
+            <p>Changes preview here before you save.</p>
+          </Explain>
+        </p>
         <div className="card card-pad stack gap-16">
           {logoPicker}
           <div className="field">
@@ -477,10 +490,6 @@ function BusinessPage(props: SettingsProps) {
             <button type="button" className="btn grow">Charge ₱170</button>
             <button type="button" className="btn secondary grow">Cancel</button>
           </div>
-          <p className="label">
-            Your color, font and corners show across the app, on receipts and on shift reports. Changes preview here
-            before you save.
-          </p>
         </div>
       </div>}
       <div className="card card-pad stack gap-14">
@@ -648,6 +657,12 @@ function PaymentsPage(props: SettingsProps) {
   return (
     <SubPage
       title="Payment methods"
+      help={
+        <>
+          <p>Checkout offers the methods that are on. Cash counts toward the drawer and asks how much was handed over. Other methods ask you to confirm the exact amount arrived.</p>
+          <p>{applyNote(props.state)} Past receipts keep the method they were paid with.</p>
+        </>
+      }
       sentence={
         <>
           {on} {on === 1 ? "way" : "ways"} to pay <span className="g">at checkout.</span>
@@ -696,9 +711,6 @@ function PaymentsPage(props: SettingsProps) {
       <button className="btn secondary" onClick={() => setEditing("new")}>
         <Plus size={18} /> Add payment method
       </button>
-      <p className="label">
-        {applyNote(props.state)} Past receipts keep the method they were paid with.
-      </p>
       {editing && (
         <MethodSheet
           method={editing === "new" ? undefined : editing}
@@ -887,6 +899,12 @@ function DiscountsPage(props: SettingsProps) {
   return (
     <SubPage
       title="Discounts"
+      help={
+        <>
+          <p>One discount per order, taken off the total. The cashier picks it at checkout.</p>
+          <p>{applyNote(props.state)}</p>
+        </>
+      }
       sentence={
         on ? (
           <>
@@ -935,9 +953,6 @@ function DiscountsPage(props: SettingsProps) {
       <button className="btn secondary" onClick={() => setEditing("new")}>
         <Plus size={18} /> Add discount
       </button>
-      <p className="label">
-        One discount per order, taken off the total. {applyNote(props.state)}
-      </p>
       {editing && (
         <DiscountSheet
           discount={editing === "new" ? undefined : editing}

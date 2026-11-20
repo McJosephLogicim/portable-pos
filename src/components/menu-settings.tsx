@@ -514,6 +514,12 @@ export function MenuPage(props: RecipesProps) {
   return (
     <SubPage
       title="Menu items"
+      help={
+        <>
+          <p>New items and changes to names, prices and options go live on Sell right away.</p>
+          <p>Removing an item, or changing the stock it uses, takes effect when the next shift opens. To stop selling something now, mark it sold out on Sell.</p>
+        </>
+      }
       backLabel="Back to recipes"
       sentence={
         <>
@@ -554,15 +560,15 @@ export function MenuPage(props: RecipesProps) {
             ))}
           </RecordGroup>
         ))}
-      <p className="label">
-        {props.online
-          ? props.state.shift
-            ? live
-              ? "New items and edits to names, prices and options go live on Sell. Removals and stock use changes take effect next shift. To pause an item now, mark it sold out on Sell."
-              : "Changes reach the register when the next shift opens."
-            : "Changes reach the register when you open the next shift."
-          : "Connect to edit the menu."}
-      </p>
+      {(!props.online || !live) && (
+        <p className="label">
+          {!props.online
+            ? "Connect to edit the menu."
+            : props.state.shift
+              ? "Changes reach the register when the next shift opens."
+              : "Changes reach the register when you open the next shift."}
+        </p>
+      )}
       {editing && (
         <ItemSheet
           key={simple ? "simple" : "advanced"}
@@ -669,6 +675,7 @@ export function CategoriesPage(props: RecipesProps) {
   return (
     <SubPage
       title="Categories"
+      help={<p>Categories are the tabs on Sell, in this order. Changes go live on Sell right away. Items with no category show last.</p>}
       backLabel="Back to recipes"
       sentence={
         list.length ? (
@@ -709,10 +716,12 @@ export function CategoriesPage(props: RecipesProps) {
           text={menu.length ? "Like Drinks, Pastries or Bundles. Pick the items that go in each." : "Categories group the items on your menu."}
         />
       )}
-      <p className="label">
-        {loose ? plural(loose, "item") + " with no category show last. " : ""}
-        {props.online ? "Category changes go live on Sell." : "Connect to edit categories."}
-      </p>
+      {(loose > 0 || !props.online) && (
+        <p className="label">
+          {loose ? plural(loose, "item") + " with no category show last. " : ""}
+          {props.online ? "" : "Connect to edit categories."}
+        </p>
+      )}
       {editing && (
         <CategorySheet
           category={editing === "new" ? undefined : editing}
@@ -884,6 +893,12 @@ export function ChoicesPage(props: RecipesProps) {
   return (
     <SubPage
       title="Choices"
+      help={
+        <>
+          <p><strong>Pick one</strong> choices, like Size, make the cashier choose. <strong>Add-ons</strong>, like an extra shot, are optional.</p>
+          <p>Set a choice up once and pick the items that offer it. Changes go live on Sell right away.</p>
+        </>
+      }
       backLabel="Back to recipes"
       sentence={
         list.length ? (
@@ -929,9 +944,7 @@ export function ChoicesPage(props: RecipesProps) {
           }
         />
       )}
-      <p className="label">
-        {props.online ? "Choice changes go live on Sell." : "Connect to edit choices."}
-      </p>
+      {!props.online && <p className="label">Connect to edit choices.</p>}
       {editing && (
         <ChoiceSheet
           choice={editing === "new" ? undefined : editing}
