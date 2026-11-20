@@ -68,6 +68,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await actions.getByText("Share", { exact: true }).click();
   const share = page.getByRole("dialog", { name: "Share this shift" });
   await expect(share.getByText(/View shift:/)).toBeVisible();
+  await expect(share.locator("pre")).toHaveText(/Portable POS$/);
   await share.getByRole("button", { name: "Close", exact: true }).click();
   await details.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog", { name: "Delete shift?" }).getByRole("button", { name: "Cancel" }).click();
@@ -128,7 +129,9 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report", "Delete"]);
   await scheduled.getByRole("button", { name: "Report", exact: true }).click();
   const report = page.getByRole("dialog", { name: "Shift 2 report" });
-  await expect(report).toBeVisible();
+  await expect(report.getByRole("img", { name: "Shift 2 report" })).toBeVisible();
+  await report.getByText("Show as text", { exact: true }).click();
+  await expect(report.locator("pre")).toHaveText(/Portable POS$/);
   await report.getByRole("button", { name: "Close", exact: true }).click();
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
   await past.getByRole("button", { name: /Shift 1/ }).click();
@@ -151,7 +154,9 @@ test("Leaderboard Share keeps its accessible name when the visible label collaps
   await expect(label).toHaveCSS("clip-path", "inset(50%)");
   await share.click();
   const sheet = page.getByRole("dialog", { name: "Share places leaderboard" });
-  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("img", { name: "Share places leaderboard" })).toBeVisible();
+  await sheet.getByText("Show as text", { exact: true }).click();
+  await expect(sheet.locator("pre")).toHaveText(/Portable POS$/);
   await sheet.getByRole("button", { name: "Close", exact: true }).click();
   await page.setViewportSize({ width: 768, height: 844 });
   await expect(label).toHaveCSS("clip-path", "none");

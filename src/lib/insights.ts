@@ -1,3 +1,4 @@
+import { brandShareText } from "./share-brand";
 import { bookingProfit, dayOf } from "./team";
 import type { Booking, Me, Sale } from "./types";
 
@@ -92,9 +93,10 @@ export function leaderboardShareRows(
 
 export function leaderboardText({ business, category, period, ranking, rows, owner }: LeaderboardShare) {
   const heading = `${business.name} — ${category} leaderboard\n${period} · ${ranking}`;
-  return [heading, ...rows.map((row, i) =>
+  const text = [heading, ...rows.map((row, i) =>
     `${i + 1}. ${row.name} — ${row.score}${owner ? " sales" : ""}\n   ${row.details.join(" · ")}`,
   )].join("\n\n");
+  return brandShareText(text);
 }
 
 /**

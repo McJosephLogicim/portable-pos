@@ -1,6 +1,7 @@
 import { countRows } from "./cash";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
+import { SHARE_BRAND_NAME } from "./share-brand";
 import { round, unitText } from "./stock";
 import { leaderboardPalette } from "./theme";
 
@@ -14,6 +15,8 @@ const CARD = W - G * 2;
 const P = 20; // card padding
 const L = G + P;
 const R = W - G - P;
+const BRAND_ICON = "/icon-192.png";
+const BRAND_SIZE = 24;
 
 function loadImage(src: string) {
   return new Promise<Img>((resolve) => {
@@ -38,6 +41,22 @@ function cover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, w: number,
   ctx.clip();
   const s = Math.max(w / img.width, h / img.height);
   ctx.drawImage(img, x + (w - img.width * s) / 2, y + (h - img.height * s) / 2, img.width * s, img.height * s);
+  ctx.restore();
+}
+
+function drawShareBrand(ctx: Ctx, icon: Img, top: number, family: string, color: string) {
+  ctx.save();
+  ctx.font = `500 16px ${family}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = color;
+  const iconSpace = icon ? BRAND_SIZE + 10 : 0;
+  const x = (W - ctx.measureText(SHARE_BRAND_NAME).width - iconSpace) / 2;
+  ctx.fillText(SHARE_BRAND_NAME, x + iconSpace, top + BRAND_SIZE / 2);
+  if (icon) {
+    ctx.globalAlpha = 0.55;
+    cover(ctx, icon, x, top, BRAND_SIZE, BRAND_SIZE, 7);
+  }
   ctx.restore();
 }
 
@@ -103,7 +122,8 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   };
 
   const sold = r.sold.slice(0, 12);
-  const [logo, ...pics] = await Promise.all([
+  const [brandIcon, logo, ...pics] = await Promise.all([
+    loadImage(BRAND_ICON),
     r.business.logo ? loadImage(r.business.logo) : Promise.resolve(null),
     ...sold.map((s) => (s.image ? loadImage(s.image) : Promise.resolve(null))),
   ]);
@@ -443,8 +463,11 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   /* ---------- footer ---------- */
   {
     const t = y + 6;
-    ops.push((ctx) => text(ctx, fit(`${r.business.name} · Shift ${r.number} · ${r.date}`, font(12.5), CARD), W / 2, t, font(12.5), ink3, "center"));
-    y = t + 34;
+    ops.push((ctx) => {
+      text(ctx, fit(`${r.business.name} · Shift ${r.number} · ${r.date}`, font(12.5), CARD), W / 2, t, font(12.5), ink3, "center");
+      drawShareBrand(ctx, brandIcon, t + 26, family, ink2);
+    });
+    y = t + 26 + BRAND_SIZE + G;
   }
 
   const scale = 2;
@@ -467,9 +490,10 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
   const palette = leaderboardPalette(report.business.brand);
   const sources = [...new Set(report.rows.flatMap((row) => row.photo ? [row.photo] : []))];
-  const [logo, icon, photos] = await Promise.all([
+  const [logo, icon, brandIcon, photos] = await Promise.all([
     report.business.logo ? loadImage(report.business.logo) : null,
     report.icon ? loadImage(report.icon) : null,
+    loadImage(BRAND_ICON),
     Promise.all(sources.map(async (source) => [source, await loadImage(source)] as const)),
     document.fonts?.ready,
   ]);
@@ -492,7 +516,8 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
   const listTop = stageBottom + 14;
   const rowHeight = 60;
   const end = remaining.length ? listTop + remaining.length * rowHeight : stageBottom;
-  const height = end + 48;
+  const brandTop = end + 18;
+  const height = brandTop + BRAND_SIZE + G;
   // Bound the canvas on tall boards while keeping every rank in the PNG.
   const scale = Math.min(2, 8192 / height);
   const canvas = document.createElement("canvas");
@@ -642,7 +667,7 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
     text(row.score, R, y + 21, 15, 600, ink, 150, "right");
     text(row.details.join(" · "), nameX, y + 41, 13, 400, muted, R - nameX);
   });
-  text("Portable POS", W / 2, end + 24, 13, 500, muted, CARD, "center");
+  drawShareBrand(ctx, brandIcon, brandTop, family, muted);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(Error("Couldn't draw the leaderboard.")), "image/png");

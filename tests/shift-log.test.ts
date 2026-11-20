@@ -144,6 +144,7 @@ test("menu items use stock items, sales draw them down, and closing reports the 
   ])
     assert.ok(text.includes(part), `missing "${part}" in:\n${text}`);
   assert.ok(!text.includes("Oops"));
+  assert.ok(text.endsWith("\n\nPortable POS"));
 });
 
 test("the schedule copies grouped by place and event with a distinct link for each shift", () => {
@@ -180,7 +181,10 @@ test("the schedule copies grouped by place and event with a distinct link for ea
     "",
     "SM Manila",
     "Nov 28 Brian, Aye - " + link(ids.market),
+    "",
+    "Portable POS",
   ].join("\n"));
+  assert.equal(scheduleText([], "Asia/Manila", { origin: "https://pos.example.com", businessId: team }), "");
 });
 
 test("short join links stay short and find their team and shift again", () => {

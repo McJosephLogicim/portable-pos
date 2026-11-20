@@ -1,6 +1,7 @@
 import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
+import { brandShareText } from "./share-brand";
 import { round, stockModel, unitText } from "./stock";
 import { bookingTitle, dayOf, seatsOpen, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
@@ -237,7 +238,7 @@ export function reportText(r: ShiftReport, fmt: Format) {
     out.push("");
     for (const p of r.payBack) out.push(`Pay back ${p.name} ${fmt(p.amount)}`);
   }
-  return out.join("\n");
+  return brandShareText(out.join("\n"));
 }
 
 function num(n: number) {
@@ -260,7 +261,7 @@ export function scheduleText(
     days.set(date, [...(days.get(date) ?? []), b]);
     groups.set(name, days);
   }
-  return [...groups]
+  const text = [...groups]
     .map(([name, days]) => {
       const lines = [...days.values()].flatMap((shifts) =>
         shifts.map((b) => {
@@ -275,6 +276,7 @@ export function scheduleText(
       return [name, ...lines].join("\n");
     })
     .join("\n\n");
+  return brandShareText(text);
 }
 
 export function scheduledShiftText(booking: Booking, business: Business, origin: string, now = Date.now()) {
@@ -297,5 +299,6 @@ export function scheduledShiftText(booking: Booking, business: Business, origin:
     people ? `Working this shift: ${people}` : "",
     open > 0 && end.getTime() > now ? `${open} open ${open === 1 ? "seat" : "seats"}` : "",
   ];
-  return details.filter(Boolean).join("\n") + `\n\nView shift: ${joinLink(origin, business.id, booking.id)}`;
+  const link = `View shift: ${joinLink(origin, business.id, booking.id)}`;
+  return brandShareText([details.filter(Boolean).join("\n"), link].join("\n\n"));
 }
