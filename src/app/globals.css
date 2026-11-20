@@ -1347,8 +1347,30 @@ button.list-row:not(.sell-option):active {
     animation: none;
   }
 }
-.confirm-sale .headline,
-.sale-done .headline {
+.sale-hero {
+  padding: 22px 22px 20px;
+  animation: nudge 240ms var(--ease-out);
+}
+.sale-hero .due-num {
+  color: var(--on-accent);
+}
+.sale-hero .due-num .unit {
+  color: var(--on-accent-secondary);
+}
+.sale-hero-what {
+  margin-top: 6px;
+}
+.sale-hero .done-check {
+  background: var(--on-accent);
+  color: var(--hero);
+}
+.sale-items {
+  padding: 0 4px;
+}
+.sale-items .avatar.small {
+  box-shadow: 0 0 0 2px var(--canvas);
+}
+.confirm-sale .headline {
   font-size: 34px;
 }
 .saved-line {

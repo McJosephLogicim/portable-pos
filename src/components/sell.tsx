@@ -537,30 +537,28 @@ function Checkout({
           </>
         }
       >
-        <div className="confirm-sale sale-done">
-          <div className="stack gap-12 confirm-main">
-            <p className="saved-line">
+        <div className="confirm-sale">
+          <div className="hero stack gap-8 sale-hero">
+            <span className="row gap-8 hero-label">
               <DoneCheck small />
               Saved · {receiptNumber(done.shiftNumber, sale.sequence)}
-            </p>
-            <p className="headline">
-              <Money value={showChange ? sale.change : sale.total} currency={currency} />{" "}
-              <span className="g">{showChange ? "change to give." : cash ? "exact, no change." : "paid with " + sale.payment.name + "."}</span>
-            </p>
+            </span>
+            <span className="hero-label sale-hero-what">
+              {showChange ? "Change to give" : cash ? "Exact cash, no change" : "Paid with " + sale.payment.name}
+            </span>
+            <Money value={showChange ? sale.change : sale.total} currency={currency} className="due-num" />
+            <span className="hero-label">
+              {showChange
+                ? `From ${formatMoney(sale.received, currency)} cash for ${formatMoney(sale.total, currency)}`
+                : new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(sale.createdAt))}
+            </span>
           </div>
-          <div className="card card-list">
-            <div className="list-row">
-              <span className="grow">Items</span>
-              <ItemFaces items={faces(sale.lines)} />
-            </div>
-            <div className="list-row">
-              <span className="grow">Total</span>
-              <Money value={sale.total} currency={currency} />
-            </div>
-            <div className="list-row">
-              <span className="grow">{cash ? "Cash received" : "Paid with " + sale.payment.name}</span>
-              <Money value={sale.received} currency={currency} />
-            </div>
+          <div className="row gap-10 sale-items">
+            <ItemFaces items={faces(sale.lines)} />
+            <span className="label">
+              {sale.lines.reduce((n, l) => n + l.quantity, 0)}{" "}
+              {sale.lines.reduce((n, l) => n + l.quantity, 0) === 1 ? "item" : "items"}
+            </span>
           </div>
         </div>
       </Sheet>
