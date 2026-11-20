@@ -4,10 +4,10 @@ import type { RegisterState } from "../src/lib/types";
 // Run against a local demo: POS_TEST_APP_URL=http://localhost:3000 npx playwright test tests/simple-opening.spec.ts
 test.use({ viewport: { width: 390, height: 844 } });
 
-async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", requirements = false) {
+async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", requirements = false, scheduled = false) {
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
-  await page.evaluate(async ({ mode, requirements }) => {
+  await page.evaluate(async ({ mode, requirements, scheduled }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -24,7 +24,17 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
           state.menu = state.menu.filter((item) => item.name === "Espresso");
           state.shift = null;
           state.shifts = [];
-          state.bookings = [];
+          const booking = state.bookings?.[0];
+          state.bookings = scheduled && booking ? [{
+            ...booking,
+            id: "opening-test",
+            place: { name: "Opening test" },
+            event: null,
+            organizer: null,
+            startsAt: new Date(Date.now() - 3600000).toISOString(),
+            endsAt: new Date(Date.now() + 7200000).toISOString(),
+            staff: [],
+          }] : [];
           state.sales = [];
           state.pending = [];
           store.put(state, "demo-register-v2");
@@ -33,7 +43,7 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { mode, requirements });
+  }, { mode, requirements, scheduled });
   await page.reload();
 }
 
@@ -69,7 +79,31 @@ test("Simple Till still requires configured stock counts and checklist", async (
 
 test("Advanced still asks for a scheduled shift", async ({ page }) => {
   await closedTill(page, "advanced");
-  await expect(page.getByRole("heading", { name: /^No shift running/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing scheduled", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open till", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
   await expect(page.getByText("Nothing scheduled", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Starting cash", exact: true })).toHaveCount(0);
+});
+
+test("Advanced opening uses one cash label and keeps stock and checklist requirements", async ({ page }) => {
+  await closedTill(page, "advanced", true, true);
+  await page.getByRole("button", { name: "Open till", exact: true }).click();
+  await page.getByRole("button", { name: /^Opening test/ }).click();
+  await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
+  await expect(page.getByText("Cash float", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Float", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "Type the total", exact: true }).click();
+  await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
+  const open = page.getByRole("button", { name: "Open till", exact: true });
+  await expect(open).toBeDisabled();
+  await page.getByRole("textbox", { name: "How many L of Fresh milk", exact: true }).fill("4");
+  await expect(open).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
+  await expect(open).toBeEnabled();
+  await open.click();
+  await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
 });

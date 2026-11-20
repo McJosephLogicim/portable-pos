@@ -31,7 +31,6 @@ import {
 import { applyTheme } from "@/lib/theme";
 import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "@/lib/join-link";
 import { friendlyError } from "@/lib/errors";
-import { isSimpleMode } from "@/lib/settings";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import type { CartLine, RegisterResponse, RegisterState, Tender } from "@/lib/types";
@@ -695,7 +694,7 @@ export function Workspace() {
         focus={salesFocus}
       />
     );
-  else if (view === "sell" && (!state.shift || state.shift.closedAt) && isSimpleMode(business.settings))
+  else if (view === "sell" && (!state.shift || state.shift.closedAt))
     screen = (
       <div className="page narrow stack gap-18">
         <h1 className="headline">Till closed</h1>

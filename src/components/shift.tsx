@@ -178,7 +178,7 @@ function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zon
   );
 }
 
-/** What Sell and the Till show when no shift is running: the shift you can start now, or the next one. */
+/** Till shows the scheduled shift you can start now, or the next one. */
 function NoShift({
   state,
   onStart,
@@ -215,18 +215,7 @@ function NoShift({
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   return (
     <div className="stack gap-18">
-      <h1 className="headline">
-        No shift running.{" "}
-        <span className="g">
-          {ready.length
-            ? ready.length === 1
-              ? "Start it when the stall is set up."
-              : "Start the one you're working."
-            : next
-              ? "The till opens when the next one starts."
-              : "Add one on Shifts to open the till."}
-        </span>
-      </h1>
+      <h1 className="headline">Open till</h1>
       {ready.length > 0 && (
         <div className="stack gap-10">
           <p className="group-title">Ready to start</p>
@@ -253,7 +242,7 @@ function NoShift({
         <RecordEmpty
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled"
-          text="Each till runs for a shift on the schedule. Add one, and it shows up here when it's time to open."
+          text="Schedule a shift before opening the till."
         />
       ) : null}
       <button className={"btn" + (list.length ? " ghost compact" : "")} onClick={onSchedule}>
@@ -303,12 +292,10 @@ function OpenShift({
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
   return (
     <div className="stack gap-18">
-      <h1 className="headline">
-        {simple ? "Open till" : <>Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span></>}
-      </h1>
+      <h1 className="headline">Open till</h1>
       {(tracked.length > 0 || checklist.length > 0) && (
         <div className="steps" role="list" aria-label="Before you open">
-          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>{simple ? "Cash" : "Cash float"}</em></span>
+          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash</em></span>
           {tracked.length > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
           {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
         </div>
@@ -337,8 +324,7 @@ function OpenShift({
         </div>
       )}
       <div className="stack gap-10">
-        {!simple && <p className="group-title">Cash float</p>}
-        <CashCounter currency={currency} label={simple ? "Starting cash" : "Float"} onChange={setCash} totalOnly={simple} />
+        <CashCounter currency={currency} label="Starting cash" onChange={setCash} totalOnly={simple} />
       </div>
       {tracked.length > 0 && (
         <ShiftStockCount
@@ -434,17 +420,7 @@ function OpenShift({
             }
           }}
         >
-          {busy
-            ? "Opening…"
-            : simple
-              ? "Open till"
-              : value === undefined
-                ? "Count the cash float"
-                : uncounted
-                  ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
-                  : unticked
-                    ? `Tick ${unticked} more ${unticked === 1 ? "step" : "steps"}`
-                    : `Open with ${formatMoney(value, currency)}`}
+          {busy ? "Opening…" : "Open till"}
         </button>
       </div>
       {photo?.image && (
