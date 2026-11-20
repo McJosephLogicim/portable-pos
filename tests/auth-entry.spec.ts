@@ -106,11 +106,26 @@ test.describe("account-enabled link entry", () => {
 
       const main = page.getByRole("main");
       const status = main.getByRole("status");
-      const logo = main.locator('img[src="/icon-192.png"]');
       await expect(status).toHaveText("Getting your register ready…");
-      await expect(logo).toBeVisible();
-      await expect.poll(() => main.evaluate((element) => element.getAnimations({ subtree: true })
-        .some((animation) => animation.effect?.getTiming().iterations === Infinity))).toBe(true);
+      await expect(main.getByText("Portable POS", { exact: true })).toBeVisible();
+      const mark = main.locator('[aria-hidden="true"]');
+      const { openingOpacities, timings } = await mark.evaluate((element) => {
+        const animations = element.getAnimations({ subtree: true });
+        const timings = animations.map(({ effect }) => ({
+          start: Number(effect?.getTiming().delay),
+          end: Number(effect?.getComputedTiming().endTime),
+        }));
+        for (const animation of animations) {
+          animation.pause();
+          animation.currentTime = 0;
+        }
+        const openingOpacities = Array.from(element.children, (tile) => getComputedStyle(tile).opacity);
+        return { openingOpacities, timings };
+      });
+      expect(openingOpacities).toEqual(["0", "0", "0"]);
+      expect(timings).toHaveLength(3);
+      expect(timings[1].start).toBeGreaterThanOrEqual(timings[0].end);
+      expect(timings[2].start).toBeGreaterThanOrEqual(timings[1].end);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await expect.poll(() => main.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(0);
       await expect(status).toHaveCSS("opacity", "1");
