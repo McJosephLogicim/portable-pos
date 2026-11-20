@@ -38,6 +38,7 @@ import {
   Money,
   MoneyField,
   Sheet,
+  Tip,
 } from "./ui";
 
 /* Bills in major units. Quick cash buttons round the total up to the next bill. */
@@ -980,6 +981,11 @@ export function SellScreen({
           </button>
         </div>
         {!simple && <ShiftStrip state={state} onTill={onTill} />}
+        {menu.length > 0 && !marking && (
+          <Tip id="sold-out" title="Something ran out?">
+            Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the top, then the item. It shows Sold out until you tap it again.
+          </Tip>
+        )}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>

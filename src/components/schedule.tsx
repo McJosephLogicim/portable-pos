@@ -51,7 +51,7 @@ import { LocationPicker, MapPreview, mapsLink } from "./places";
 import { bookingTitle } from "./shift";
 import { scheduleText } from "@/lib/report";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, errorText, formatMoney, Money, MoneyField, progressStyle, Sheet, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
 
 type Act = (input: OwnerAction) => Promise<void>;
 
@@ -515,7 +515,16 @@ function BookingSheet({
         {b.quota > 0 && (
           <div className="tile">
             <span className="between">
-              <span className="label">Quota</span>
+              <span className="field-head">
+                Quota
+                <Explain title="Quota">
+                  <p>The sales this shift aims for.</p>
+                  <p>{b.incentive
+                    ? <>When sales reach it, everyone on the shift earns <strong>{formatMoney(b.incentive, currency)}</strong> on top of their pay.</>
+                    : "No incentive is set, so reaching it doesn't change anyone's pay."}</p>
+                  <p>The bar fills as the till sells. Incentives count against the shift's profit.</p>
+                </Explain>
+              </span>
               {p?.hit && (
                 <span className="pill good">
                   <Trophy size={13} /> Hit
@@ -1371,6 +1380,12 @@ export function ScheduleScreen(props: ScheduleProps) {
         </button>
         {me?.owner && <AddShiftMenu disabled={!props.online} onAdd={setEditing} />}
       </div>
+
+      {me?.owner && (
+        <Tip id="shifts" title="Plan who works where">
+          Tap + to add a shift, or a run of them for a bazaar. The trophy ranks your events, places and people.
+        </Tip>
+      )}
 
       {me?.owner && monthDone.length > 0 ? (
         <div className="hero stack gap-8">
