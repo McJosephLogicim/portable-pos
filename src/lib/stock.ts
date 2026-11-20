@@ -6,6 +6,19 @@ export const maxBatchServings = 100_000;
 /** Counts can be fractions, like 1.5 kg, so keep three decimals and no float drift. */
 export const round = (n: number) => Math.round(n * 1000) / 1000;
 
+const unpluralized = new Set(["kg", "g", "mg", "l", "ml", "oz", "lb", "lbs", "pc", "pcs", "tsp", "tbsp", "dozen"]);
+
+/** "1 piece", "2 pieces", "2 boxes", "0.5 kg": a unit read as a word after its amount. */
+export function unitFor(amount: number | undefined, unit: string) {
+  const u = unit.trim();
+  if (amount === undefined || amount === 1 || !/[a-z]$/i.test(u)) return u;
+  const last = u.split(" ").pop()!.toLowerCase();
+  if (unpluralized.has(last) || last.length <= 2 || /s$/.test(last)) return u;
+  if (/(x|z|ch|sh)$/.test(last)) return u + "es";
+  if (/[^aeiou]y$/.test(last)) return u.slice(0, -1) + "ies";
+  return u + "s";
+}
+
 /** Keep fraction-of-a-cent precision until the full recipe is totaled. */
 export function stockUnitCost(purchase: StockPurchase) {
   return purchase.price / (purchase.quantity * ((purchase.yieldPercent ?? 100) / 100));
