@@ -11,6 +11,7 @@ import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
 import { Account, AccountLinkError, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
+import { LoadingScreen } from "./loading-screen";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountsEnabled, api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
@@ -650,7 +651,11 @@ export function Workspace() {
     owner({ action: "reverse", saleId, reason, pin });
 
   if (!entry || resolvingLink)
-    return <main className="loading" role="status">{resolvingLink ? "Opening link…" : "Opening Portable POS…"}</main>;
+    return (
+      <main>
+        <LoadingScreen message={resolvingLink ? "Opening your link…" : "Getting things ready…"} />
+      </main>
+    );
   if (!key)
     return (
       <Account
@@ -700,7 +705,7 @@ export function Workspace() {
     );
   else if (adding)
     screen = <Setup adding onSave={addBusiness} onSignOut={() => setAdding(false)} />;
-  else if (!state) screen = <div className="loading" role="status">Opening register…</div>;
+  else if (!state) screen = <LoadingScreen message="Getting your register ready…" />;
   else if (!business)
     screen = <Setup onSave={owner} onSignOut={() => setConfirmSignOut(true)} />;
   else if (view === "schedule")

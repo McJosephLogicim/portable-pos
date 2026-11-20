@@ -1081,12 +1081,6 @@ button.list-row:not(.sell-option):active {
 .toast-action:focus-visible {
   outline-color: currentColor;
 }
-.loading {
-  min-height: 60dvh;
-  display: grid;
-  place-items: center;
-  color: var(--ink-secondary);
-}
 .empty {
   padding: 36px 20px;
   text-align: center;

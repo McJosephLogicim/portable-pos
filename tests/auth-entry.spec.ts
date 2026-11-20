@@ -90,6 +90,37 @@ test.describe("account-enabled link entry", () => {
   );
   test.use({ serviceWorkers: "block" });
 
+  test("sign-in shows the branded loader until the register is ready", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await mockAuth(page);
+    const bootstrap = Promise.withResolvers<void>();
+    await page.route("**/api/pos", async (route) => {
+      await bootstrap.promise;
+      await route.fulfill({ json: teamSnapshot() });
+    });
+    try {
+      await page.goto(appUrl);
+      await enterCredentials(page);
+      await page.locator("button[type=submit]").click();
+
+      const main = page.getByRole("main");
+      const status = main.getByRole("status");
+      const logo = main.locator('img[src="/icon-192.png"]');
+      await expect(status).toHaveText("Getting your register ready…");
+      await expect(logo).toBeVisible();
+      await expect.poll(() => main.evaluate((element) => element.getAnimations({ subtree: true })
+        .some((animation) => animation.effect?.getTiming().iterations === Infinity))).toBe(true);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect.poll(() => main.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(0);
+      await expect(status).toHaveCSS("opacity", "1");
+    } finally {
+      bootstrap.resolve();
+    }
+    await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
+    await expect(page.getByText("Getting your register ready…")).toHaveCount(0);
+  });
+
   const shiftLink = new URL(joinLink(appUrl, teamId, shiftId));
   for (const { label, link, query } of [
     { label: "business invite", link: new URL("/i/" + inviteCode, appUrl).href, query: "?invite=" + inviteCode },
