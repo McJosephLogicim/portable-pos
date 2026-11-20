@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { joinLink } from "../src/lib/join-link";
+import { inviteLink, readInviteCode } from "../src/lib/join-link";
 import { checkOpening, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import {
   rolesOf,
@@ -81,6 +81,18 @@ test("removing someone opens their future seats and keeps past names", () => {
   assert.equal(next.bookings.find((b) => b.id === "past")!.staff.length, 1);
   assert.equal(next.bookings.find((b) => b.id === "k")!.staff.length, 0);
   assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "B2", email: "BEA@x.co", rate: 0 }), /already/);
+});
+
+test("an invite without an email gets its own link", () => {
+  const one = applyPlan(plan, asOwner, { action: "invite", name: "Kim", email: "", rate: 0 });
+  const two = applyPlan(one, asOwner, { action: "invite", name: "Lia", email: " ", rate: 0 });
+  const [kim, lia] = two.members.slice(-2);
+  assert.equal(kim.email, "");
+  assert.equal(kim.joined, false);
+  assert.ok(readInviteCode(kim.inviteCode));
+  assert.notEqual(kim.inviteCode, lia.inviteCode);
+  assert.match(inviteLink("https://pos.example.com", kim.inviteCode!), /^https:\/\/pos\.example\.com\/i\/[0-9a-zA-Z]{8}$/);
+  assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "Kim", email: "kim@", rate: 0 }), /email/);
 });
 
 test("profit is sales minus rent, pay, and the incentive once the quota is hit", () => {
@@ -350,7 +362,7 @@ test(
     assert.equal(resent.inviteDelivery, "sent");
     assert.equal(resent.team!.length, failed.team!.length);
     assert.deepEqual(mail.at(-1)?.to, [beaEmail]);
-    assert.ok(mail.at(-1)?.text.includes(joinLink("https://pos.example.com", second)));
+    assert.ok(mail.at(-1)?.text.includes(inviteLink("https://pos.example.com", pendingBea.inviteCode!)));
     assert.equal(mail.length, 4);
     // The same confirmed account can open the new team and still owns its business.
     const beaBoth = await bea({ action: "bootstrap" });
@@ -364,6 +376,29 @@ test(
     assert.equal(mail.length, 4);
     // Someone not on a business can't open it by id.
     assert.equal((await runCommand({ ...paoloUser, businessId: second }, { action: "bootstrap" })).business, null);
+
+    // An invite by link only: no email is sent, and any account that opens the link joins, once.
+    const linkOnly = await night({ action: "invite", name: "Kim", email: "", rate: 40000, pin: "9999" });
+    assert.equal(linkOnly.inviteDelivery, undefined);
+    assert.equal(mail.length, 4);
+    const kimRow = linkOnly.team!.find((m) => m.name === "Kim")!;
+    assert.equal(kimRow.email, "");
+    const code = kimRow.inviteCode!;
+    assert.ok(readInviteCode(code));
+    await assert.rejects(runCommand({ id: randomUUID() }, { action: "acceptInvite", code: "zzzzzzzz" }), { status: 404 });
+    // Someone already on the team opens it: they see the team, and the link stays for Kim.
+    assert.equal((await bea({ action: "acceptInvite", code })).business!.id, second);
+    const kimUser = { id: randomUUID(), email: null };
+    const asKim = await runCommand(kimUser, { action: "acceptInvite", code });
+    assert.equal(asKim.business!.id, second);
+    assert.equal(asKim.me!.name, "Kim");
+    assert.equal(asKim.me!.owner, false);
+    assert.equal((await runCommand(kimUser, { action: "bootstrap" })).business!.id, second);
+    await assert.rejects(runCommand({ id: randomUUID() }, { action: "acceptInvite", code }), { status: 404 });
+    const kimJoined = (await night({ action: "bootstrap" })).team!.find((m) => m.id === kimRow.id)!;
+    assert.equal(kimJoined.joined, true);
+    assert.equal(kimJoined.inviteCode, undefined);
+    await night({ action: "removeMember", memberId: kimRow.id, pin: "9999" });
 
     await t.test("owner access can be assigned and revoked for one business", async () => {
       const asBeaAtNight = (input: object) => runCommand({ ...beaUser, businessId: second }, input);

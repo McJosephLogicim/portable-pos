@@ -34,3 +34,25 @@ export function readJoinCode(code: string) {
 export function matchCode<T extends { id: string }>(items: readonly T[] | undefined, code: string, length: number) {
   return items?.find((item) => shortCode(item.id, length) === code);
 }
+
+/**
+ * Invite links: /i/<code>. Unlike join links, the code is random and stored on the pending
+ * team row, because it lets a new person in. It works once and dies when the row is removed.
+ */
+export const INVITE_CODE = 8;
+
+export function newInviteCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(INVITE_CODE * 2));
+  let out = "";
+  // 248 is the largest multiple of 62 under 256, so every digit is equally likely.
+  for (const b of bytes) if (b < 248 && out.length < INVITE_CODE) out += DIGITS[b % 62];
+  return out.length === INVITE_CODE ? out : newInviteCode();
+}
+
+export function readInviteCode(code: string | null | undefined) {
+  return code && new RegExp(`^[0-9a-zA-Z]{${INVITE_CODE}}$`).test(code) ? code : null;
+}
+
+export function inviteLink(origin: string, code: string) {
+  return new URL("/i/" + code, origin).href;
+}

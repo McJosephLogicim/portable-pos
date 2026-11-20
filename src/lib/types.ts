@@ -239,8 +239,10 @@ export interface Member {
   owner: boolean;
   /** The account that created the business. */
   primaryOwner?: boolean;
-  /** True once they signed in with the invited email. */
+  /** True once they signed in with the invited email or opened their invite link. */
   joined: boolean;
+  /** Pending invites only, for the owner: the code in their /i/ link. */
+  inviteCode?: string;
   photo?: string;
 }
 /** Who is using this register. */

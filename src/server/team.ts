@@ -26,6 +26,7 @@ export function presentMember(row: MemberRow, primaryOwnerId: string): Member {
     owner: row.owner,
     ...(row.userId === primaryOwnerId ? { primaryOwner: true } : {}),
     joined: Boolean(row.userId),
+    ...(!row.userId && row.inviteCode ? { inviteCode: row.inviteCode } : {}),
     ...(row.photo ? { photo: row.photo } : {}),
   };
 }
@@ -62,10 +63,40 @@ async function claimInvites(tx: Transaction, actor: Actor) {
     .where(
       and(
         isNull(members.userId),
+        sql`${members.email} <> ''`,
         eq(sql`lower(${members.email})`, actor.email.trim().toLowerCase()),
         sql`not exists (select 1 from portable_pos.members m where m.business_id = members.business_id and m.user_id = ${actor.id})`,
       ),
     );
+}
+
+/**
+ * Join the team whose invite link this person opened. The link is the secret, so any signed-in
+ * account can use it, once. Someone already on that team keeps the link unused for its person.
+ */
+export async function acceptInvite(tx: Transaction, actor: Actor, code: string) {
+  const [row] = await tx.select().from(members).where(eq(members.inviteCode, code)).for("update");
+  if (!row || row.userId) throw new RegisterError(404, "This invite link was used or removed. Ask the owner for a new one.");
+  const [already] = await tx
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.businessId, row.businessId), eq(members.userId, actor.id)));
+  if (!already) {
+    // Keep their sign-in email on the team list, unless another invite on the team already has it.
+    const email = actor.email?.trim().toLowerCase();
+    const [taken] =
+      row.email || !email
+        ? [true]
+        : await tx
+            .select({ id: members.id })
+            .from(members)
+            .where(and(eq(members.businessId, row.businessId), eq(sql`lower(${members.email})`, email)));
+    await tx
+      .update(members)
+      .set({ userId: actor.id, inviteCode: null, ...(taken ? {} : { email }) })
+      .where(eq(members.id, row.id));
+  }
+  actor.businessId = row.businessId;
 }
 
 /** Owners get a team row on each business they own, so they can work shifts. */
@@ -147,6 +178,7 @@ export async function resolveAccess(
         businessId: owned.id,
         userId: actor.id,
         email: actor.email ?? "",
+        inviteCode: null,
         name: ownerName(actor),
         roles: ["cashier", "server"],
         photo: null,
@@ -221,6 +253,7 @@ export async function runPlan(
         name: m.name,
         roles: ["cashier", "server"],
         rate: m.rate,
+        inviteCode: m.inviteCode ?? null,
       });
     else if (JSON.stringify(old) !== JSON.stringify(m))
       await tx

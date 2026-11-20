@@ -1,3 +1,4 @@
+import { newInviteCode } from "./join-link";
 import type {
   Booking,
   Me,
@@ -144,9 +145,10 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
 
   switch (cmd.action) {
     case "invite": {
+      // The email is optional. Without it, the owner shares the invite link instead.
       const email = normalEmail(cmd.email);
-      check(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Enter their email address.");
-      const existing = members.find((m) => normalEmail(m.email) === email);
+      check(!email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "Check their email address.");
+      const existing = email ? members.find((m) => normalEmail(m.email) === email) : undefined;
       check(!existing?.joined, "Someone on the team already uses that email.", 409);
       if (existing) return plan;
       check(members.length < 100, "A team can have up to 100 people.");
@@ -162,6 +164,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
             rate: cmd.rate,
             owner: false,
             joined: false,
+            inviteCode: newInviteCode(),
           },
         ],
       };
