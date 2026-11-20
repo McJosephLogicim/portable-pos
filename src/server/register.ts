@@ -128,13 +128,19 @@ export async function runCommand(
         .from(shifts)
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
       if (open) {
-        const next = updateShiftMenu(presentShift(open, business.currency), cmd.menu, cmd.stock);
+        const next = updateShiftMenu(
+          presentShift(open, business.currency),
+          cmd.menu,
+          cmd.stock,
+          business.settings?.stockItems,
+        );
         if (!isDeepStrictEqual(next.menu, open.menu)) {
           await tx
             .update(shifts)
             .set({
               menu: next.menu,
               stock: next.stock ?? null,
+              settings: next.settings,
               menuHistory: [...open.menuHistory, {
                 id: crypto.randomUUID(),
                 appliedAt: new Date().toISOString(),

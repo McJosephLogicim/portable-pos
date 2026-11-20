@@ -8,7 +8,7 @@ import { isSimpleMode } from "@/lib/settings";
 import { maxBatchServings, menuRecipeCost } from "@/lib/stock";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
-import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
+import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
@@ -162,6 +162,7 @@ export function ItemSheet({
   menu,
   simple = false,
   liveShift = false,
+  counted = [],
   stockItems = [],
   costItems,
   canCreateStock = false,
@@ -182,8 +183,14 @@ export function ItemSheet({
   menu: Product[];
   /** A new item goes on sale on the shift open on this phone, so ask how many there are. */
   liveShift?: boolean;
-  /** created: stock items typed here that don't exist yet. */
-  onSave: (p: Product, count?: number, created?: StockItem[]) => Promise<boolean>;
+  /** Stock items the open shift already counts. */
+  counted?: string[];
+  /**
+   * counts: how many there are now, by stock item id (or the item's own id when it is
+   * counted itself), for what the open shift doesn't count yet.
+   * created: stock items typed here that don't exist yet.
+   */
+  onSave: (p: Product, counts?: Record<string, number>, created?: StockItem[]) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
 }) {
@@ -205,6 +212,19 @@ export function ItemSheet({
   const [other, setOther] = useState(priceText(product?.costing?.otherPerServing ?? 0, currency));
   const [count, setCount] = useState("");
   const askCount = mode === "count" && liveShift && !product;
+  // A new item that uses a stock item the shift didn't count at opening needs that count
+  // now, or its sales would never draw it down.
+  const [useCounts, setUseCounts] = useState<Record<string, string>>({});
+  const uncountedUses = liveShift && !product && !simple && mode === "uses"
+    ? uses.filter((u, i) => {
+        if (!u.name.trim()) return false;
+        const item = stockForUse(u, stockItems);
+        if (item ? counted.includes(item.id) : !canCreateStock) return false;
+        // The same stock item typed twice is asked once.
+        return uses.findIndex((o) => o.name.trim().toLocaleLowerCase() === u.name.trim().toLocaleLowerCase()) === i;
+      })
+    : [];
+  const useCountsReady = uncountedUses.every((u) => countOf(useCounts[u.key]) !== undefined);
   const [price, setPrice] = useState(product ? priceText(product.price, currency) || "0" : "");
   let sellingPrice: number | undefined;
   if (price) {
@@ -291,6 +311,16 @@ export function ItemSheet({
         throw Error("Add " + created.map((c) => c.name).join(", ") + " in Recipes › Stock items first, or pick one from the list.");
       const costing = simple ? product?.costing : readCosting();
       const { stock: _, image: _image, uses: _uses, costing: _costing, ...rest } = product ?? ({} as Partial<Product>);
+      let counts: Record<string, number> | undefined;
+      if (askCount) counts = { [itemId]: Number(count) };
+      else if (uncountedUses.length) {
+        counts = {};
+        for (const u of uncountedUses) {
+          const item = stockForUse(u, stockItems) ?? created.find((c) => c.name.toLocaleLowerCase() === u.name.trim().toLocaleLowerCase());
+          const n = countOf(useCounts[u.key]);
+          if (item && n !== undefined) counts[item.id] = n;
+        }
+      }
       return onSave(
         {
           ...rest,
@@ -303,7 +333,7 @@ export function ItemSheet({
           ...(picked.length ? { uses: picked } : mode === "count" ? { stock: true } : {}),
           ...(costing ? { costing } : {}),
         },
-        askCount ? Number(count) : undefined,
+        counts,
         created,
       );
     });
@@ -315,7 +345,7 @@ export function ItemSheet({
       editing={Boolean(product)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()))}
+      canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()) && useCountsReady)}
       onSave={save}
       removeLabel="Remove from menu"
       onRemove={onRemove && (() => void run(onRemove))}
@@ -387,6 +417,24 @@ export function ItemSheet({
         </p>
         {mode === "uses" && (
           <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} showCosts={!batchEnabled} onChange={setUses} />
+        )}
+        {uncountedUses.length > 0 && (
+          <div className="stack gap-8">
+            <span className="field-label">How much do you have now?</span>
+            <div>
+              {uncountedUses.map((u) => (
+                <StockCount
+                  key={u.key}
+                  item={stockForUse(u, stockItems) ?? { id: u.key, name: u.name.trim(), unit: u.unit.trim() || "piece" }}
+                  value={useCounts[u.key] ?? ""}
+                  onChange={(v) => setUseCounts((all) => ({ ...all, [u.key]: v }))}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {uncountedUses.length > 0 && (
+          <p className="label">The till didn't count {uncountedUses.length === 1 ? "this" : "these"} at opening. It counts from now and asks for what's left at closing.</p>
         )}
         {askCount && (
           <label className="field">
@@ -571,10 +619,11 @@ export function MenuPage(props: RecipesProps) {
           currency={business.currency}
           menu={menu}
           liveShift={live}
+          counted={Object.keys(props.state.shift?.stock ?? {})}
           stockItems={business.settings.stockItems}
           canCreateStock
           onClose={() => setEditing(null)}
-          onSave={(item, count, created = []) =>
+          onSave={(item, counts, created = []) =>
             commit.run(async (pin) => {
               // Stock items typed for the first time are added before the item that uses them.
               if (created.length)
@@ -582,7 +631,7 @@ export function MenuPage(props: RecipesProps) {
                   commit.input({ stockItems: [...(business.settings.stockItems ?? []), ...created] }),
                   pin,
                 );
-              await props.onMenu(saveMenuItem(menu, item), pin, count !== undefined ? { [item.id]: count } : undefined);
+              await props.onMenu(saveMenuItem(menu, item), pin, counts);
             }, editing === "new" ? "Added " + item.name : "Saved " + item.name)
           }
           onRemove={

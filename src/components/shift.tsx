@@ -13,6 +13,7 @@ import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
 import { RecordEmpty } from "./records";
+import { countOf, StockCount } from "./stock-settings";
 import { ShiftStrip } from "./sell";
 import { OPEN_EARLY, startProblem } from "@/lib/team";
 import {
@@ -123,53 +124,6 @@ function LinkSheet({
     </Sheet>
   );
 }
-
-const fractional = (unit: string) => ["kg", "g", "L", "mL"].includes(unit);
-
-/** A count field for a stock item: whole numbers for pieces and packs, decimals for weights. */
-function StockCount({
-  item,
-  value,
-  onChange,
-  placeholder = "0",
-}: {
-  item: StockItem;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  const decimal = fractional(item.unit);
-  return (
-    <label className="list-row">
-      <span className="well">{item.name.slice(0, 1).toUpperCase()}</span>
-      <span className="grow stack">
-        <span className="ellipsis">{item.name}</span>
-        <span className="label">{item.unit}</span>
-      </span>
-      <input
-        className="input count"
-        inputMode={decimal ? "decimal" : "numeric"}
-        enterKeyHint="next"
-        placeholder={placeholder}
-        aria-label={`How many ${item.unit} of ${item.name}`}
-        value={value}
-        onChange={(e) =>
-          onChange(
-            decimal
-              ? e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 9)
-              : e.target.value.replace(/\D/g, "").slice(0, 6),
-          )
-        }
-      />
-    </label>
-  );
-}
-const countOf = (text: string | undefined) => {
-  const t = (text ?? "").trim();
-  if (!t || t === ".") return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) ? round(n) : undefined;
-};
 
 function Difference({ value, currency }: { value: number; currency: string }) {
   if (value === 0)

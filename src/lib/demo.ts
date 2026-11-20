@@ -194,7 +194,7 @@ export function demoAction(
     case "menu": {
       const problem = batchIngredientProblem(input.menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
-      const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock);
+      const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock, state.business?.settings.stockItems);
       return {
         ...state,
         menu: input.menu,
