@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
+import { ChevronRight, CloudOff, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -214,21 +214,15 @@ export function SalesScreen({
                   <span className="ellipsis" style={{ fontWeight: 500 }}>
                     {items}
                   </span>
-                  <span className="label row gap-6">
+                  <span className="label ellipsis sale-meta">
                     {sale.reversedAt ? (
-                      <>
-                        <span className="dot danger" /> Reversed ·
-                      </>
+                      <span className="danger">Reversed · </span>
                     ) : pending.has(sale.id) ? (
-                      <>
-                        <span className="dot" /> Not synced ·
-                      </>
+                      <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-label="Not synced" role="img" />
                     ) : null}
-                    <span className="ellipsis">
-                      {multiDay ? day.format(when) + ", " : ""}
-                      {time.format(when)} · {sale.payment.name}
-                      {sale.discount ? " · " + sale.discount.name : ""}
-                    </span>
+                    {multiDay ? day.format(when) + ", " : ""}
+                    {time.format(when)} · {sale.payment.name}
+                    {sale.discount ? " · " + sale.discount.name : ""}
                   </span>
                 </span>
                 <span className="end">

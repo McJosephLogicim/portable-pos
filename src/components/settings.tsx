@@ -117,7 +117,7 @@ export function Row({
           <span className="label">{description}</span>
         </span>
       ) : (
-        <span className="grow row-title">{title}</span>
+        <span className="grow row-title wrap">{title}</span>
       )}
       {detail !== undefined && <span className="record-end">{detail}</span>}
       <ChevronRight size={18} className="chev" aria-hidden="true" />
@@ -1181,14 +1181,12 @@ function ProfileCard(props: SettingsProps) {
               }
             }}
           />
-          <span className="label">
-            {saving
-              ? "Saving…"
-              : me.photo
-                ? "Your name and photo show on shifts and reports."
-                : "Add a photo so the team knows who's on shift."}
-          </span>
+          {saving && <span className="label">Saving…</span>}
         </span>
+        <Explain title="Your profile" label="About your profile">
+          Your name and photo show on shifts and reports, so the team knows who's on shift. Tap the photo to
+          see it, change it or remove it.
+        </Explain>
       </div>
       {error && (
         <p className="alert" role="alert">
@@ -1261,7 +1259,7 @@ export function SettingsScreen(props: SettingsProps) {
         <Row
           icon={<Repeat size={18} strokeWidth={1.8} />}
           title={businesses > 1 ? "Switch business" : "Add a business"}
-          detail={businesses > 1 ? businesses + " businesses" : undefined}
+          detail={businesses > 1 ? String(businesses) : undefined}
           onClick={props.onBusinesses}
         />
       </div>
