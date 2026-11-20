@@ -1210,13 +1210,12 @@ export function SellScreen({
           currency={currency}
           menu={state.menu}
           liveShift
+          counted={Object.keys(shift.stock ?? {})}
           stockItems={shift.settings.stockItems}
           costItems={business.settings.stockItems}
           onClose={() => setAdding(false)}
-          onSave={async (item, count) => {
-            const done = await withPin((pin) =>
-              onMenu(saveMenuItem(state.menu, item), pin, count !== undefined ? { [item.id]: count } : undefined),
-            );
+          onSave={async (item, counts) => {
+            const done = await withPin((pin) => onMenu(saveMenuItem(state.menu, item), pin, counts));
             if (done) onSaved("Added " + item.name);
             return done;
           }}

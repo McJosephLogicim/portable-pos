@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { checkCount, countTotal, denominations } from "../src/lib/cash";
-import { checkClosing, checkOpening, makeSale, shiftTotals, stockLeft } from "../src/lib/domain";
+import { checkClosing, checkOpening, makeSale, shiftTotals, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import { joinLink, matchCode, readJoinCode, shortCode, SHIFT_CODE, TEAM_CODE } from "../src/lib/join-link";
 import { reportText, scheduleText, shiftReport } from "../src/lib/report";
 import { canMake, shiftStock } from "../src/lib/stock";
@@ -44,6 +44,25 @@ test("coins and bills add up and must match the amount sent with them", () => {
   const php = denominations("PHP").map((d) => d.value);
   assert.ok(php.includes(500) && php.includes(100000));
   assert.deepEqual(denominations("USD").slice(0, 2).map((d) => d.value), [1, 5]);
+});
+
+test("an item added mid-shift with a new stock item counts it from then and asks for it at closing", () => {
+  const shift = openShift({ sb: 28, ice: 5 });
+  const mango = { id: "mango", name: "Mango", unit: "kg", purchase: { price: 20000, quantity: 1 } };
+  const shake: Product = { id: "shake", name: "Mango shake", category: "", price: 14000, groups: [], uses: [{ stockId: "mango", amount: 0.25 }, { stockId: "ice", amount: 0.2 }] };
+  const next = updateShiftMenu(shift, [dcc, sc, shake], { mango: 2, ice: 99 }, [strawberry, ice, mango]);
+  assert.deepEqual(next.stock, { sb: 28, ice: 5, mango: 2 });
+  assert.deepEqual(next.settings.stockItems?.at(-1), { id: "mango", name: "Mango", unit: "kg" });
+  assert.equal(canMake(shiftStock(next), stockLeft(next, []), "shake"), 8);
+  const sold = makeSale({
+    id: randomUUID(), shift: next, sequence: 1, soldOut: [], tender: "cash",
+    cart: [{ productId: "shake", quantity: 2, optionIds: [] }], received: 28000,
+    createdAt: "2026-11-16T05:00:00.000Z", stock: stockLeft(next, []),
+  });
+  assert.equal(stockLeft(next, [sold]).mango, 1.5);
+  assert.throws(() => checkClosing(next, { sb: 28, ice: 4.6 }), /Count the Mango/);
+  // Without a count the item still sells, as before, and the till isn't changed.
+  assert.deepEqual(updateShiftMenu(shift, [dcc, sc, shake], {}, [strawberry, ice, mango]).stock, { sb: 28, ice: 5 });
 });
 
 test("menu items use stock items, sales draw them down, and closing reports the gap", () => {

@@ -134,6 +134,8 @@ export function updateShiftMenu(
   shift: Shift,
   menu: Product[],
   counts: Record<string, number> = {},
+  /** The business's stock items, for ones the till starts counting mid-shift. */
+  stockItems: StockItem[] = [],
 ): Shift {
   const byId = new Map(withoutMenuCosts(menu).map((item) => [item.id, item]));
   const current = shift.menu.map((item) => {
@@ -150,10 +152,26 @@ export function updateShiftMenu(
   const fresh = [...byId.values()];
   if (!fresh.length) return { ...shift, menu: current };
   const stock = { ...(shift.stock ?? {}) };
+  const tracked = [...(shift.settings.stockItems ?? [])];
   // A new item counted on its own needs a count now. One that uses stock items the
-  // till already counts just draws on them.
-  for (const p of fresh) if (p.stock && !p.uses?.length && !(p.id in stock)) stock[p.id] = counts[p.id] ?? 0;
-  return { ...shift, menu: [...current, ...fresh], stock };
+  // till already counts just draws on them. A stock item the till didn't count at
+  // opening, like one added with this item, is counted from now so sales draw it down
+  // and closing asks for what's left.
+  for (const p of fresh) {
+    if (p.uses?.length) {
+      for (const use of p.uses) {
+        if (use.stockId in stock || !validCount(counts[use.stockId])) continue;
+        const item = stockItems.find((i) => i.id === use.stockId);
+        if (!item) continue;
+        stock[use.stockId] = counts[use.stockId];
+        if (!tracked.some((i) => i.id === item.id)) tracked.push({ id: item.id, name: item.name, unit: item.unit });
+      }
+    } else if (p.stock && !(p.id in stock)) stock[p.id] = validCount(counts[p.id]) ? counts[p.id] : 0;
+  }
+  const settings = tracked.length === (shift.settings.stockItems?.length ?? 0)
+    ? shift.settings
+    : { ...shift.settings, stockItems: tracked };
+  return { ...shift, menu: [...current, ...fresh], stock, settings };
 }
 
 function validCount(n: unknown): n is number {
