@@ -7,13 +7,13 @@ import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
 import type { Closing, Opening, WalkIn } from "@/lib/demo";
 import type { SalesFocus } from "./sales";
-import { round, shiftStock, stockModel, unitText } from "@/lib/stock";
+import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
 import { RecordEmpty } from "./records";
-import { countOf, StockCount } from "./stock-settings";
+import { countOf, ShiftStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
@@ -28,7 +28,6 @@ import {
   buzz,
   centerOf,
   EmptyRow,
-  Explain,
   progressStyle,
   useCelebrate,
   useCountUp,
@@ -339,24 +338,13 @@ function OpenShift({
         <CashCounter currency={currency} label="Float" onChange={setCash} totalOnly={isSimpleMode(business.settings)} />
       </div>
       {tracked.length > 0 && (
-        <div className="stack gap-10">
-          <div className="between section-head">
-            <p className="group-title">Opening stock</p>
-            <span className="label">
-              {tracked.length - uncounted} of {tracked.length}
-            </span>
-          </div>
-          <div className="card card-list">
-            {tracked.map((item) => (
-              <StockCount
-                key={item.id}
-                item={item}
-                value={counts[item.id] ?? ""}
-                onChange={(v) => setCounts({ ...counts, [item.id]: v })}
-              />
-            ))}
-          </div>
-        </div>
+        <ShiftStockCount
+          title="Opening stock"
+          items={tracked}
+          counts={counts}
+          uncounted={uncounted}
+          onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
+        />
       )}
       {checklist.length > 0 && (
         <div className="stack gap-10">
@@ -545,23 +533,14 @@ function CloseSheet({
         <CashCounter currency={currency} label="Cash on hand" onChange={setCash} totalOnly={isSimpleMode(state.business?.settings)} />
       </div>
       {tracked.length > 0 && (
-        <div className="stack gap-10">
-          <p className="group-title title-help">
-            Stock left
-            <Explain title="Stock left">The grey number is what should be left after today's sales. Count what's really there.</Explain>
-          </p>
-          <div className="card card-list">
-            {tracked.map((item) => (
-              <StockCount
-                key={item.id}
-                item={item}
-                value={counts[item.id] ?? ""}
-                placeholder={String(round(Math.max(0, left[item.id] ?? 0)))}
-                onChange={(v) => setCounts({ ...counts, [item.id]: v })}
-              />
-            ))}
-          </div>
-        </div>
+        <ShiftStockCount
+          title="Closing stock"
+          items={tracked}
+          counts={counts}
+          uncounted={uncounted}
+          expected={left}
+          onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
+        />
       )}
       {error && (
         <p className="alert" role="alert">

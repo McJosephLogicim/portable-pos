@@ -2745,6 +2745,50 @@ html {
   }
 }
 
+/* ---------- shift stock count ---------- */
+.stock-count-title {
+  margin: 0;
+  font-weight: 500;
+}
+.stock-count-item {
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+.stock-count-name {
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.stock-count-controls {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.stock-count-controls .round:disabled {
+  opacity: 0.35;
+}
+.input.stock-count-value {
+  padding: 0 8px;
+  text-align: center;
+  font-size: clamp(17px, 5vw, 22px);
+  font-weight: 500;
+}
+.stock-count-review > summary {
+  cursor: pointer;
+  min-height: 48px;
+}
+.stock-count-review > summary::-webkit-details-marker {
+  display: none;
+}
+.stock-count-review[open] > summary .chev {
+  transform: rotate(180deg);
+}
+.stock-count-review > button .grow {
+  overflow-wrap: anywhere;
+}
+
 /* ---------- shift report ---------- */
 .shift-complete {
   display: flex;

@@ -9,7 +9,8 @@ import { batchStockUses, catalogSku, maxBatchServings, menuRecipeCost, pricingRu
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { MenuCostingOverview } from "./recipe-costing";
-import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
+import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
+import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {

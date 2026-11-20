@@ -606,54 +606,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   );
 }
 
-const fractional = (unit: string) => ["kg", "g", "L", "mL"].includes(unit);
-
-/** A count field for a stock item: whole numbers for pieces and packs, decimals for weights. */
-export function StockCount({
-  item,
-  value,
-  onChange,
-  placeholder = "0",
-}: {
-  item: StockItem;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  const decimal = fractional(item.unit);
-  return (
-    <label className="list-row">
-      <span className="well">{item.name.slice(0, 1).toUpperCase()}</span>
-      <span className="grow stack">
-        <span className="ellipsis">{item.name}</span>
-        <span className="label">{item.unit}</span>
-      </span>
-      <input
-        className="input count"
-        inputMode={decimal ? "decimal" : "numeric"}
-        enterKeyHint="next"
-        placeholder={placeholder}
-        aria-label={`How many ${item.unit} of ${item.name}`}
-        value={value}
-        onChange={(e) =>
-          onChange(
-            decimal
-              ? e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 9)
-              : e.target.value.replace(/\D/g, "").slice(0, 6),
-          )
-        }
-      />
-    </label>
-  );
-}
-export const countOf = (text: string | undefined) => {
-  const t = (text ?? "").trim();
-  if (!t || t === ".") return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) ? round(n) : undefined;
-};
-
-
 export type UseDraft = { key: string; stockId?: string; name: string; amount: string; unit: string; notes?: string };
 
 export const blankUseDraft = (): UseDraft => ({ key: crypto.randomUUID(), name: "", amount: "1", unit: "pack" });
