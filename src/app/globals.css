@@ -1892,9 +1892,12 @@ button.notice {
   color: var(--ink);
   animation: combo-in var(--dur-fast, 120ms) var(--ease-out);
 }
-/* With the keyboard up, a sheet has little height left: while a list is open, its footer
-   steps aside so the list has room. It comes back as soon as the list or keyboard closes. */
-:root[data-keyboard] .sheet:has(.suggest.open) .sheet-foot {
+/* While typing, bottom action bars stay down behind the keyboard instead of riding up on
+   top of it, so the form keeps the room. They come back as soon as the keyboard closes. */
+:root[data-keyboard] .sheet-foot,
+:root[data-keyboard] .save-bar,
+:root[data-keyboard] .charge-bar,
+:root[data-keyboard] .tabbar {
   display: none;
 }
 @keyframes combo-in {
