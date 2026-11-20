@@ -55,6 +55,11 @@ export function menuRecipeCost(
   return { ...total, batchMaterialCost: materials.cost, materialPerServing, costRatio: price ? total.cost / price : undefined };
 }
 
+export function batchStockUses(batch: NonNullable<Product["costing"]>["batch"]): StockUse[] {
+  if (!batch?.deductFromStock) return [];
+  return batch.uses.map(({ stockId, amount }) => ({ stockId, amount: amount / batch.servings }));
+}
+
 /** A batch recipe references current stock items even when the till counts finished servings. */
 export function batchIngredientProblem(menu: Product[], items: StockItem[] = []) {
   const known = new Set(items.map((item) => item.id));
@@ -186,9 +191,10 @@ export function menuCostingOverview(menu: Product[], stock: StockItem[], pricing
 
 /** Cost sources belong to the owner and aren't needed to run the till. */
 export function withoutStockCosts<T extends Settings>(settings: T): T {
-  if (!settings.pricing && !settings.stockItems?.some((item) => item.purchase || item.prep || item.details)) return settings;
+  if (!settings.pricing && !settings.stockLists && !settings.stockItems?.some((item) => item.purchase || item.prep || item.details)) return settings;
   const till = { ...settings };
   delete till.pricing;
+  delete till.stockLists;
   if (settings.stockItems)
     till.stockItems = settings.stockItems.map(({ purchase: _, prep: _prep, details: _details, ...item }) => item);
   return till;
@@ -236,6 +242,11 @@ export function shiftStock(shift: Pick<Shift, "menu" | "settings">) {
   return stockModel(shift.settings.stockItems, shift.menu);
 }
 
+/** Allow for floating-point arithmetic when comparing fractional deductions. */
+export function stockAmountFits(amount: number, available: number) {
+  return amount <= available + Math.max(1e-12, Math.abs(available) * Number.EPSILON * 8);
+}
+
 /** How many more of a menu item the stock left can make, or undefined if it uses none. */
 export function canMake(model: StockModel, left: Record<string, number>, productId: string) {
   const uses = model.uses.get(productId);
@@ -243,7 +254,9 @@ export function canMake(model: StockModel, left: Record<string, number>, product
   let most = Infinity;
   for (const u of uses) {
     if (!(u.stockId in left)) continue;
-    most = Math.min(most, Math.floor(round(Math.max(0, left[u.stockId]) / u.amount)));
+    const available = Math.max(0, left[u.stockId]);
+    const whole = Math.floor(available / u.amount);
+    most = Math.min(most, stockAmountFits((whole + 1) * u.amount, available) ? whole + 1 : whole);
   }
   return most === Infinity ? undefined : most;
 }

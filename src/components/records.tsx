@@ -44,8 +44,8 @@ export function matches(query: string, ...texts: (string | undefined | false)[])
 }
 
 /**
- * Search, and optional filter tabs, above a Settings list. The search field shows once the
- * list reaches SEARCH_FROM; the tabs show when there is more than one way to narrow it.
+ * Search and optional filter tabs above a Settings list. By default the search field
+ * appears once the list reaches SEARCH_FROM.
  */
 export function RecordSearch({
   count,
@@ -53,6 +53,7 @@ export function RecordSearch({
   query,
   onQuery,
   filters,
+  alwaysSearch,
 }: {
   /** How many things the page lists, before searching. */
   count: number;
@@ -60,6 +61,7 @@ export function RecordSearch({
   noun: string;
   query: string;
   onQuery: (query: string) => void;
+  alwaysSearch?: boolean;
   filters?: {
     label: string;
     options: string[];
@@ -69,7 +71,7 @@ export function RecordSearch({
     newDisabled?: boolean;
   };
 }) {
-  const search = count >= SEARCH_FROM || query !== "";
+  const search = alwaysSearch || count >= SEARCH_FROM || query !== "";
   if (!search && !filters) return null;
   return (
     <>

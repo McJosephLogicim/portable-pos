@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { checkSettings } from "../lib/settings";
-import { checkPrepRecipes, duplicateSku, maxBatchServings } from "../lib/stock";
+import { stockListFields } from "../lib/stock-lists";
+import { batchStockUses, checkPrepRecipes, duplicateSku, maxBatchServings } from "../lib/stock";
 import { planActions } from "../lib/team";
 import { ensure } from "./errors";
 
@@ -11,6 +12,8 @@ const amount = z.number().int().min(0).max(2147483647);
 const sku = z.string().trim().min(1).max(64).optional();
 const notes = z.string().trim().max(400).optional();
 const margin = z.number().min(0).lt(100);
+const stockListName = (field: keyof typeof stockListFields) =>
+  z.string().trim().max(stockListFields[field].maxLength);
 const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000), notes: z.string().trim().max(160).optional() });
 const product = z.object({
   id: key,
@@ -30,6 +33,7 @@ const product = z.object({
   costing: z.object({
     batch: z.object({
       servings: z.number().int().min(1).max(maxBatchServings),
+      deductFromStock: z.boolean().optional(),
       uses: z.array(stockUse).min(1).max(20).refine(
         (uses) => new Set(uses.map((use) => use.stockId)).size === uses.length,
       ),
@@ -53,6 +57,11 @@ const product = z.object({
       }),
     )
     .max(32),
+}).transform((item) => {
+  const batch = item.costing?.batch;
+  if (!batch?.deductFromStock) return item;
+  const { stock: _, ...rest } = item;
+  return { ...rest, uses: batchStockUses(batch) };
 });
 const line = z.object({
   productId: key,
@@ -154,10 +163,10 @@ const settings = z.object({
         }).optional(),
         details: z.object({
           sku,
-          category: z.string().trim().max(60).optional(),
-          kind: z.enum(["ingredient", "packaging", "consumable"]).optional(),
+          category: stockListName("category").optional(),
+          kind: stockListName("kind").min(1).optional(),
           packDescription: z.string().trim().max(120).optional(),
-          supplier: z.string().trim().max(120).optional(),
+          supplier: stockListName("supplier").optional(),
           costUpdatedOn: z.iso.date().optional(),
           notes,
         }).optional(),
@@ -165,6 +174,11 @@ const settings = z.object({
     )
     .max(100)
     .optional(),
+  stockLists: z.object({
+    category: z.array(stockListName("category").min(1)).optional(),
+    kind: z.array(stockListName("kind").min(1)).optional(),
+    supplier: z.array(stockListName("supplier").min(1)).optional(),
+  }).optional(),
   pricing: z.object({ targetMargin: margin, roundingIncrement: amount.min(1) }).optional(),
   logo: z.string().max(512).regex(/^\/(?!\/)/).optional(),
   brand: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),

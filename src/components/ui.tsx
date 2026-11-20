@@ -27,6 +27,7 @@ import {
 import { RequestFailure } from "@/lib/client";
 import { currencyDigits } from "@/lib/settings";
 import type { PaymentKind } from "@/lib/types";
+import { activeTextEntry } from "./input-experience";
 
 /** Format minor units, dropping ".00" so counters read like price tags. */
 export function formatMoney(minor: number, currency: string) {
@@ -378,6 +379,13 @@ export function Sheet({
         trigger.focus({ preventScroll: true });
     };
   }, []);
+  function isBackdrop(event: { target: EventTarget; clientX: number; clientY: number }) {
+    const node = ref.current;
+    if (!node || event.target !== node) return false;
+    const box = node.getBoundingClientRect();
+    return event.clientY < box.top || event.clientY > box.bottom ||
+      event.clientX < box.left || event.clientX > box.right;
+  }
   return (
     <dialog
       ref={ref}
@@ -385,19 +393,19 @@ export function Sheet({
       tabIndex={-1}
       aria-labelledby={id}
       onCancel={(event) => {
+        if (event.target !== ref.current) return;
         event.preventDefault();
         if (!busy) close.current();
       }}
+      onPointerDown={(event) => {
+        // Handle the first backdrop tap with the field still focused.
+        if (isBackdrop(event) && activeTextEntry()) event.preventDefault();
+      }}
       onClick={(event) => {
-        if (event.target !== ref.current || busy) return;
-        const box = ref.current.getBoundingClientRect();
-        if (
-          event.clientY < box.top ||
-          event.clientY > box.bottom ||
-          event.clientX < box.left ||
-          event.clientX > box.right
-        )
-          close.current();
+        if (event.target !== ref.current) return;
+        const field = activeTextEntry();
+        if (field) field.blur();
+        else if (!busy && isBackdrop(event)) close.current();
       }}
     >
       <div className="sheet-head">
@@ -597,6 +605,7 @@ export function MoneyField({
         <input
           className={"input" + (big ? " big" : "")}
           inputMode="decimal"
+          aria-label={help ? label : undefined}
           autoComplete="off"
           enterKeyHint="done"
           value={value}

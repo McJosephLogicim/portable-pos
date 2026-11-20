@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { makeSale, stockLeft } from "../src/lib/domain";
+import { checkStock, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import { newShift } from "../src/lib/demo";
 import { defaultSettings } from "../src/lib/settings";
-import { batchIngredientProblem, menuCost, menuCostingOverview, menuRecipeCost, prepCost, pricingInCurrency, pricingRules, stockCostRates, suggestedPrice, unitFor, withoutMenuCosts, withoutStockCosts } from "../src/lib/stock";
+import { batchIngredientProblem, canMake, menuCost, menuCostingOverview, menuRecipeCost, prepCost, pricingInCurrency, pricingRules, shiftStock, stockCostRates, suggestedPrice, unitFor, withoutMenuCosts, withoutStockCosts } from "../src/lib/stock";
 import type { Product, StockItem } from "../src/lib/types";
 import { parseCommand } from "../src/server/input";
 
@@ -137,6 +137,42 @@ test("the menu keeps batch data for costing and selling still consumes a finishe
   });
   assert.equal(sale.total, 9500);
   assert.deepEqual(stockLeft(shift, [sale]), { flour: 2, cookie: 11 });
+});
+
+test("batch deductions let the till sell the full yield and preserve the open shift's recipe", () => {
+  const stockItems = [{ id: "juice", name: "Juice", unit: "L" }, { id: "spice", name: "Spice", unit: "kg" }];
+  const product: Product = {
+    id: "cup", name: "Juice cup", category: "Drinks", price: 100, groups: [],
+    costing: { batch: { servings: 6, deductFromStock: true, uses: [
+      { stockId: "juice", amount: 1, notes: "Stir" }, { stockId: "spice", amount: 0.001 },
+    ] } },
+  };
+  const command = parseCommand({ action: "menu", menu: [product], pin: "1234" });
+  assert.equal(command.action, "menu");
+  assert.deepEqual(command.menu[0].uses, [{ stockId: "juice", amount: 1 / 6 }, { stockId: "spice", amount: 0.001 / 6 }]);
+  const shift = {
+    ...newShift("device", "business", 1, 0, command.menu, { ...defaultSettings("PHP"), currency: "PHP", stockItems }),
+    stock: { juice: 1, spice: 0.001 },
+  };
+  assert.equal(shift.menu[0].costing, undefined);
+  const cart = (quantity: number) => [{ productId: product.id, optionIds: [], quantity }];
+  assert.equal(canMake(shiftStock(shift), shift.stock, product.id), 6);
+  assert.doesNotThrow(() => checkStock(shift, cart(6), shift.stock));
+  assert.throws(() => checkStock(shift, cart(7), shift.stock), /Only 6 more/);
+  const sales = [];
+  for (let i = 1; i <= 6; i++) {
+    const left = stockLeft(shift, sales);
+    assert.equal(canMake(shiftStock(shift), left, product.id), 7 - i);
+    sales.push(makeSale({
+      id: crypto.randomUUID(), shift, sequence: i, cart: cart(1), createdAt: shift.openedAt,
+      tender: "cash", received: 100, soldOut: [], stock: left,
+    }));
+  }
+  assert.deepEqual(stockLeft(shift, sales), { juice: 0, spice: 0 });
+  const withReversal = [...sales.slice(0, -1), { ...sales[5], reversedAt: shift.openedAt }];
+  assert.equal(canMake(shiftStock(shift), stockLeft(shift, withReversal), product.id), 1);
+  const next = updateShiftMenu(shift, [{ ...command.menu[0], uses: [{ stockId: "juice", amount: 0.5 }] }]);
+  assert.deepEqual(next.menu[0].uses, shift.menu[0].uses);
 });
 
 test("settings accept optional purchase data and till settings omit it", () => {

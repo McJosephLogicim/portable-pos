@@ -188,6 +188,7 @@ export async function runCommand(
           timeZone: cmd.timeZone,
           settings: {
             ...pricingInCurrency(cmd.settings, business.currency, cmd.currency),
+            stockLists: cmd.settings.stockLists ?? business.settings?.stockLists,
             mode: business.settings?.mode,
           },
         })

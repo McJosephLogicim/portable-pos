@@ -232,6 +232,7 @@ export function demoAction(
           timeZone: input.timeZone,
           settings: {
             ...pricingInCurrency(input.settings, business.currency, input.currency),
+            stockLists: input.settings.stockLists ?? business.settings.stockLists,
             mode: business.settings.mode,
           },
         },

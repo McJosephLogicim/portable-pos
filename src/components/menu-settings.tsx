@@ -5,7 +5,7 @@ import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2 
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
-import { catalogSku, maxBatchServings, menuRecipeCost, pricingRules, readTargetMargin } from "@/lib/stock";
+import { batchStockUses, catalogSku, maxBatchServings, menuRecipeCost, pricingRules, readTargetMargin, unitFor } from "@/lib/stock";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { MenuCostingOverview } from "./recipe-costing";
@@ -212,12 +212,16 @@ export function ItemSheet({
   const [name, setName] = useState(product?.name ?? "");
   const [mode, setMode] = useState<StockMode>(product?.uses?.length ? "uses" : product?.stock ? "count" : "off");
   const [uses, setUses] = useState(() => {
-    const drafts = useDrafts(product?.uses, stockItems);
+    const drafts = product?.costing?.batch?.deductFromStock ? [] : useDrafts(product?.uses, stockItems);
     return drafts.length ? drafts : [blankUseDraft()];
   });
   const batchItems = costItems ?? stockItems;
   const [batchEnabled, setBatchEnabled] = useState(Boolean(product?.costing?.batch));
+  const [deductBatch, setDeductBatch] = useState(() => product?.costing?.batch?.deductFromStock ?? !product?.costing?.batch);
+  const deductFromStock = !simple && mode === "uses" && batchEnabled && deductBatch;
   const [batchServings, setBatchServings] = useState(String(product?.costing?.batch?.servings ?? 1));
+  const servings = Number(batchServings);
+  const validServings = Number.isInteger(servings) && servings >= 1 && servings <= maxBatchServings;
   const [batchUses, setBatchUses] = useState(() => {
     const drafts = useDrafts(product?.costing?.batch?.uses, batchItems);
     return drafts.length ? drafts : [blankUseDraft()];
@@ -229,13 +233,15 @@ export function ItemSheet({
   // A new item that uses a stock item the shift didn't count at opening needs that count
   // now, or its sales would never draw it down.
   const [useCounts, setUseCounts] = useState<Record<string, string>>({});
+  const stockDrafts = deductFromStock ? batchUses : uses;
+  const availableStock = deductFromStock ? batchItems : stockItems;
   const uncountedUses = liveShift && !product && !simple && mode === "uses"
-    ? uses.filter((u, i) => {
+    ? stockDrafts.filter((u, i) => {
         if (!u.name.trim()) return false;
-        const item = stockForUse(u, stockItems);
-        if (item ? counted.includes(item.id) : !canCreateStock) return false;
+        const item = stockForUse(u, availableStock);
+        if (item ? counted.includes(item.id) : deductFromStock || !canCreateStock) return false;
         // The same stock item typed twice is asked once.
-        return uses.findIndex((o) => o.name.trim().toLocaleLowerCase() === u.name.trim().toLocaleLowerCase()) === i;
+        return stockDrafts.findIndex((o) => o.name.trim().toLocaleLowerCase() === u.name.trim().toLocaleLowerCase()) === i;
       })
     : [];
   const useCountsReady = uncountedUses.every((u) => countOf(useCounts[u.key]) !== undefined);
@@ -260,14 +266,19 @@ export function ItemSheet({
   const { busy, error, run } = useRecordSave(onClose);
   const setGroup = (id: string, fn: (g: GroupDraft) => GroupDraft) =>
     setGroups((all) => all.map((g) => (g.id === id ? fn(g) : g)));
-  const usesChanged =
-    JSON.stringify(useDrafts(product?.uses, stockItems).map((u) => [u.stockId, u.amount])) !==
-    JSON.stringify(mode === "uses"
-      ? uses.filter((u) => u.name.trim()).map((u) => [stockForUse(u, stockItems)?.id ?? u.name.trim(), u.amount])
-      : []);
   const costRows = simple ? [] : batchEnabled
     ? stockUseRows(batchUses, batchItems)
     : mode === "uses" ? stockUseRows(uses, stockItems, costItems) : [];
+  const batchDeductions = deductFromStock && validServings ? batchStockUses({
+    servings,
+    deductFromStock: true,
+    uses: costRows.flatMap(({ item, amount }) => item && amount !== undefined ? [{ stockId: item.id, amount }] : []),
+  }) : [];
+  const usesChanged = !simple &&
+    JSON.stringify((product?.uses ?? []).map((u) => [u.stockId, u.amount])) !==
+    JSON.stringify(deductFromStock ? batchDeductions.map((u) => [u.stockId, u.amount]) : mode === "uses"
+      ? uses.filter((u) => u.name.trim()).map((u) => [stockForUse(u, stockItems)?.id ?? u.name.trim(), Number(u.amount)])
+      : []);
   const recipeCosts = costRows.filter(({ draft }) => draft.name.trim()).map(({ cost }) => cost);
   const showCostPreview = !simple && (batchEnabled || recipeCosts.length > 0 || Boolean(labor || other));
   const optionalMoney = (value: string) => value === "" ? undefined : parseMoney(value, currency);
@@ -282,7 +293,7 @@ export function ItemSheet({
   if (showCostPreview) {
     try {
       totalCost = menuRecipeCost(
-        recipeCosts, batchEnabled ? Number(batchServings) : 1,
+        recipeCosts, batchEnabled ? servings : 1,
         optionalMoney(labor) ?? 0, optionalMoney(other) ?? 0, sellingPrice,
       );
     } catch {
@@ -291,10 +302,10 @@ export function ItemSheet({
   }
 
   const costMissing = costGap(costRows, batchEnabled ? "batch" : "sale")
-    ?? (batchEnabled && !(Number.isInteger(Number(batchServings)) && Number(batchServings) >= 1)
+    ?? (batchEnabled && !validServings
       ? "Enter how many servings one batch makes."
       : !costRows.some(({ draft }) => draft.name.trim())
-        ? batchEnabled ? "Add what goes into the batch." : "Pick the stock items one sale uses, under Stock."
+        ? batchEnabled ? "Add what goes into the batch." : "Pick the stock items one sale uses."
         : undefined);
 
   function readCosting(): ProductCosting | undefined {
@@ -305,12 +316,11 @@ export function ItemSheet({
     const savedNotes = notes.trim() || undefined;
     let batch: ProductCosting["batch"];
     if (batchEnabled) {
-      const servings = Number(batchServings);
-      if (!Number.isInteger(servings) || servings < 1 || servings > maxBatchServings)
+      if (!validServings)
         throw Error("Enter a whole number of servings per batch, from 1 to 100,000.");
       const { uses } = resolveUses(batchUses, batchItems, false);
       if (!uses.length) throw Error("Add at least one ingredient to the batch recipe.");
-      batch = { servings, uses };
+      batch = { servings, uses, ...(deductFromStock ? { deductFromStock } : {}) };
     }
     if (!batch && laborPerServing === undefined && otherPerServing === undefined && targetMargin === undefined && !savedSku && !savedNotes) return undefined;
     return {
@@ -329,21 +339,21 @@ export function ItemSheet({
         if (!g.name.trim()) throw Error("Name each choice, like Size or Extras.");
         return { id: g.id, name: g.name.trim(), required: g.required, options: parseOptions(g.options, currency) };
       });
+      const costing = simple ? product?.costing : readCosting();
       const editUses = !simple && mode === "uses";
-      const { uses: picked, created } = editUses
-        ? resolveUses(uses, stockItems)
-        : { uses: simple ? product?.uses ?? [] : [], created: [] };
+      const { uses: picked, created } = deductFromStock
+        ? { uses: batchStockUses(costing?.batch), created: [] }
+        : editUses ? resolveUses(uses, stockItems) : { uses: simple ? product?.uses ?? [] : [], created: [] };
       if (editUses && !picked.length) throw Error("Type the stock items it uses, or set Stock to Off.");
       if (created.length && !canCreateStock)
         throw Error("Add " + created.map((c) => c.name).join(", ") + " in Recipes › Stock items first, or pick one from the list.");
-      const costing = simple ? product?.costing : readCosting();
       const { stock: _, image: _image, uses: _uses, costing: _costing, ...rest } = product ?? ({} as Partial<Product>);
       let counts: Record<string, number> | undefined;
       if (askCount) counts = { [itemId]: Number(count) };
       else if (uncountedUses.length) {
         counts = {};
         for (const u of uncountedUses) {
-          const item = stockForUse(u, stockItems) ?? created.find((c) => c.name.toLocaleLowerCase() === u.name.trim().toLocaleLowerCase());
+          const item = stockForUse(u, availableStock) ?? created.find((c) => c.name.toLocaleLowerCase() === u.name.trim().toLocaleLowerCase());
           const n = countOf(useCounts[u.key]);
           if (item && n !== undefined) counts[item.id] = n;
         }
@@ -393,7 +403,7 @@ export function ItemSheet({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
+        {simple && <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />}
         <div className="field">
           <span>Category</span>
           <SuggestInput
@@ -414,6 +424,12 @@ export function ItemSheet({
 
       {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
         <span className="strong">Stock</span>
+        {!simple && (
+          <div className="between gap-12">
+            <span>Made in batches</span>
+            <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Made in batches" />
+          </div>
+        )}
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
             [
@@ -440,9 +456,11 @@ export function ItemSheet({
             ? "Not counted. It sells without limit, like drinks made to order."
             : mode === "count"
               ? "For a set supply, like bread or pastries. You count it when the shift opens, and it sells out at zero."
-              : "Each sale takes this much off a stock item, like 1 strawberry pack or 0.2 kg of ice."}
+              : deductFromStock
+                ? "Each sale deducts one serving’s share of the batch ingredients."
+                : "Each sale takes this much off a stock item, like 1 strawberry pack or 0.2 kg of ice."}
         </p>
-        {mode === "uses" && (
+        {mode === "uses" && !deductFromStock && (
           <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} showCosts={!batchEnabled} onChange={setUses} />
         )}
         {uncountedUses.length > 0 && (
@@ -452,7 +470,7 @@ export function ItemSheet({
               {uncountedUses.map((u) => (
                 <StockCount
                   key={u.key}
-                  item={stockForUse(u, stockItems) ?? { id: u.key, name: u.name.trim(), unit: u.unit.trim() || "piece" }}
+                  item={stockForUse(u, availableStock) ?? { id: u.key, name: u.name.trim(), unit: u.unit.trim() || "piece" }}
                   value={useCounts[u.key] ?? ""}
                   onChange={(v) => setUseCounts((all) => ({ ...all, [u.key]: v }))}
                 />
@@ -478,57 +496,82 @@ export function ItemSheet({
         {product && liveShift && (usesChanged || Boolean(product.stock) !== (mode === "count")) && (
           <p className="label">Stock changes apply from the next shift.</p>
         )}
-      </div>}
-
-      {!simple && <section className="card card-pad stack gap-14" aria-label="Cost and margin">
-        <h3 className="strong">Cost and margin</h3>
-        <div className="between gap-12">
-          <span className="row-text">
-            <span>Made in batches</span>
-            <span className="label">Like a pitcher that pours 10 cups</span>
-          </span>
-          <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Made in batches" />
-        </div>
-        {batchEnabled && (
-          <>
+        {!simple && (
+          <div className="recipe-cost stack gap-14">
+            {batchEnabled && (
+              <>
+                {mode === "uses" && (
+                  <div className="between gap-12">
+                    <span>Deduct batch ingredients per sale</span>
+                    <Switch checked={deductBatch} onChange={setDeductBatch} label="Deduct batch ingredients per sale" />
+                  </div>
+                )}
+                <label className="field">
+                  <span>One batch makes (servings)</span>
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    value={batchServings}
+                    maxLength={9}
+                    onChange={(e) => setBatchServings(e.target.value)}
+                  />
+                </label>
+                <div className="field">
+                  <span>{deductFromStock ? "Batch ingredients" : "Batch ingredients for costing"}</span>
+                  <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
+                </div>
+                {batchDeductions.length > 0 && (
+                  <div className="stack gap-8">
+                    <span className="field-label">Deducted per sale</span>
+                    <dl className="stack gap-8 label">
+                      {batchDeductions.map(({ stockId, amount }, i) => {
+                        const item = batchItems.find((item) => item.id === stockId)!;
+                        return (
+                          <div className="between gap-8" key={`${stockId}-${i}`}>
+                            <dt>{item.name}</dt>
+                            <dd className="strong">{amount.toLocaleString("en", { maximumSignificantDigits: 5 })} {unitFor(amount, item.unit)}</dd>
+                          </div>
+                        );
+                      })}
+                    </dl>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="grid-2">
+              <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
+              <MoneyField
+                label="Other cost per serving"
+                value={other}
+                onChange={setOther}
+                currency={currency}
+                help={{
+                  title: "Other cost per serving",
+                  body: <p>Enter extra costs for one serving, such as cups, lids or takeaway bags. Leave out anything already included in the recipe used for costing.</p>,
+                }}
+              />
+            </div>
             <label className="field">
-              <span>One batch makes (servings)</span>
+              <span>Target margin override (%)</span>
               <input
                 className="input"
-                inputMode="numeric"
-                value={batchServings}
-                maxLength={9}
-                onChange={(e) => setBatchServings(e.target.value)}
+                inputMode="decimal"
+                maxLength={12}
+                placeholder={`Business default (${pricing.targetMargin}%)`}
+                value={marginOverride}
+                onChange={(e) => setMarginOverride(e.target.value)}
               />
             </label>
-            <div className="field">
-              <span>What goes into the whole batch</span>
-              <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
-            </div>
-            <p className="label">This is for costing only. What the till takes off per sale is set under Stock.</p>
-          </>
+            {showCostPreview && (
+              <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
+            )}
+          </div>
         )}
-        <div className="grid-2">
-          <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
-          <MoneyField label="Cups, lids, other" value={other} onChange={setOther} currency={currency} />
-        </div>
-        <label className="field">
-          <span>Target margin override (%)</span>
-          <input
-            className="input"
-            inputMode="decimal"
-            maxLength={12}
-            placeholder={`Business default (${pricing.targetMargin}%)`}
-            value={marginOverride}
-            onChange={(e) => setMarginOverride(e.target.value)}
-          />
-        </label>
-        {showCostPreview ? (
-          <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
-        ) : (
-          <p className="cost-missing">Set Stock to Uses stock, or turn on Made in batches, to see what it costs you.</p>
-        )}
-      </section>}
+      </div>}
+
+      {!simple && <div className="card card-pad">
+        <MoneyField label="Price" value={price} onChange={setPrice} currency={currency} />
+      </div>}
 
       {!simple && <details className="card card-pad">
         <summary className="strong">Recipe details</summary>

@@ -41,7 +41,7 @@ Recipes › Stock items lists what is counted at opening and closing, like a str
 
 Recipes › Stock items lists what you buy; Recipes › Prep lists what you make ahead in batches. A prep item's cost uses its purchased ingredients, how much one batch makes, and any other batch cost. To add a recipe to a stock item that the menu already uses, open that item in Stock items and choose **Make it** under How you get it; it then moves to Prep. Menu costing picks up the result whenever an ingredient price or batch yield changes. The till counts the finished prep as its own stock item.
 
-In a menu item's **Cost and margin** section, turn on **Made in batches** to enter ingredient quantities for the whole batch and its serving yield. The editor divides material costs by the yield, then adds labor and other variable costs per serving. The Stock section controls what the till deducts when a serving sells.
+In a menu item's **Stock** section, turn on **Made in batches** to enter ingredient quantities for the whole batch and its serving yield. With **Uses stock** and **Deduct batch ingredients per sale** on, each sale deducts the batch ingredients divided by the yield. Turn off that deduction switch to enter separate stock items per sale, such as one finished pastry. The editor divides material costs by the yield, then adds labor and other variable costs per serving in either setup.
 
 Recipes › Menu costing compares unit cost, cost percentage, gross profit, gross margin, and suggested price across the menu. The averages use completed costs, and percentage averages use items with a positive selling price. In **Pricing rules**, set the business target margin and how much to round suggested prices up by. A menu item can save its own target margin.
 

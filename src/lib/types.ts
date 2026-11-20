@@ -26,6 +26,7 @@ export interface ChecklistItem {
   image?: string;
 }
 export type RegisterMode = "simple" | "advanced";
+export type StockListField = "category" | "kind" | "supplier";
 
 export interface Settings {
   /** Business-wide display mode. Registers without a saved mode use Advanced. */
@@ -37,6 +38,8 @@ export interface Settings {
   checklist?: ChecklistItem[];
   /** Things counted at opening and closing. */
   stockItems?: StockItem[];
+  /** Reusable names, including choices that are not assigned to an item yet. */
+  stockLists?: Partial<Record<StockListField, string[]>>;
   pricing?: PricingRules;
   /** The business logo, an image address. */
   logo?: string;
@@ -82,7 +85,7 @@ export interface Product {
 }
 export interface ProductCosting {
   /** A costing recipe for the whole batch. The till uses Product.uses for stock deductions. */
-  batch?: { servings: number; uses: StockUse[] };
+  batch?: { servings: number; uses: StockUse[]; deductFromStock?: boolean };
   /** Minor currency units for one serving. */
   laborPerServing?: number;
   otherPerServing?: number;
@@ -108,7 +111,7 @@ export interface StockItem {
 export interface StockItemDetails {
   sku?: string;
   category?: string;
-  kind?: "ingredient" | "packaging" | "consumable";
+  kind?: string;
   packDescription?: string;
   supplier?: string;
   costUpdatedOn?: string;
