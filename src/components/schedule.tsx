@@ -13,7 +13,6 @@ import {
   Trash2,
   Trophy,
   Share2,
-  Copy,
   X,
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
@@ -22,14 +21,17 @@ import { slugId } from "@/lib/settings";
 import {
   addDays,
   bookingProfit,
+  bookingTitle,
   dayOf,
   daysBetween,
+  linkBookingProblem,
   rolesOf,
-  salesByBooking,
+  seatsOpen,
   shiftRole,
   shiftRoleNames,
   shiftTimes,
   timeOf,
+  upcomingBookings,
   weekday,
   type BookingInput,
 } from "@/lib/team";
@@ -49,8 +51,9 @@ import { Leaderboards, ShiftSales } from "./insights";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
-import { bookingTitle } from "./shift";
-import { scheduleText } from "@/lib/report";
+import { ShiftList, useBookingSales, useShiftFormats } from "./shift-list";
+import { scheduleText, scheduledShiftText } from "@/lib/report";
+import { CopyButton } from "./share";
 import { Avatar, RolePicker } from "./team";
 import { buzz, centerOf, ConfirmSheet, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
 import styles from "./operations.module.css";
@@ -69,24 +72,9 @@ export interface ScheduleProps {
 
 const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
 
-function useFormats(timeZone: string) {
-  return useMemo(
-    () => ({
-      time: new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" }),
-      day: new Intl.DateTimeFormat("en", { timeZone, weekday: "short", month: "short", day: "numeric" }),
-      long: new Intl.DateTimeFormat("en", { timeZone, weekday: "long", month: "long", day: "numeric" }),
-    }),
-    [timeZone],
-  );
-}
-
 /** "Sat 22" style, for a plain "YYYY-MM-DD" date. */
 function plainDay(day: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en", { ...options, timeZone: "UTC" }).format(new Date(day + "T12:00:00Z"));
-}
-
-function seatsOpen(b: Booking) {
-  return Math.max(0, b.seats - b.staff.length);
 }
 
 /* ---------- calendar ---------- */
@@ -189,60 +177,6 @@ function MonthCalendar({
         })}
       </div>
     </div>
-  );
-}
-
-/* ---------- a shift in a list ---------- */
-
-function BookingCard({
-  b,
-  state,
-  sales,
-  onOpen,
-}: {
-  b: Booking;
-  state: RegisterState;
-  sales?: number;
-  onOpen: () => void;
-}) {
-  const business = state.business!;
-  const f = useFormats(business.timeZone);
-  const me = state.me;
-  const mine = b.staff.some((s) => s.memberId === me?.memberId);
-  const open = seatsOpen(b);
-  const past = Date.parse(b.endsAt) < Date.now();
-  const p = me?.owner && sales !== undefined ? bookingProfit({ ...b, sales }) : null;
-  return (
-    <button type="button" className={"card booking" + (past ? " past" : "")} onClick={onOpen} aria-haspopup="dialog">
-      <span className="booking-time">
-        <span className="strong">{f.time.format(new Date(b.startsAt))}</span>
-        <span className="label">{f.time.format(new Date(b.endsAt))}</span>
-      </span>
-      <span className="grow stack gap-4">
-        <span className="strong ellipsis">{bookingTitle(b)}</span>
-        <span className="label ellipsis">
-          {[b.place && b.event ? b.place.name : "", b.organizer?.name].filter(Boolean).join(" · ") || "No location yet"}
-        </span>
-        <span className="row gap-6 faces">
-          {b.staff.slice(0, 4).map((s) => (
-            <Avatar key={s.memberId} id={s.memberId} name={s.name} small />
-          ))}
-          {Array.from({ length: Math.min(3, open) }, (_, i) => (
-            <span key={i} className="avatar small seat" aria-hidden="true" />
-          ))}
-          <span className="label">
-            {mine ? "You're on" : open ? `${open} open` : "Full"}
-          </span>
-        </span>
-      </span>
-      {p && past && (
-        <span className={"pill" + (p.net >= 0 ? " good" : " bad")}>
-          {p.net >= 0 ? "+" : "−"}
-          {formatMoney(Math.abs(p.net), business.currency)}
-        </span>
-      )}
-      {!past && open > 0 && !mine && <span className="pill">Open</span>}
-    </button>
   );
 }
 
@@ -382,11 +316,12 @@ function BookingSheet({
   const business = state.business!;
   const currency = business.currency;
   const me = state.me!;
-  const f = useFormats(business.timeZone);
+  const f = useShiftFormats(business.timeZone);
   const withPin = usePin();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState<{ replace?: StaffSlot } | null>(null);
+  const [sharing, setSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [managing, setManaging] = useState<StaffSlot | null>(null);
   const [leaving, setLeaving] = useState<StaffSlot | null>(null);
@@ -437,11 +372,19 @@ function BookingSheet({
         onClose={onClose}
         busy={busy}
         action={
-          me.owner && (
-            <button className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
-              Edit
+          <>
+            <button type="button" className="btn small secondary" disabled={busy} aria-haspopup="dialog" onClick={() => {
+              buzz.tap();
+              setSharing(true);
+            }}>
+              <Share2 size={15} aria-hidden="true" /> Share
             </button>
-          )
+            {me.owner && (
+              <button type="button" className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
+                Edit
+              </button>
+            )}
+          </>
         }
         footer={
           !me.owner &&
@@ -649,6 +592,9 @@ function BookingSheet({
           </button>
         )}
       </Sheet>
+      {sharing && (
+        <ShareShift text={scheduledShiftText(b, business, location.origin)} onClose={() => setSharing(false)} />
+      )}
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
@@ -1291,6 +1237,16 @@ function BookingEditor({
 
 /* ---------- share ---------- */
 
+function ShareShift({ text, onClose }: { text: string; onClose: () => void }) {
+  const [error, setError] = useState("");
+  return (
+    <Sheet title="Share this shift" onClose={onClose} footer={<CopyButton text={text} onError={setError} />}>
+      <pre className="schedule-text">{text}</pre>
+      {error && <p className="alert" role="alert">{error}</p>}
+    </Sheet>
+  );
+}
+
 function ShareSchedule({
   bookings,
   businessId,
@@ -1305,45 +1261,25 @@ function ShareSchedule({
   onClose: () => void;
 }) {
   const [range, setRange] = useState<"upcoming" | "month">("upcoming");
-  const [copied, setCopied] = useState("");
   const [error, setError] = useState("");
-  const [copying, setCopying] = useState(false);
   const shown =
     range === "upcoming"
       ? bookings.filter((b) => Date.parse(b.endsAt) > Date.now())
       : bookings.filter((b) => dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7));
   const text = scheduleText(shown, zone, { origin: location.origin, businessId });
-  async function copy() {
-    setError("");
-    setCopying(true);
-    try {
-      await navigator.clipboard.writeText(text);
-      buzz.success();
-      setCopied(text);
-    } catch {
-      setError("Couldn't copy here. Press and hold the text to copy it.");
-    } finally {
-      setCopying(false);
-    }
-  }
   return (
     <Sheet
       title="Share the schedule"
       onClose={onClose}
-      footer={
-        <>
-          <p className="sr-only" role="status">{shown.length && copied === text ? "Schedule copied" : ""}</p>
-          <button type="button" className="btn block" disabled={copying || !shown.length} onClick={() => void copy()}>
-            <Copy size={17} /> {copying ? "Copying…" : shown.length && copied === text ? "Copied" : "Copy"}
-          </button>
-        </>
-      }
+      footer={<CopyButton text={text} onError={setError} />}
     >
       <LiquidSegments
         label="Which shifts"
         value={range}
-        onChange={setRange}
-        disabled={copying}
+        onChange={(value) => {
+          setError("");
+          setRange(value);
+        }}
         options={[
           { value: "upcoming", label: "Upcoming" },
           { value: "month", label: plainDay(month, { month: "long" }) },
@@ -1398,6 +1334,46 @@ function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "n
 
 /* ---------- screen ---------- */
 
+export function TillShiftsSheet({ shiftId, onClose, ...props }: ScheduleProps & { shiftId: string; onClose: () => void }) {
+  const { state, online, onAction, onSaved } = props;
+  const zone = state.business!.timeZone;
+  const now = Date.now();
+  const today = dayOf(now, zone);
+  const openShifts = upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
+  const [selected, setSelected] = useState<Booking | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <>
+      <Sheet title="Shifts" onClose={onClose}>
+        <ShiftList
+          entries={openShifts}
+          state={state}
+          onOpen={setSelected}
+          onAdd={state.me?.owner ? () => setAdding(true) : undefined}
+          online={online}
+        />
+      </Sheet>
+      {selected && (
+        <ConfirmSheet
+          title="Add till to this shift?"
+          detail={<>This till and its sales will be linked to <strong>{bookingTitle(selected)}</strong>.</>}
+          confirmLabel="Add till"
+          destructive={false}
+          onClose={() => setSelected(null)}
+          onConfirm={async () => {
+            await onAction({ action: "linkBooking", shiftId, bookingId: selected.id });
+            buzz.success();
+            onSaved("Till added to shift");
+            onClose();
+          }}
+        />
+      )}
+      {adding && <BookingEditor props={props} defaultDay={today} onClose={() => setAdding(false)} />}
+    </>
+  );
+}
+
 /** Open an existing scheduled shift over another page, including its usual edit flow. */
 export function ScheduledShiftSheet({
   bookingId,
@@ -1406,13 +1382,9 @@ export function ScheduledShiftSheet({
 }: ScheduleProps & { bookingId: string; onClose: () => void }) {
   const [editing, setEditing] = useState(false);
   const { state, demo } = props;
+  const salesOf = useBookingSales(state, demo);
   const booking = state.bookings?.find((b) => b.id === bookingId);
   if (!booking) return null;
-  const sales = state.me?.owner
-    ? !demo && booking.sales !== undefined
-      ? booking.sales
-      : (booking.sales ?? 0) + (salesByBooking(state.shifts, state.sales).get(booking.id) ?? 0)
-    : undefined;
   return editing ? (
     <BookingEditor
       booking={booking}
@@ -1424,7 +1396,7 @@ export function ScheduledShiftSheet({
     <BookingSheet
       booking={booking}
       props={props}
-      sales={sales}
+      sales={salesOf(booking)}
       onEdit={() => setEditing(true)}
       onClose={onClose}
     />
@@ -1438,7 +1410,7 @@ export function ScheduleScreen(props: ScheduleProps) {
   const business = state.business!;
   const zone = business.timeZone;
   const me = state.me;
-  const f = useFormats(zone);
+  const f = useShiftFormats(zone);
   const today = dayOf(Date.now(), zone);
   const [selected, setSelected] = useState(() => {
     const initial = state.bookings?.find((b) => b.id === sharedSchedule?.bookingId);
@@ -1453,10 +1425,7 @@ export function ScheduleScreen(props: ScheduleProps) {
     () => [...(state.bookings ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
     [state.bookings],
   );
-  // Live registers get sales from the server. The demo adds what this phone rang up.
-  const local = useMemo(() => salesByBooking(state.shifts, state.sales), [state.shifts, state.sales]);
-  const salesOf = (b: Booking) =>
-    me?.owner ? (!demo && b.sales !== undefined ? b.sales : (b.sales ?? 0) + (local.get(b.id) ?? 0)) : undefined;
+  const salesOf = useBookingSales(state, demo);
 
   const marks = useMemo(() => {
     const map = new Map<string, { count: number; open: boolean; mine: boolean }>();
@@ -1565,41 +1534,16 @@ export function ScheduleScreen(props: ScheduleProps) {
           { value: "mine", label: mineNext.length ? `Mine · ${mineNext.length}` : "Mine" },
         ]}
       />
-      <p className="sr-only" role="status">{list.length} {list.length === 1 ? "shift" : "shifts"} shown</p>
-
-      <div className="stack gap-10">
-        {list.map((b, i) => {
-          const day = dayOf(b.startsAt, zone);
-          const showDay = filter !== "day" && (i === 0 || dayOf(list[i - 1].startsAt, zone) !== day);
-          return (
-            <div className="stack gap-10" key={b.id}>
-              {showDay && <p className="group-title">{f.day.format(new Date(b.startsAt))}</p>}
-              <BookingCard b={b} state={state} sales={salesOf(b)} onOpen={() => setOpenId(b.id)} />
-            </div>
-          );
-        })}
-        {!list.length && (
-          <div className="empty card">
-            <p className="strong">
-              {filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
-            </p>
-            <p className="label">
-              {filter === "day"
-                ? me?.owner
-                  ? "Add a shift for this day, or add a run of them for a bazaar."
-                  : "Pick another day, or check open seats."
-                : filter === "mine"
-                  ? "Open seats are yours to join."
-                  : "Every upcoming shift is full."}
-            </p>
-            {me?.owner && filter === "day" && (
-              <button className="btn secondary" disabled={!props.online} onClick={() => setEditing("new")}>
-                <Plus size={16} /> Add
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <ShiftList
+        entries={list}
+        state={state}
+        filter={filter}
+        showDates={filter !== "day"}
+        salesOf={salesOf}
+        onOpen={(booking) => setOpenId(booking.id)}
+        onAdd={me?.owner && filter === "day" ? () => setEditing("new") : undefined}
+        online={props.online}
+      />
 
       {sharing && (
         <ShareSchedule

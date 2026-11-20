@@ -551,12 +551,14 @@ export function ConfirmSheet({
   title,
   detail,
   confirmLabel,
+  destructive = true,
   onClose,
   onConfirm,
 }: {
   title: string;
   detail: ReactNode;
   confirmLabel: string;
+  destructive?: boolean;
   onClose: () => void;
   onConfirm: () => void | boolean | Promise<void | boolean>;
 }) {
@@ -589,7 +591,7 @@ export function ConfirmSheet({
       footer={
         <div className="grid-2">
           <button type="button" className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button>
-          <button type="button" className="btn destructive" disabled={busy} onClick={() => void confirm()}>
+          <button type="button" className={destructive ? "btn destructive" : "btn"} disabled={busy} onClick={() => void confirm()}>
             {busy ? "Working…" : confirmLabel}
           </button>
         </div>

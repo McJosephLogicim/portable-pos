@@ -8,6 +8,15 @@
         "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
         "createdAt": "2026-11-19T19:37:15.504Z",
         "reason": "User requested that the Shifts Add dropdown bounce open. This easing is used for that entrance."
+      },
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "src/lib/report-image.ts"
+        ],
+        "createdAt": "2026-11-20T16:28:27.523Z",
+        "reason": "Codex verified: the finding is a Canvas Image object with a caller-provided URL. Errors use a drawn fallback instead of a DOM placeholder."
       }
     ]
   }

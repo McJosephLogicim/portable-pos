@@ -62,6 +62,35 @@ export interface Rank {
   me?: boolean;
 }
 
+export interface LeaderboardShare {
+  business: { name: string; logo?: string };
+  category: string;
+  period: string;
+  ranking: string;
+  rows: { name: string; score: string; detail: string }[];
+}
+
+export function leaderboardShareRows(
+  ranks: Rank[],
+  owner: boolean,
+  format: (amount: number) => string,
+): LeaderboardShare["rows"] {
+  return ranks.map(({ label, shifts, hits, sales = 0, profit = 0 }) => {
+    const worked = `${shifts} ${shifts === 1 ? "shift" : "shifts"} worked`;
+    const quotas = `${hits} ${hits === 1 ? "quota" : "quotas"} hit`;
+    return {
+      name: label,
+      score: owner ? `${format(sales)} sales` : quotas,
+      detail: owner ? [worked, `${profit < 0 ? "Loss" : "Profit"} ${format(Math.abs(profit))}`, quotas].join(" · ") : worked,
+    };
+  });
+}
+
+export function leaderboardText({ business, category, period, ranking, rows }: LeaderboardShare) {
+  const heading = `${business.name} — ${category} leaderboard\n${period} · ${ranking}`;
+  return [heading, ...rows.map((row, i) => `${i + 1}. ${row.name} — ${row.score}\n   ${row.detail}`)].join("\n\n");
+}
+
 /**
  * Rank finished shifts by event, organizer, place or person. The owner ranks by sales
  * (with profit alongside). Teammates don't see money, so they rank by quotas hit.

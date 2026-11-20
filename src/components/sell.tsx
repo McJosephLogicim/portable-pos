@@ -11,7 +11,7 @@ import type {
   Tender,
 } from "@/lib/types";
 import { canMake, shiftStock } from "@/lib/stock";
-import { bookingTitle } from "./shift";
+import { bookingTitle } from "@/lib/team";
 import {
   parseMoney,
   priceLines,

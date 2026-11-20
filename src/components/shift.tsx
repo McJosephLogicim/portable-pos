@@ -5,10 +5,11 @@ import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Plus, Receipt
 import type { Booking, Business, Expense, RegisterState, Shift, StockItem } from "@/lib/types";
 import { parseMoney, shiftTotals, stockLeft } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
-import type { Closing, Opening, WalkIn } from "@/lib/demo";
-import type { SalesFocus } from "./sales";
+import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
+import { TillShiftsSheet, type ScheduleProps } from "./schedule";
+import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
@@ -17,7 +18,7 @@ import { countOf, ShiftStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
-import { OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
+import { bookingTitle, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import {
   ConfirmSheet,
   errorText,
@@ -38,115 +39,6 @@ import styles from "./operations.module.css";
 
 export type CloseInput = Omit<Closing, "action" | "pin">;
 export type ExpenseInput = { label: string; amount: number; source: Expense["source"] };
-
-/** Where and how long a shift started on the spot runs. */
-function WalkInFields({
-  state,
-  value,
-  onChange,
-}: {
-  state: RegisterState;
-  value: WalkIn;
-  onChange: (value: WalkIn) => void;
-}) {
-  const places = [...new Set((state.bookings ?? []).map((b) => b.place?.name).filter(Boolean) as string[])];
-  return (
-    <div className="card card-pad stack gap-12">
-      <div className="field">
-        <span>Where</span>
-        <SuggestInput
-          label="Where"
-          value={value.place ?? ""}
-          onChange={(place) => onChange({ ...value, place })}
-          suggestions={places.map((p) => ({ key: p, name: p }))}
-          placeholder="e.g. SM Fairview - Atrium"
-          maxLength={120}
-        />
-      </div>
-      <div className="stack gap-8">
-        <span className="label">How long</span>
-        <div className="quick hours" role="group" aria-label="How long">
-          {[4, 6, 8, 10, 12].map((h) => (
-            <button key={h} type="button" aria-pressed={value.hours === h} onClick={() => onChange({ ...value, hours: h })}>
-              {h}h
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Put a till that opened without a shift onto the Shifts page. */
-function LinkSheet({
-  state,
-  onLink,
-  onDismiss,
-}: {
-  state: RegisterState;
-  onLink: (walkIn: WalkIn) => Promise<void>;
-  onDismiss: () => void;
-}) {
-  const [walkIn, setWalkIn] = useState<WalkIn>({ hours: 8 });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  return (
-    <Sheet
-      title="Add this till to Shifts"
-      onClose={onDismiss}
-      help={
-        <>
-          <p>It starts when the till opened.</p>
-          <p>It goes on the Shifts page with you on it, so sales and pay add up.</p>
-        </>
-      }
-      busy={busy}
-      footer={
-        <button
-          className="btn block"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await onLink(walkIn);
-              buzz.success();
-              onDismiss();
-            } catch (e) {
-              setError(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Adding…" : "Add"}
-        </button>
-      }
-    >
-      <WalkInFields state={state} value={walkIn} onChange={setWalkIn} />
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
-      )}
-    </Sheet>
-  );
-}
-
-function Difference({ value, currency }: { value: number; currency: string }) {
-  if (value === 0)
-    return (
-      <span className="row gap-6">
-        <span className="dot success" /> Drawer matches
-      </span>
-    );
-  return (
-    <span className={"row gap-6" + (value < 0 ? " danger" : "")}>
-      <span className={"dot" + (value < 0 ? " danger" : "")} />
-      {formatMoney(Math.abs(value), currency)} {value < 0 ? "short" : "over"}
-    </span>
-  );
-}
 
 function BookingRow({ booking: b, zone, note, onClick }: { booking: Booking; zone: string; note?: string; onClick?: () => void }) {
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -250,10 +142,6 @@ function NoShift({
       </button>
     </div>
   );
-}
-
-export function bookingTitle(b: Booking) {
-  return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";
 }
 
 function OpenShift({
@@ -468,7 +356,7 @@ function CloseSheet({
           {counted !== undefined && (
             <p className="between strong">
               <span className="label">Expected {formatMoney(expected, currency)}</span>
-              <Difference value={counted - expected} currency={currency} />
+              <DrawerDifference value={counted - expected} currency={currency} />
             </p>
           )}
           <button
@@ -620,45 +508,37 @@ function ExpenseSheet({
 const expenseIdeas = ["Rent", "Lalamove", "Grab", "Ice", "Supplies", "Parking", "Food", "Gas"];
 
 export function ShiftScreen({
-  state,
-  online,
   onOpen,
   onClose,
   onExpense,
   onUnexpense,
-  onLink,
   onSell,
   onGoMenu,
   onSchedule,
   onShift,
-  onSales,
-  demo,
   compact,
-}: {
-  state: RegisterState;
-  online: boolean;
+  ...schedule
+}: ScheduleProps & {
   onOpen: (opening: Opening) => Promise<void>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onExpense: (input: ExpenseInput) => Promise<void>;
   onUnexpense: (id: string) => Promise<void>;
-  onLink: (walkIn: WalkIn) => Promise<void>;
   onSell: () => void;
   onGoMenu?: () => void;
   onSchedule: () => void;
   onShift: (bookingId: string) => void;
-  onSales: (focus: SalesFocus) => void;
-  demo: boolean;
   /** On Sell: just the shift, without the past ones. */
   compact?: boolean;
 }) {
+  const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
-  const [detail, setDetail] = useState<{ id: string; justClosed?: boolean } | null>(null);
+  const [closedId, setClosedId] = useState<string | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
   const [report, setReport] = useState(false);
   const [removing, setRemoving] = useState<Expense | null>(null);
-  const [linking, setLinking] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
   const [method, setMethod] = useState<string | null>(null);
   const [allExpenses, setAllExpenses] = useState(false);
   const [allStock, setAllStock] = useState(false);
@@ -685,17 +565,11 @@ export function ShiftScreen({
   ]
     .filter((s) => s.closedAt)
     .sort((a, b) => b.number - a.number);
-  const detailShift = detail ? history.find((s) => s.id === detail.id) : undefined;
+  const justClosed = closedId ? history.find((s) => s.id === closedId) : undefined;
   const time = new Intl.DateTimeFormat("en", {
     timeZone: business.timeZone,
     hour: "numeric",
     minute: "2-digit",
-  });
-  const day = new Intl.DateTimeFormat("en", {
-    timeZone: business.timeZone,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
   });
   return (
     <div className="page">
@@ -711,7 +585,7 @@ export function ShiftScreen({
             <ShiftStrip
               state={state}
               onTillPage
-              onTill={activeBooking ? () => onShift(activeBooking.id) : () => setLinking(true)}
+              onTill={activeBooking ? () => onShift(activeBooking.id) : () => setLinking(shift.id)}
             />
           )}
           {history.length > 0 && !compact && !startingBooking && (
@@ -939,29 +813,7 @@ export function ShiftScreen({
       )}
       {pastShifts && (
         <Sheet title="Past shifts" onClose={() => setPastShifts(false)}>
-          <div className="card card-list">
-            {history.map((s) => {
-              const t = shiftTotals(s, state.sales);
-              return (
-                <button key={s.id} type="button" className="list-row past-shift-row" onClick={() => setDetail({ id: s.id })} aria-haspopup="dialog">
-                  <span className="well past-shift-icon">
-                    <Wallet size={18} strokeWidth={1.8} />
-                  </span>
-                  <span className="past-shift-info stack">
-                    <span>Shift {s.number}</span>
-                    <span className="label">{day.format(new Date(s.closedAt!))}</span>
-                    {s.difference !== undefined && (
-                      <span className="label">
-                        <Difference value={s.difference} currency={shiftCurrency(s, business)} />
-                      </span>
-                    )}
-                  </span>
-                  <Money value={t.total} currency={shiftCurrency(s, business)} className="past-shift-total" />
-                  <ChevronRight size={18} className="chev" />
-                </button>
-              );
-            })}
-          </div>
+          <ShiftList entries={history} state={state} showDates />
         </Sheet>
       )}
       {closing && shift && totals && (
@@ -973,12 +825,14 @@ export function ShiftScreen({
           onClose={async (closing, pin) => {
             await onClose(closing, pin);
             buzz.success();
-            setDetail({ id: shift.id, justClosed: true });
+            setClosedId(shift.id);
           }}
           onDismiss={() => setClosing(false)}
         />
       )}
-      {linking && <LinkSheet state={state} onLink={onLink} onDismiss={() => setLinking(false)} />}
+      {linking && (
+        <TillShiftsSheet {...schedule} shiftId={linking} onClose={() => setLinking(null)} />
+      )}
       {addingExpense && (
         <ExpenseSheet
           currency={currency}
@@ -1000,14 +854,14 @@ export function ShiftScreen({
       {report && shift && (
         <ReportSheet shift={shift} state={state} business={business} onDismiss={() => setReport(false)} />
       )}
-      {detailShift && (
+      {justClosed && (
         <ReportSheet
-          shift={detailShift}
+          shift={justClosed}
           state={state}
           business={business}
-          justClosed={detail?.justClosed}
-          title={detail?.justClosed ? `Shift ${detailShift.number} closed` : undefined}
-          onDismiss={() => setDetail(null)}
+          justClosed
+          title={`Shift ${justClosed.number} closed`}
+          onDismiss={() => setClosedId(null)}
         />
       )}
     </div>

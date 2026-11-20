@@ -1,4 +1,5 @@
 import { countRows } from "./cash";
+import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
 import { round, unitText } from "./stock";
 
@@ -456,4 +457,89 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   ctx.textBaseline = "top";
   for (const op of ops) op(ctx);
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(Error("Couldn't draw the report."))), "image/png"));
+}
+
+/** The Studio palette and type from the app, laid out as a readable group-chat card. */
+export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> {
+  const css = getComputedStyle(document.documentElement);
+  const color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
+  const [logo] = await Promise.all([
+    report.business.logo ? loadImage(report.business.logo) : Promise.resolve(null),
+    document.fonts?.ready,
+  ]);
+  const surface = color("--surface", "#fff");
+  const ink = color("--ink", "#0a0a0a");
+  const muted = color("--ink-secondary", "#6b6b6b");
+  const accent = color("--accent", "#0a0a0a");
+  const onAccent = color("--on-accent", "#fff");
+  const radius = parseFloat(color("--radius-lg", "24"));
+  const rowHeight = 68;
+  const rowsTop = 154;
+  const end = rowsTop + report.rows.length * rowHeight + 10;
+  const height = end + 44;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * 2;
+  canvas.height = height * 2;
+  const context = canvas.getContext("2d");
+  if (!context) throw Error("Couldn't draw the leaderboard.");
+  const ctx = context;
+  ctx.scale(2, 2);
+  ctx.textBaseline = "middle";
+
+  function box(x: number, y: number, w: number, h: number, rad: number, fill: string) {
+    ctx.fillStyle = fill;
+    rr(ctx, x, y, w, h, rad);
+    ctx.fill();
+  }
+  function text(value: string, x: number, y: number, size: number, weight: number, fill: string, max = CARD, align: CanvasTextAlign = "left") {
+    ctx.font = `${weight} ${size}px ${family}`;
+    ctx.fillStyle = fill;
+    ctx.textAlign = align;
+    if (ctx.measureText(value).width > max) {
+      const chars = Array.from(value);
+      while (chars.length && ctx.measureText(chars.join("") + "…").width > max) chars.pop();
+      value = chars.join("") + "…";
+    }
+    ctx.fillText(value, x, y);
+  }
+
+  ctx.fillStyle = color("--canvas", "#ededed");
+  ctx.fillRect(0, 0, W, height);
+  if (logo) {
+    cover(ctx, logo, G, 24, 38, 38, 10);
+  } else {
+    box(G, 24, 38, 38, 10, accent);
+    text(initials(report.business.name), G + 19, 43, 14, 600, onAccent, 32, "center");
+  }
+  text(report.business.name, G + 50, 43, 17, 600, ink, CARD - 50);
+  text(`${report.category} leaderboard`, G, 93, 34, 600, ink);
+  text(`${report.period} · ${report.ranking}`, G, 126, 15, 500, muted);
+
+  // The first place card uses the same accent as the primary action in the app.
+  box(G, rowsTop, CARD, rowHeight, radius, accent);
+  if (report.rows.length > 1) {
+    box(G, rowsTop + rowHeight + 10, CARD, (report.rows.length - 1) * rowHeight, radius, surface);
+  }
+  const nameX = L + 41;
+  report.rows.forEach(({ name, score, detail }, i) => {
+    const first = i === 0;
+    const y = rowsTop + i * rowHeight + (first ? 0 : 10);
+    if (i > 1) {
+      ctx.fillStyle = color("--line", "#ebebeb");
+      ctx.fillRect(L, y, R - L, 1);
+    }
+    const fg = first ? onAccent : ink;
+    ctx.font = `600 16px ${family}`;
+    const scoreWidth = Math.min(208, ctx.measureText(score).width);
+    text(String(i + 1), L + 10, y + 34, 17, 600, first ? onAccent : muted, 26, "center");
+    text(name, nameX, y + 24, 17, 600, fg, R - nameX - scoreWidth - 14);
+    text(score, R, y + 24, 16, 600, fg, 208, "right");
+    text(detail, nameX, y + 46, 14, 400, first ? onAccent : muted, R - nameX);
+  });
+  text("Portable POS", W / 2, end + 21, 13, 500, muted, CARD, "center");
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(Error("Couldn't draw the leaderboard.")), "image/png");
+  });
 }

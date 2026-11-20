@@ -720,7 +720,8 @@ export function Workspace() {
           onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
           onExpense={expense}
           onUnexpense={unexpense}
-          onLink={(newShift) => owner({ action: "link", newShift })}
+          onAction={owner}
+          onSaved={setToast}
           onSell={() => go("sell")}
           onGoMenu={canManageRecipes ? openMenu : undefined}
         />

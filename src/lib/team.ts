@@ -21,6 +21,14 @@ export interface Plan {
 
 export type BookingInput = Omit<Booking, "sales">;
 
+export function bookingTitle(b: Booking) {
+  return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";
+}
+
+export function seatsOpen(b: Booking) {
+  return Math.max(0, b.seats - b.staff.length);
+}
+
 export type PlanCommand =
   | { action: "invite"; name: string; email: string; rate: number }
   | { action: "member"; memberId: string; name: string; rate: number; owner?: boolean }
@@ -480,4 +488,10 @@ export function startProblem(
     return `This shift starts ${sameDay ? "at" : day.format(start) + ","} ${time.format(start)}. The till opens from ${time.format(start - OPEN_EARLY)}.`;
   }
   return null;
+}
+
+/** The Till's Shifts sheet uses the same business day as Shifts → Today. */
+export function linkBookingProblem(b: Pick<Booking, "startsAt" | "endsAt">, zone: string, now = Date.now()) {
+  if (dayOf(b.startsAt, zone) !== dayOf(now, zone)) return "Choose a shift scheduled for today.";
+  return startProblem(b, zone, now);
 }

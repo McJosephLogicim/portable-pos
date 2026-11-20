@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { inviteLink } from "@/lib/join-link";
-import { Banknote, Check, ChevronRight, HandPlatter, Link, Plus, Trash2, UserPlus } from "lucide-react";
+import { Banknote, ChevronRight, HandPlatter, Plus, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
 import { matches, RecordNoMatch, RecordSearch } from "./records";
+import { CopyButton } from "./share";
 import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
 export function initials(name: string) {
@@ -85,41 +86,6 @@ export function RolePicker({
   );
 }
 
-/** A pending person's invite link, ready to send in the group chat. */
-function InviteLink({ name, url }: { name: string; url: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="notice">
-      <span className="grow stack">
-        <span className="field-head">
-          Invite link
-          <Explain title="Invite link">
-            Send it to {name.split(/\s+/)[0] || "them"}. Whoever opens it and signs in joins the team as {name}, with any email. It works once.
-          </Explain>
-        </span>
-        <span className="label ellipsis">{url.replace(/^https?:\/\//, "")}</span>
-      </span>
-      <button
-        type="button"
-        className="btn small secondary"
-        onClick={async () => {
-          try {
-            if (navigator.share) await navigator.share({ title: "Join the team on Portable POS", url });
-            else {
-              await navigator.clipboard.writeText(url);
-              setCopied(true);
-            }
-          } catch {
-            /* the person closed the share sheet */
-          }
-        }}
-      >
-        {copied ? <Check size={15} /> : <Link size={15} />} {copied ? "Copied" : "Share"}
-      </button>
-    </div>
-  );
-}
-
 function MemberSheet({
   member,
   canChangeAccess,
@@ -148,6 +114,7 @@ function MemberSheet({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [copyError, setCopyError] = useState("");
   async function run(fn: () => Promise<boolean>) {
     setBusy(true);
     setError("");
@@ -160,6 +127,11 @@ function MemberSheet({
     }
   }
   const valid = name.trim() && (member || !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
+  const removeButton = onRemove && (
+    <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirmRemove(true)}>
+      <Trash2 size={16} /> {member?.joined ? "Remove" : "Revoke"}
+    </button>
+  );
   return (
     <>
     <Sheet
@@ -190,15 +162,12 @@ function MemberSheet({
               Resend
             </button>
           )}
-          {onRemove && (
-            <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirmRemove(true)}>
-              <Trash2 size={16} /> {member?.joined ? "Remove" : "Revoke"}
-            </button>
-          )}
+          {!onResend && removeButton}
+          {link && <CopyButton text={link} label="Copy invite link" disabled={busy} onError={setCopyError} />}
+          {onResend && removeButton}
         </>
       }
     >
-      {link && member && <InviteLink name={member.name} url={link} />}
       {member && (
         <div className="card card-pad">
           <PhotoPicker face value={photo} onChange={setPhoto} label="profile photo" />
@@ -269,6 +238,12 @@ function MemberSheet({
         <p className="alert" role="alert">
           {error}
         </p>
+      )}
+      {copyError && link && (
+        <div className="stack gap-8">
+          <p className="alert" role="alert">{copyError}</p>
+          <pre className="schedule-text">{link}</pre>
+        </div>
       )}
     </Sheet>
     {confirmRemove && member && onRemove && (

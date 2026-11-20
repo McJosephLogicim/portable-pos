@@ -73,8 +73,6 @@
 }
 
 .reportActions :global(.btn) {
-  gap: 6px;
-  min-height: 44px;
   padding-inline: 10px;
 }
 

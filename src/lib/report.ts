@@ -2,7 +2,7 @@ import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockLeft } from "./domain";
 import { round, stockModel, unitText } from "./stock";
-import { dayOf, shiftRoleNames } from "./team";
+import { bookingTitle, dayOf, seatsOpen, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -275,4 +275,27 @@ export function scheduleText(
       return [name, ...lines].join("\n");
     })
     .join("\n\n");
+}
+
+export function scheduledShiftText(booking: Booking, business: Business, origin: string, now = Date.now()) {
+  const timeZone = business.timeZone;
+  const day = new Intl.DateTimeFormat("en", { timeZone, weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+  const start = new Date(booking.startsAt);
+  const end = new Date(booking.endsAt);
+  const overnight = dayOf(booking.startsAt, timeZone) !== dayOf(booking.endsAt, timeZone);
+  const title = bookingTitle(booking);
+  const people = booking.staff.map((person) => person.name).join(", ");
+  const open = seatsOpen(booking);
+  const venue = [...new Set([booking.place?.name, booking.place?.address].filter(Boolean))].join(" · ");
+  const details = [
+    `${business.name} — ${title}`,
+    overnight
+      ? `${day.format(start)} at ${time.format(start)} to ${day.format(end)} at ${time.format(end)}`
+      : `${day.format(start)} · ${time.format(start)} to ${time.format(end)}`,
+    venue,
+    people ? `Working this shift: ${people}` : "",
+    open > 0 && end.getTime() > now ? `${open} open ${open === 1 ? "seat" : "seats"}` : "",
+  ];
+  return details.filter(Boolean).join("\n") + `\n\nView shift: ${joinLink(origin, business.id, booking.id)}`;
 }

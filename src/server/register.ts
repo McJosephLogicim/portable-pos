@@ -10,7 +10,7 @@ import {
   mergeShiftSettings,
 } from "../lib/settings";
 import { batchIngredientProblem, hasStockCostAmounts, pricingInCurrency, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
-import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import { linkBookingProblem, normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
 import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
@@ -306,6 +306,28 @@ export async function runCommand(
         const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt));
         await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
       }
+    } else if (cmd.action === "linkBooking") {
+      const [open] = await tx
+        .select()
+        .from(shifts)
+        .where(and(eq(shifts.businessId, business.id), eq(shifts.id, cmd.shiftId), isNull(shifts.closedAt)));
+      ensure(open, "The till changed. Open Shifts again to choose a shift.", 409);
+      if (open.bookingId === cmd.bookingId) return snapshot(access);
+      ensure(!open.bookingId, "This till is already on another shift.", 409);
+      const [booking] = await tx
+        .select()
+        .from(bookings)
+        .where(and(eq(bookings.businessId, business.id), eq(bookings.id, cmd.bookingId)));
+      ensure(booking, "That scheduled shift was removed.", 404);
+      const [closed] = await tx
+        .select({ id: shifts.id })
+        .from(shifts)
+        .where(and(eq(shifts.businessId, business.id), eq(shifts.bookingId, booking.id), isNotNull(shifts.closedAt)))
+        .limit(1);
+      ensure(!closed, "This shift already closed. Choose another shift.", 409);
+      const problem = linkBookingProblem(booking, business.timeZone);
+      ensure(!problem, problem ?? "", 409);
+      await tx.update(shifts).set({ bookingId: booking.id }).where(eq(shifts.id, open.id));
     } else if (cmd.action === "reverse") {
       const [open] = await tx
         .select()

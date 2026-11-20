@@ -3,7 +3,7 @@ import { checkCount, type CashCount } from "./cash";
 import { changeMenuItem, checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu, type MenuItemChange } from "./domain";
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
-import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
+import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { currencyDigits, defaultSettings, isSimpleMode, mergeShiftSettings } from "./settings";
 import type {
@@ -100,6 +100,7 @@ export interface Closing {
 export type OwnerAction =
   | ({ action: "open" } & Opening)
   | { action: "link"; newShift: WalkIn }
+  | { action: "linkBooking"; shiftId: string; bookingId: string }
   | { action: "profile"; memberId?: string; name?: string; photo?: string | null; pin?: string }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
   | (MenuItemChange & { pin: string })
@@ -194,6 +195,21 @@ export function demoAction(
         shift,
         shifts: state.shifts.map((s) => (s.id === shift.id ? shift : s)),
       };
+    }
+    case "linkBooking": {
+      const open = state.shift;
+      if (!open || open.closedAt || open.id !== input.shiftId)
+        throw new RequestFailure(409, "The till changed. Open Shifts again to choose a shift.");
+      if (open.bookingId === input.bookingId) return state;
+      if (open.bookingId) throw new RequestFailure(409, "This till is already on another shift.");
+      const booking = state.bookings?.find((b) => b.id === input.bookingId);
+      if (!booking) throw new RequestFailure(404, "That scheduled shift was removed.");
+      if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
+        throw new RequestFailure(409, "This shift already closed. Choose another shift.");
+      const problem = linkBookingProblem(booking, state.business!.timeZone);
+      if (problem) throw new RequestFailure(409, problem);
+      const shift = { ...open, bookingId: booking.id };
+      return { ...state, shift, shifts: state.shifts.map((s) => s.id === shift.id ? shift : s) };
     }
     case "removeMenuItem":
     case "restoreMenuItem":

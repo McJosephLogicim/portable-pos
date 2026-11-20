@@ -343,6 +343,7 @@ const command = z.discriminatedUnion("action", [
     deviceId: key,
     newShift: walkIn,
   }),
+  z.object({ action: z.literal("linkBooking"), shiftId: z.uuid(), bookingId: z.uuid() }),
   z.object({
     action: z.literal("sync"),
     deviceId: key,
