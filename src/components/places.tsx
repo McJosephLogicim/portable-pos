@@ -53,12 +53,34 @@ export function distanceText(km: number) {
   return Math.round(km) + " km";
 }
 
-/** A small map centered on a point, drawn from standard tiles so it needs no SDK or key. */
-export function MapPreview({ lat, lon, height = 180, zoom = 16 }: Point & { height?: number; zoom?: number }) {
-  const n = 2 ** zoom;
-  const fx = ((lon + 180) / 360) * n;
+const tileX = (lon: number, n: number) => ((lon + 180) / 360) * n;
+const tileY = (lat: number, n: number) => {
   const rad = (lat * Math.PI) / 180;
-  const fy = ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
+  return ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
+};
+const toPoint = (fx: number, fy: number, n: number): Point => ({
+  lon: Math.round((((((fx / n) * 360) % 360) + 360) % 360 - 180) * 1e6) / 1e6,
+  lat: Math.round(((Math.atan(Math.sinh(Math.PI * (1 - (2 * fy) / n))) * 180) / Math.PI) * 1e6) / 1e6,
+});
+
+/**
+ * A small map centered on a point, drawn from standard tiles so it needs no SDK or key.
+ * With onMove, the pin stays in the middle: drag the map under it, or tap a spot to put the
+ * pin there.
+ */
+export function MapPreview({
+  lat,
+  lon,
+  height = 180,
+  zoom = 16,
+  onMove,
+}: Point & { height?: number; zoom?: number; onMove?: (point: Point) => void }) {
+  const n = 2 ** zoom;
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const start = useRef<{ x: number; y: number; id: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const fx = tileX(lon, n) - (drag?.x ?? 0) / 256;
+  const fy = tileY(lat, n) - (drag?.y ?? 0) / 256;
   const tx = Math.floor(fx);
   const ty = Math.floor(fy);
   const tiles: { x: number; y: number; left: number; top: number }[] = [];
@@ -70,8 +92,43 @@ export function MapPreview({ lat, lon, height = 180, zoom = 16 }: Point & { heig
         left: (tx + dx - fx) * 256,
         top: (ty + dy - fy) * 256,
       });
+  const finish = (x: number, y: number) => {
+    const s = start.current;
+    start.current = null;
+    if (!s || !onMove) return;
+    const moved = Math.hypot(x - s.x, y - s.y);
+    setDrag(null);
+    if (moved > 6) {
+      onMove(toPoint(tileX(lon, n) - (x - s.x) / 256, tileY(lat, n) - (y - s.y) / 256, n));
+    } else {
+      // A tap: put the pin where the finger landed.
+      const box = ref.current!.getBoundingClientRect();
+      onMove(toPoint(tileX(lon, n) + (x - box.left - box.width / 2) / 256, tileY(lat, n) + (y - box.top - box.height / 2) / 256, n));
+    }
+  };
   return (
-    <div className="map" style={{ height }} role="img" aria-label="Map of the location">
+    <div
+      ref={ref}
+      className={"map" + (onMove ? " movable" : "")}
+      style={{ height }}
+      role="img"
+      aria-label={onMove ? "Map. Drag it or tap a spot to move the pin." : "Map of the location"}
+      onPointerDown={onMove ? (e) => {
+        if ((e.target as HTMLElement).closest("a")) return;
+        start.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } : undefined}
+      onPointerMove={onMove ? (e) => {
+        const s = start.current;
+        if (!s || s.id !== e.pointerId) return;
+        if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 6) setDrag({ x: e.clientX - s.x, y: e.clientY - s.y });
+      } : undefined}
+      onPointerUp={onMove ? (e) => finish(e.clientX, e.clientY) : undefined}
+      onPointerCancel={onMove ? () => {
+        start.current = null;
+        setDrag(null);
+      } : undefined}
+    >
       <div className="map-tiles">
         {tiles
           .filter((t) => t.y >= 0 && t.y < n)
@@ -89,7 +146,7 @@ export function MapPreview({ lat, lon, height = 180, zoom = 16 }: Point & { heig
             />
           ))}
       </div>
-      <span className="map-pin" aria-hidden="true">
+      <span className={"map-pin" + (drag ? " lifted" : "")} aria-hidden="true">
         <MapPin size={20} strokeWidth={2.2} />
       </span>
       <a
@@ -127,9 +184,12 @@ export function LocationPicker({
   const [query, setQuery] = useState("");
   const [here, setHere] = useState<Point | null>(null);
   const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState("");
   const [results, setResults] = useState<Place[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [preview, setPreview] = useState<Place | null>(null);
+  const [picked, setPicked] = useState<Place | null>(null);
+  const moved = Boolean(preview && picked && (preview.lat !== picked.lat || preview.lon !== picked.lon));
   const seq = useRef(0);
   const center = here ?? zoneCenters[timeZone];
 
@@ -177,14 +237,27 @@ export function LocationPicker({
   }, [query, center?.lat, center?.lon]);
 
   function locate() {
-    if (!navigator.geolocation) return;
+    if (here) {
+      setHere(null);
+      return;
+    }
+    setLocateError("");
+    if (!navigator.geolocation) {
+      setLocateError("This phone can't share its location here.");
+      return;
+    }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setHere({ lat: pos.coords.latitude, lon: pos.coords.longitude });
         setLocating(false);
       },
-      () => setLocating(false),
+      (e) => {
+        setLocating(false);
+        setLocateError(e.code === e.PERMISSION_DENIED
+          ? "Location is blocked. Allow it for this site in your browser settings, then try again."
+          : "Couldn't find you. Try again outside or with a connection.");
+      },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
     );
   }
@@ -201,18 +274,6 @@ export function LocationPicker({
       <Sheet
         title="Location"
         onClose={onClose}
-        action={
-          <button
-            type="button"
-            className="round flat"
-            aria-label="Show distances from where I am"
-            aria-pressed={Boolean(here)}
-            disabled={locating}
-            onClick={locate}
-          >
-            <LocateFixed size={19} />
-          </button>
-        }
       >
         <div className="search-field">
           <Search size={18} aria-hidden="true" />
@@ -227,6 +288,13 @@ export function LocationPicker({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        <div className="near-me">
+          <button type="button" className="chip-button" aria-pressed={Boolean(here)} disabled={locating} onClick={locate}>
+            <LocateFixed size={15} strokeWidth={2} />
+            {locating ? "Finding you…" : here ? "Near me · on" : "Search near me"}
+          </button>
+          <span className="label">{locateError || (here ? "Closest places first, with how far they are." : "")}</span>
+        </div>
         <div className="place-list" role="listbox" aria-label="Places">
           {typed.length < 2 && recent.length > 0 && <p className="group-title">Used before</p>}
           {list.map((p, i) => {
@@ -238,7 +306,11 @@ export function LocationPicker({
                 role="option"
                 aria-selected={false}
                 className="place-row"
-                onClick={() => (p.lat !== undefined ? setPreview(p) : onPick(p))}
+                onClick={() => {
+                  if (p.lat === undefined) return onPick(p);
+                  setPicked(p);
+                  setPreview(p);
+                }}
               >
                 <span className="ellipsis strong-ish">{p.name}</span>
                 <span className="label ellipsis">
@@ -282,7 +354,15 @@ export function LocationPicker({
             <p className="strong">{preview.name}</p>
             {preview.address && <p className="label">{preview.address}</p>}
           </div>
-          <MapPreview lat={preview.lat} lon={preview.lon} height={220} />
+          <MapPreview
+            lat={preview.lat}
+            lon={preview.lon}
+            height={280}
+            onMove={(point) => setPreview({ ...preview, ...point })}
+          />
+          <p className="label" style={{ textAlign: "center" }}>
+            {moved ? "Pin moved. Drag again or tap to fine-tune." : "Not quite right? Drag the map or tap the exact spot."}
+          </p>
         </Sheet>
       )}
     </>
