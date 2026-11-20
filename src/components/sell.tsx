@@ -29,6 +29,7 @@ import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
   buzz,
+  CategoryTabs,
   DoneCheck,
   errorText,
   usePin,
@@ -1080,27 +1081,7 @@ export function SellScreen({
             onChange={(e) => setQuery(e.target.value)}
           />
         )}
-        {categories.length > 1 && (
-          <div className="chips" role="group" aria-label="Categories">
-            <button
-              type="button"
-              aria-pressed={category === null}
-              onClick={() => setCategory(null)}
-            >
-              All
-            </button>
-            {categories.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-pressed={category === c}
-                onClick={() => setCategory(category === c ? null : c)}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
+        {categories.length > 1 && <CategoryTabs categories={categories} value={category} onChange={setCategory} />}
       </div>
       {error && (
         <p className="notice alert" role="alert">

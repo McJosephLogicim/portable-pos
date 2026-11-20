@@ -592,6 +592,15 @@ button.list-row:not(.sell-option):active {
   background: var(--accent);
   color: var(--on-accent);
 }
+.chips > button.chip-new {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px dashed var(--ink-tertiary);
+  padding: 0 16px 0 12px;
+}
+.chips > button.chip-new:disabled {
+  opacity: 0.4;
+}
 
 /* ---------- sheet ---------- */
 .sheet {
