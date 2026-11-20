@@ -390,7 +390,7 @@ function BusinessPage(props: SettingsProps) {
         </span>
       </div>}
       {!simple && <div className="stack gap-10">
-        <p className="group-title field-head">
+        <p className="group-title title-help">
           Branding
           <Explain title="Branding">
             <p>Your color, font and corners show across the app, on receipts and on shift reports.</p>
@@ -1170,7 +1170,10 @@ export function SettingsScreen(props: SettingsProps) {
     return (
       <div className="page narrow">
         <div className="page-top">
-          <h1 className="headline">Settings</h1>
+          <h1 className="headline title-help">
+            Settings
+            <Explain title="Settings on the team">The owner manages the menu, payments and team.</Explain>
+          </h1>
         </div>
         <ProfileCard {...props} />
         <div className="card card-list">
@@ -1180,9 +1183,6 @@ export function SettingsScreen(props: SettingsProps) {
             onClick={props.onBusinesses}
           />
         </div>
-        <p className="label" style={{ padding: "0 4px" }}>
-          The owner manages the menu, payments and team.
-        </p>
         <div className="card card-pad">
           <button className="btn secondary block" onClick={props.onSignOut}>
             Sign out

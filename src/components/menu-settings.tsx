@@ -10,7 +10,7 @@ import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
-import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
+import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
   namesText,
   PickChips,
@@ -475,10 +475,14 @@ export function ItemSheet({
               />
             </label>
             <div className="field">
-              <span>What goes into the whole batch</span>
+              <span className="field-head">
+                What goes into the whole batch
+                <Explain title="Batch costing">
+                  This is for costing only. What the till takes off per sale is set under Stock.
+                </Explain>
+              </span>
               <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
             </div>
-            <p className="label">This is for costing only. What the till takes off per sale is set under Stock.</p>
           </>
         )}
         <div className="grid-2">
@@ -680,6 +684,12 @@ function CategorySheet({
   return (
     <RecordSheet
       noun="category"
+      help={
+        <>
+          <p>Sell groups items by category, in this order.</p>
+          <p>Removing a category keeps its items on the menu, with no category.</p>
+        </>
+      }
       editing={Boolean(category)}
       busy={busy}
       error={error}
@@ -703,14 +713,13 @@ function CategorySheet({
         <div className="field">
           <span>Items in it</span>
           <PickChips label="Items in this category" items={menu} picked={picked} onChange={setPicked} />
-          <p className="label">
-            {moving.length
-              ? namesText(moving.map((p) => p.name)) + " will move here from " + namesText([...new Set(moving.map((p) => p.category.trim()))]) + "."
-              : "Sell groups items by category, in this order."}
-          </p>
+          {moving.length > 0 && (
+            <p className="label">
+              {namesText(moving.map((p) => p.name)) + " will move here from " + namesText([...new Set(moving.map((p) => p.category.trim()))]) + "."}
+            </p>
+          )}
         </div>
       </div>
-      {category && <p className="label">Removing it keeps the items on the menu, with no category.</p>}
     </RecordSheet>
   );
 }
@@ -900,9 +909,11 @@ function ChoiceSheet({
         />
       </div>
       <div className="card card-pad stack gap-12">
-        <span className="strong">Offered on</span>
+        <span className="strong title-help">
+          Offered on
+          <Explain title="Offered on">Saving updates the choice on every item picked here.</Explain>
+        </span>
         <PickChips label="Items that offer this choice" items={menu} picked={picked} onChange={setPicked} />
-        <p className="label">Saving updates the choice on every item picked here.</p>
       </div>
     </RecordSheet>
   );

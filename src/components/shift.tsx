@@ -26,6 +26,7 @@ import {
   buzz,
   centerOf,
   EmptyRow,
+  Explain,
   progressStyle,
   useCelebrate,
   useCountUp,
@@ -69,7 +70,6 @@ function WalkInFields({
           ))}
         </div>
       </div>
-      <p className="label">It goes on the Shifts page with you on it, so sales and pay add up.</p>
     </div>
   );
 }
@@ -91,6 +91,12 @@ function LinkSheet({
     <Sheet
       title="Add this till to Shifts"
       onClose={onDismiss}
+      help={
+        <>
+          <p>It starts when the till opened.</p>
+          <p>It goes on the Shifts page with you on it, so sales and pay add up.</p>
+        </>
+      }
       busy={busy}
       footer={
         <button
@@ -114,7 +120,6 @@ function LinkSheet({
         </button>
       }
     >
-      <p className="muted">It starts when the till opened.</p>
       <WalkInFields state={state} value={walkIn} onChange={setWalkIn} />
       {error && (
         <p className="alert" role="alert">
@@ -533,8 +538,10 @@ function CloseSheet({
       </div>
       {tracked.length > 0 && (
         <div className="stack gap-10">
-          <p className="group-title">Stock left</p>
-          <p className="label">The grey number is what should be left after today's sales.</p>
+          <p className="group-title title-help">
+            Stock left
+            <Explain title="Stock left">The grey number is what should be left after today's sales. Count what's really there.</Explain>
+          </p>
           <div className="card card-list">
             {tracked.map((item) => (
               <StockCount

@@ -123,6 +123,11 @@ export function StockSheet({
   return (
     <RecordSheet
       noun={prepOnly || item?.prep ? "prep item" : "stock item"}
+      help={
+        prepared
+          ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
+          : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."
+      }
       editing={Boolean(item)}
       busy={busy}
       error={error}
@@ -250,15 +255,13 @@ export function StockSheet({
           )}
         </div>
       )}
-      <p className="label">
-        {item
-          ? users.length
+      {item && (
+        <p className="label">
+          {users.length
             ? "Used by " + namesText(users, 3) + "." + (onRemove ? " Removing it stops those items using it." : "")
-            : "No menu item uses it yet. Open a menu item and set Stock to Uses stock."
-          : prepared
-            ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
-            : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
-      </p>
+            : "No menu item uses it yet. Open a menu item and set Stock to Uses stock."}
+        </p>
+      )}
       {recipeUsers.length > 0 && <p className="label">Used in {namesText(recipeUsers, 3)}. Remove it from those recipes before deleting it.</p>}
     </RecordSheet>
   );

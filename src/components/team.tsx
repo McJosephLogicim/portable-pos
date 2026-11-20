@@ -8,7 +8,7 @@ import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
-import { errorText, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
+import { errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
 export function initials(name: string) {
   return (
@@ -175,7 +175,16 @@ function MemberSheet({
         </label>
         {!member?.owner && (
           <label className="field">
-            <span>Email they sign in with</span>
+            {member ? (
+              <span>Email they sign in with</span>
+            ) : (
+              <span className="field-head">
+                Email they sign in with
+                <Explain title="Their email">
+                  They can use their existing Portable POS account and keep any businesses they already own.
+                </Explain>
+              </span>
+            )}
             <input
               className="input"
               type="email"
@@ -199,9 +208,6 @@ function MemberSheet({
           body: <p>What they earn each time they join a shift. You can change it for a single shift when you schedule it. They pick cashier or server on each shift.</p>,
         }}
       />
-      {!member && (
-        <p className="label">They can use their existing Portable POS account and keep any businesses they already own.</p>
-      )}
       {onResend && (
         <div className="notice">
           <span className="grow">They join by signing in with the invited email.</span>
