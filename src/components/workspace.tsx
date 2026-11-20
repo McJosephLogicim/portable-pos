@@ -609,12 +609,21 @@ export function Workspace() {
   else if (view === "sales")
     screen = (
       <SalesScreen
+        key={salesFocus ? JSON.stringify(salesFocus.filter) : "sales"}
         state={state}
         online={online}
         onReverse={reverse}
         onSell={() => go("sell")}
         focus={salesFocus}
-        onFocus={setSalesFocus}
+        onBack={() => {
+          const bookingId = salesFocus?.back?.bookingId;
+          setSalesFocus(null);
+          if (!bookingId) return;
+          buzz.tap();
+          setSharedSchedule({ bookingId });
+          setTab("schedule");
+          window.scrollTo(0, 0);
+        }}
       />
     );
   else if (view === "shift" || !sellable)

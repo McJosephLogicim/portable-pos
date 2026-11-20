@@ -94,6 +94,14 @@ img {
   outline: 2px solid var(--accent-ring);
   outline-offset: 2px;
 }
+/* After a tap, Safari still rings buttons focused by a script or a sheet. Rings are for keys. */
+html:not([data-input="keyboard"]) button:focus-visible,
+html:not([data-input="keyboard"]) a:focus-visible,
+html:not([data-input="keyboard"]) [role="button"]:focus-visible,
+.sheet:focus,
+.sheet:focus-visible {
+  outline: none;
+}
 
 /* ---------- type ---------- */
 .g {
@@ -1269,6 +1277,29 @@ button.list-row:not(.sell-option):active {
 }
 
 /* ---------- big numbers ---------- */
+.confirm-sale {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 4px;
+}
+.confirm-main {
+  align-items: center;
+  text-align: center;
+  padding: 12px 0 4px;
+  animation: nudge 220ms var(--ease-out);
+}
+@keyframes nudge {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confirm-main {
+    animation: none;
+  }
+}
 .due-num {
   font-size: 56px;
   line-height: 1;
@@ -2039,6 +2070,53 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 .chips.wrap > button[aria-pressed="true"] {
   background: var(--accent);
+}
+
+/* ---------- sales filters ---------- */
+.back-row {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.chips.filter-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+  margin: 0;
+  padding: 0;
+}
+.filter-chips > button {
+  color: var(--ink);
+  max-width: 100%;
+}
+.filter-chips > button .g {
+  font-weight: 400;
+}
+.filter-chips > .filter-open {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink-secondary);
+}
+.filter-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+.sheet .chips.wrap > button:not([aria-pressed="true"]) {
+  background: var(--surface);
+}
+.chips.wrap > button.link,
+.sheet .chips.wrap > button.link {
+  background: none;
+  padding: 0 6px;
 }
 
 /* ---------- insights ---------- */
