@@ -1116,12 +1116,38 @@ function BookingEditor({
           <div className="card card-pad stack gap-14">
             <MoneyField label={bulk ? "Rent for each shift" : "Rent or booth fee"} value={d.rent} onChange={(v) => set({ rent: v })} currency={currency} />
             <div className="grid-2">
-              <MoneyField label="Sales quota" value={d.quota} onChange={(v) => set({ quota: v })} currency={currency} />
-              <MoneyField label="Incentive each" value={d.incentive} onChange={(v) => set({ incentive: v })} currency={currency} />
+              <MoneyField
+                label="Sales quota"
+                value={d.quota}
+                onChange={(v) => set({ quota: v })}
+                currency={currency}
+                help={{
+                  title: "Sales quota",
+                  body: (
+                    <>
+                      <p>The sales this shift aims for. Leave it at 0 for no quota.</p>
+                      <p>The shift shows a bar that fills as the till sells, so the team can see how close they are.</p>
+                    </>
+                  ),
+                }}
+              />
+              <MoneyField
+                label="Incentive each"
+                value={d.incentive}
+                onChange={(v) => set({ incentive: v })}
+                currency={currency}
+                help={{
+                  title: "Incentive",
+                  body: (
+                    <>
+                      <p>A bonus each person on the shift earns when sales reach the quota, on top of their pay.</p>
+                      <p>With 2 people and {formatMoney(currency === "PHP" ? 10000 : 1000, currency)} each, the shift pays {formatMoney(currency === "PHP" ? 20000 : 2000, currency)} in incentives.</p>
+                      <p>Profit is sales minus rent, salaries and incentives.</p>
+                    </>
+                  ),
+                }}
+              />
             </div>
-            <p className="label">
-              When sales reach the quota, everyone on the shift earns the incentive. Profit is sales minus rent, salaries and incentives.
-            </p>
           </div>
         </div>
         {error && (

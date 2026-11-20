@@ -69,7 +69,7 @@ When the till opens, it asks which scheduled shift it's for. That shift's profit
 
 A shift's sheet on the Shifts tab shows its best sellers. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The trophy button at the top of Shifts opens leaderboards for events, organizers, places and people, for this month or the last 60 days. The Sales tab charts sales by hour once there are a few. The owner sees them ranked by sales with profit; everyone else sees them ranked by quotas hit, then shifts worked.
 
-Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. Both need a connection. Without one, the typed name can still be saved as the location.
+Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. In the map preview, drag the map or tap a spot to move the pin. **Search near me** sorts places by distance from the phone. Both need a connection. Without one, the typed name can still be saved as the location.
 
 ## Verification
 

@@ -544,8 +544,11 @@ export function MoneyField({
   big = false,
   autoFocus,
   placeholder = "0",
+  help,
 }: {
   label: string;
+  /** A short explanation behind an (i) next to the label. */
+  help?: { title: string; body: ReactNode };
   value: string;
   onChange: (value: string) => void;
   currency: string;
@@ -555,7 +558,14 @@ export function MoneyField({
 }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      {help ? (
+        <span className="field-head">
+          {label}
+          <Explain title={help.title}>{help.body}</Explain>
+        </span>
+      ) : (
+        <span>{label}</span>
+      )}
       <span className="money-input">
         <input
           className={"input" + (big ? " big" : "")}

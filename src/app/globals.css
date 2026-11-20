@@ -3070,3 +3070,63 @@ html {
   vertical-align: -2px;
   color: var(--ink);
 }
+
+/* ---------- location search ---------- */
+.place-row {
+  min-width: 0;
+  overflow: hidden;
+}
+.place-row > span {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+.near-me {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.near-me .label:empty {
+  display: none;
+}
+.near-me .label {
+  min-width: 0;
+  line-height: 1.35;
+}
+.chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+.chip-button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.chip-button:disabled {
+  opacity: 0.6;
+}
+.map.movable {
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.map.movable:active {
+  cursor: grabbing;
+}
+.map-pin {
+  transition: margin var(--dur-fast) var(--ease-out);
+}
+.map-pin.lifted {
+  margin-top: -54px;
+}
