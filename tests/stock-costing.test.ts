@@ -3,7 +3,7 @@ import test from "node:test";
 import { makeSale, stockLeft } from "../src/lib/domain";
 import { newShift } from "../src/lib/demo";
 import { defaultSettings } from "../src/lib/settings";
-import { batchIngredientProblem, menuCost, menuRecipeCost, prepCost, stockCostRates, suggestedPrice, withoutStockCosts } from "../src/lib/stock";
+import { batchIngredientProblem, menuCost, menuRecipeCost, prepCost, stockCostRates, suggestedPrice, unitFor, withoutStockCosts } from "../src/lib/stock";
 import type { Product, StockItem } from "../src/lib/types";
 import { parseCommand } from "../src/server/input";
 
@@ -139,4 +139,17 @@ test("settings accept optional purchase data and till settings omit it", () => {
   assert.throws(() => withPrep([whip, { ...cream, prep: { ...cream.prep!, uses: [{ stockId: cream.id, amount: 1 }] } }]), /only use purchased/);
   assert.throws(() => withPrep([whip, { ...cream, prep: { ...cream.prep!, uses: [...cream.prep!.uses, ...cream.prep!.uses] } }]), /twice/);
   assert.throws(() => withPrep([whip, { ...cream, prep: { ...cream.prep!, yieldQuantity: 0 } }]));
+});
+
+test("stock units read naturally after an amount", () => {
+  assert.equal(unitFor(1, "piece"), "piece");
+  assert.equal(unitFor(2, "piece"), "pieces");
+  assert.equal(unitFor(0.5, "piece"), "pieces");
+  assert.equal(unitFor(2, "box"), "boxes");
+  assert.equal(unitFor(3, "pack"), "packs");
+  assert.equal(unitFor(2, "kg"), "kg");
+  assert.equal(unitFor(250, "mL"), "mL");
+  assert.equal(unitFor(2, "pcs"), "pcs");
+  assert.equal(unitFor(2, "dozen"), "dozen");
+  assert.equal(unitFor(undefined, "piece"), "piece");
 });

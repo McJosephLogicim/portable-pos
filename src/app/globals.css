@@ -2572,19 +2572,29 @@ html {
 }
 .use-amount {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
+  font-size: 15px;
 }
 .use-amount .nowrap {
   white-space: nowrap;
 }
-.use-row .input.count {
-  width: 72px;
-}
-.use-unit {
-  width: 96px;
-  flex: none;
-  padding-left: 16px;
+@media (max-width: 360px) {
+  .use-amount {
+    gap: 6px;
+    font-size: 14px;
+  }
+  .use-amount .stepper {
+    padding: 0;
+    gap: 2px;
+  }
+  .use-amount .stepper .input.count {
+    width: 44px;
+  }
+  .use-amount .use-unit-input {
+    width: 80px;
+  }
 }
 .recipe-cost {
   margin-top: 8px;
@@ -2838,10 +2848,6 @@ html {
 }
 .use-row > .row {
   gap: 10px;
-}
-.use-amount .nowrap {
-  white-space: normal;
-  line-height: 1.3;
 }
 .input[type="time"],
 .input[type="date"] {

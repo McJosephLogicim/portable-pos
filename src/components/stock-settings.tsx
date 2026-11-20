@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { CookingPot, Package, Plus, Trash2 } from "lucide-react";
+import { CookingPot, Minus, Package, Plus, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
 import { amountText, parseMoney } from "@/lib/domain";
 import { currencyDigits } from "@/lib/settings";
-import { menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, units } from "@/lib/stock";
+import { menuRecipeCost, prepCost, round, stockCostRates, stockModel, stockUnitCost, suggestedPrice, unitFor, units } from "@/lib/stock";
 import type { Product, StockItem, StockPrep, StockPurchase, StockUse } from "@/lib/types";
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
@@ -395,6 +395,10 @@ export function stockForUse(draft: UseDraft, stockItems: StockItem[]) {
     : stockItems.find((item) => sameName(item.name, draft.name));
 }
 
+/** Whole steps, or tenths below one so 0.2 kg can still be nudged. */
+const stepUp = (n: number) => round(n < 1 ? n + 0.1 : n + 1);
+const stepDown = (n: number) => round(n <= 1 ? n - 0.1 : Math.max(1, n - 1));
+
 function useAmount(value: string) {
   const quantity = Number(value);
   const amount = round(quantity);
@@ -416,7 +420,7 @@ export function stockUseRows(uses: UseDraft[], stockItems: StockItem[], costItem
     const amount = useAmount(draft.amount);
     const rate = item && currentUnits.get(item.id) === item.unit ? rates.get(item.id) : undefined;
     const cost = rate !== undefined && amount !== undefined ? rate * amount : undefined;
-    return { draft, item, cost };
+    return { draft, item, amount, cost };
   });
 }
 
@@ -442,9 +446,10 @@ export function UsesEditor({
     onChange(uses.map((u) => (u.key === key ? { ...u, ...patch } : u)));
   const rows = stockUseRows(uses, stockItems, costItems);
   const entry = batch ? "ingredient" : "stock item";
+  const per = batch ? "batch" : "sale";
   return (
     <div className="stack gap-8">
-      {rows.map(({ draft: u, item: known, cost }, i) => (
+      {rows.map(({ draft: u, item: known, amount, cost }, i) => (
         <div className="use-row" key={u.key}>
           <div className="row gap-8">
             <SuggestInput
@@ -472,16 +477,43 @@ export function UsesEditor({
             </button>
           </div>
           <div className="use-amount">
-            <span className="label grow nowrap">Per {batch ? "batch" : "sale"}</span>
-            <input
-              className="input count"
-              inputMode="decimal"
-              aria-label={`How much of ${entry} ${i + 1} one ${batch ? "batch" : "sale"} uses`}
-              value={u.amount}
-              onChange={(e) => set(u.key, { amount: decimalEntry(e.target.value).slice(0, 8) })}
-            />
+            <span>Uses</span>
+            <div className="stepper" role="group" aria-label={`How much of ${entry} ${i + 1} each ${per}`}>
+              <button
+                type="button"
+                className="round flat"
+                aria-label="Less"
+                disabled={amount === undefined || amount <= 0.1}
+                onClick={() => {
+                  buzz.tap();
+                  set(u.key, { amount: String(stepDown(amount!)) });
+                }}
+              >
+                <Minus size={16} />
+              </button>
+              <input
+                className="input count"
+                inputMode="decimal"
+                aria-label="Amount"
+                value={u.amount}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => set(u.key, { amount: decimalEntry(e.target.value).slice(0, 8) })}
+              />
+              <button
+                type="button"
+                className="round flat"
+                aria-label="More"
+                disabled={amount !== undefined && amount >= 10_000}
+                onClick={() => {
+                  buzz.tick();
+                  set(u.key, { amount: String(stepUp(amount ?? 0)) });
+                }}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
             {known || batch || !u.name.trim() ? (
-              <span className="label use-unit">{known?.unit ?? ""}</span>
+              known && <span className="nowrap">{unitFor(amount, known.unit)}</span>
             ) : (
               <SuggestInput
                 className="use-unit-input"
@@ -495,12 +527,10 @@ export function UsesEditor({
               />
             )}
           </div>
-          {showCosts && u.name.trim() && (
-            <p className="label between">
-              <span>Cost per {batch ? "batch" : "sale"}</span>
-              <strong>{cost === undefined ? "—" : formatMoney(Math.round(cost), currency)}</strong>
-            </p>
-          )}
+          <p className="label">
+            {batch ? "Each batch" : "Each sale"}
+            {showCosts && u.name.trim() && (cost === undefined ? " · no cost yet" : " · " + formatMoney(Math.round(cost), currency))}
+          </p>
         </div>
       ))}
       <button
