@@ -7,8 +7,8 @@ import { catalogSku, menuCostingOverview, pricingRules, readTargetMargin } from 
 import type { Business, Product } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
 import { Row, SubPage, useCommit } from "./settings";
-import { RecordEmpty, useRecordSave } from "./records";
-import { Explain, formatMoney, MoneyField } from "./ui";
+import { useRecordSave } from "./records";
+import { EmptyState, Explain, formatMoney, MoneyField } from "./ui";
 import styles from "./settings.module.css";
 
 const percent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 });
@@ -76,7 +76,7 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
         </>
       ) : (
         <>
-          <RecordEmpty icon={<Calculator size={22} />} title="No menu items yet" text="Add a menu item to see its cost and margin here." />
+          <EmptyState icon={<Calculator size={22} />} title="No menu items yet" text="Add a menu item to see its cost and margin here." />
           <button type="button" className="btn" onClick={onMenu}>Go to menu items</button>
           {rulesRow}
         </>

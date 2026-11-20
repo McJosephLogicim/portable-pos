@@ -12,7 +12,6 @@ import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { SuggestInput } from "./combobox";
-import { RecordEmpty } from "./records";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
@@ -29,6 +28,7 @@ import {
   buzz,
   centerOf,
   EmptyRow,
+  EmptyState,
   progressStyle,
   useCelebrate,
   useCountUp,
@@ -165,7 +165,7 @@ function NoShift({
         </div>
       )}
       {!list.length && !running.size ? (
-        <RecordEmpty
+        <EmptyState
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled"
           text="Schedule a shift before opening the till."

@@ -1134,6 +1134,21 @@ export function Toast({
   );
 }
 
+/**
+ * The one empty state for a page or a whole list: an icon, what's missing, and the next
+ * step. Lists that sit inside a card with other rows use EmptyRow instead.
+ */
+export function EmptyState({ icon, title, text, children }: { icon: ReactNode; title: string; text?: string; children?: ReactNode }) {
+  return (
+    <div className="card empty">
+      <span className="well" aria-hidden="true">{icon}</span>
+      <span className="strong">{title}</span>
+      {text && <span className="label empty-text">{text}</span>}
+      {children && <span className="empty-actions">{children}</span>}
+    </div>
+  );
+}
+
 /** An empty list inside a card: what goes here, and how it fills up. */
 export function EmptyRow({ title, detail }: { title: string; detail?: string }) {
   return (

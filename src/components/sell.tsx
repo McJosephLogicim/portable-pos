@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -32,6 +32,7 @@ import {
   CategoryTabs,
   ConfirmSheet,
   DoneCheck,
+  EmptyState,
   ItemFaces,
   errorText,
   usePin,
@@ -1188,26 +1189,21 @@ export function SellScreen({
             )}
           </div>
         ) : (
-          <div className="empty card">
-            <span className="well">
-              <Search size={22} />
-            </span>
-            <p className="strong">
-              {menu.length ? "Nothing matches" : "No items on this shift"}
-            </p>
-            <p className="label">
-              {menu.length
-                ? "Try another name or category."
-                : canEdit
-                  ? "Add your first item. It goes on sale right away."
-                  : "Ask the owner to add items."}
-            </p>
+          <EmptyState
+            icon={menu.length ? <Search size={22} /> : <ShoppingBag size={22} />}
+            title={!menu.length ? "No items on this shift" : query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
+            text={menu.length
+              ? "Try another name or category."
+              : canEdit
+                ? "Add your first item. It goes on sale right away."
+                : "Ask the owner to add items."}
+          >
             {canEdit && !menu.length && (
-              <button className="btn" disabled={!online} onClick={() => setAdding(true)}>
-                <Plus size={18} /> Add
+              <button className="btn compact" disabled={!online} onClick={() => setAdding(true)}>
+                <Plus size={16} /> Add
               </button>
             )}
-          </div>
+          </EmptyState>
         )}
       </div>
       {count > 0 && !marking && !cartMenuError && (

@@ -13,14 +13,13 @@ import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUse
 import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
 import { MultiSelect } from "./multi-select";
-import { buzz, currencySymbol, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch, usePin } from "./ui";
+import { buzz, currencySymbol, EmptyState, Explain, formatMoney, Money, MoneyField, PhotoPicker, usePin } from "./ui";
 import {
   matches,
   andText,
   namesText,
   plural,
   RecordAdd,
-  RecordEmpty,
   RecordGroup,
   RecordNoMatch,
   RecordRow,
@@ -226,7 +225,7 @@ export function ItemSheet({
   const batchEnabled = !simple && mode === "uses" && batchOn;
   const [deductBatch, setDeductBatch] = useState(() => product?.costing?.batch?.deductFromStock ?? !product?.costing?.batch);
   const deductFromStock = batchEnabled && deductBatch;
-  const [batchServings, setBatchServings] = useState(String(product?.costing?.batch?.servings ?? 1));
+  const [batchServings, setBatchServings] = useState(String(product?.costing?.batch?.servings ?? ""));
   const servings = Number(batchServings);
   const validServings = Number.isInteger(servings) && servings >= 1 && servings <= maxBatchServings;
   const [batchUses, setBatchUses] = useState(() => {
@@ -429,8 +428,15 @@ export function ItemSheet({
         <PhotoPicker value={image} onChange={setImage} label="item photo" />
       </div>
 
-      {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
-        <span className="strong">Stock</span>
+      {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-14">
+        <span className="strong title-help">
+          Stock
+          <Explain title="Stock">
+            <p><strong>Off</strong> is for things you don't keep count of, like drinks made to order. They never sell out.</p>
+            <p><strong>Count it</strong> is for a set supply, like bread or pastries. You count it when the shift opens, and it sells out at zero.</p>
+            <p><strong>Uses stock</strong> takes from your stock items with every sale, like 1 cup and 0.2 kg of ice for an iced latte. It only takes from what the shift is keeping track of, and it never stops a sale.</p>
+          </Explain>
+        </span>
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
             [
@@ -452,23 +458,81 @@ export function ItemSheet({
             </button>
           ))}
         </div>
+        {mode !== "uses" && (
+          <p className="label">
+            {mode === "off" ? "Not counted. It never sells out." : "Counted when the shift opens. It sells out at zero."}
+          </p>
+        )}
         {!simple && mode === "uses" && (
-          <div className="between gap-12">
-            <span>Made in batches</span>
-            <Switch checked={batchOn} onChange={setBatchOn} label="Made in batches" />
+          <div className="field">
+            <span className="field-head">
+              How it's made
+              <Explain title="How it's made">
+                <p><strong>One at a time</strong>: you make each one when it's ordered, like a latte. List what one sale uses.</p>
+                <p><strong>In batches</strong>: you make a lot at once, like a pitcher of lemonade that fills 10 cups. List what goes into the whole batch and how many servings it makes. Each sale then takes its share, so one cup takes a tenth of every ingredient.</p>
+                <p>Make something ahead that you count on its own, like syrup? Add it under Prep, then pick it here as a stock item.</p>
+              </Explain>
+            </span>
+            <div className="segmented" role="group" aria-label="How it's made">
+              <button type="button" aria-pressed={!batchOn} onClick={() => { buzz.tap(); setBatchOn(false); }}>One at a time</button>
+              <button type="button" aria-pressed={batchOn} onClick={() => { buzz.tap(); setBatchOn(true); }}>In batches</button>
+            </div>
           </div>
         )}
-        <p className="label">
-          {mode === "off"
-            ? "Not counted. It sells without limit, like drinks made to order."
-            : mode === "count"
-              ? "For a set supply, like bread or pastries. You count it when the shift opens, and it sells out at zero."
-              : deductFromStock
-                ? "Each sale deducts one serving’s share of the batch ingredients."
-                : "Each sale takes this much off a stock item, like 1 strawberry pack or 0.2 kg of ice."}
-        </p>
-        {mode === "uses" && !deductFromStock && (
-          <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} showCosts={!batchEnabled} onChange={setUses} />
+        {mode === "uses" && !batchEnabled && (
+          <div className="field">
+            <span>Each sale uses</span>
+            <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} onChange={setUses} />
+          </div>
+        )}
+        {batchEnabled && (
+          <>
+            <label className="field">
+              <span>One batch makes (servings)</span>
+              <input
+                className="input"
+                inputMode="numeric"
+                placeholder="e.g. 10"
+                value={batchServings}
+                maxLength={9}
+                onChange={(e) => setBatchServings(e.target.value)}
+              />
+            </label>
+            <div className="field">
+              <span>What goes into one batch</span>
+              <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
+            </div>
+            {deductFromStock ? (
+              <div className="stack gap-8 batch-share">
+                <span className="field-label">Each sale uses</span>
+                {batchDeductions.length > 0 ? (
+                  <dl className="stack gap-8 label">
+                    {batchDeductions.map(({ stockId, amount }, i) => {
+                      const item = batchItems.find((item) => item.id === stockId)!;
+                      return (
+                        <div className="between gap-8" key={`${stockId}-${i}`}>
+                          <dt>{item.name}</dt>
+                          <dd className="strong">{amount.toLocaleString("en", { maximumSignificantDigits: 5 })} {unitFor(amount, item.unit)}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                ) : (
+                  <p className="label">
+                    {validServings ? "Its share of the batch shows here once you add what goes in." : "Enter how many servings one batch makes."}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="field batch-share">
+                <span>Each sale uses</span>
+                <UsesEditor stockItems={stockItems} costItems={costItems} uses={uses} currency={currency} showCosts={false} onChange={setUses} />
+                <button type="button" className="btn ghost small" onClick={() => { buzz.tap(); setDeductBatch(true); }}>
+                  Use its share of the batch instead
+                </button>
+              </div>
+            )}
+          </>
         )}
         {uncountedUses.length > 0 && (
           <div className="stack gap-8">
@@ -506,82 +570,51 @@ export function ItemSheet({
         {product && liveShift && (usesChanged || Boolean(product.stock) !== (mode === "count")) && (
           <p className="label">Stock changes apply from the next shift.</p>
         )}
-        {!simple && (
-          <div className="recipe-cost stack gap-14">
-            {batchEnabled && (
-              <>
-                {mode === "uses" && (
-                  <div className="between gap-12">
-                    <span>Deduct batch ingredients per sale</span>
-                    <Switch checked={deductBatch} onChange={setDeductBatch} label="Deduct batch ingredients per sale" />
-                  </div>
-                )}
-                <label className="field">
-                  <span>One batch makes (servings)</span>
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    value={batchServings}
-                    maxLength={9}
-                    onChange={(e) => setBatchServings(e.target.value)}
-                  />
-                </label>
-                <div className="field">
-                  <span>{deductFromStock ? "Batch ingredients" : "Batch ingredients for costing"}</span>
-                  <UsesEditor stockItems={batchItems} uses={batchUses} currency={currency} batch onChange={setBatchUses} />
-                </div>
-                {batchDeductions.length > 0 && (
-                  <div className="stack gap-8">
-                    <span className="field-label">Deducted per sale</span>
-                    <dl className="stack gap-8 label">
-                      {batchDeductions.map(({ stockId, amount }, i) => {
-                        const item = batchItems.find((item) => item.id === stockId)!;
-                        return (
-                          <div className="between gap-8" key={`${stockId}-${i}`}>
-                            <dt>{item.name}</dt>
-                            <dd className="strong">{amount.toLocaleString("en", { maximumSignificantDigits: 5 })} {unitFor(amount, item.unit)}</dd>
-                          </div>
-                        );
-                      })}
-                    </dl>
-                  </div>
-                )}
-              </>
-            )}
-            <SetupDetails title="Cost adjustments" description="Labor, packaging and target margin">
-              <div className="stack gap-14">
-                <div className="grid-2">
-                  <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
-                  <MoneyField
-                    label="Other cost per serving"
-                    value={other}
-                    onChange={setOther}
-                    currency={currency}
-                    help={{
-                      title: "Other cost per serving",
-                      body: <p>Enter extra costs for one serving, such as cups, lids or takeaway bags. Leave out anything already included in the recipe used for costing.</p>,
-                    }}
-                  />
-                </div>
-                <label className="field">
-                  <span>Target margin override (%)</span>
-                  <input
-                    className="input"
-                    inputMode="decimal"
-                    maxLength={12}
-                    placeholder={`Business default (${pricing.targetMargin}%)`}
-                    value={marginOverride}
-                    onChange={(e) => setMarginOverride(e.target.value)}
-                  />
-                </label>
-              </div>
-            </SetupDetails>
-            {showCostPreview && (
-              <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
-            )}
-          </div>
-        )}
       </div>}
+
+      {!simple && (
+        <div className="card card-pad stack gap-14">
+          <span className="strong title-help">
+            Cost
+            <Explain title="Cost">
+              <p>Worked out from the stock it uses and what you pay for each stock item, plus labor and other costs per serving.</p>
+            </Explain>
+          </span>
+          {showCostPreview ? (
+            <CostPreview currency={currency} total={totalCost} batch={batchEnabled} missing={costMissing} pricing={pricing} target={previewTarget} />
+          ) : (
+            <p className="label">Set Stock to Uses stock, or add labor or other costs, to see what one costs you.</p>
+          )}
+          <SetupDetails title="Cost adjustments" description="Labor, packaging and target margin">
+            <div className="stack gap-14">
+              <div className="grid-2">
+                <MoneyField label="Labor per serving" value={labor} onChange={setLabor} currency={currency} />
+                <MoneyField
+                  label="Other cost per serving"
+                  value={other}
+                  onChange={setOther}
+                  currency={currency}
+                  help={{
+                    title: "Other cost per serving",
+                    body: <p>Enter extra costs for one serving, such as cups, lids or takeaway bags. Leave out anything already included in the recipe used for costing.</p>,
+                  }}
+                />
+              </div>
+              <label className="field">
+                <span>Target margin override (%)</span>
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  maxLength={12}
+                  placeholder={`Business default (${pricing.targetMargin}%)`}
+                  value={marginOverride}
+                  onChange={(e) => setMarginOverride(e.target.value)}
+                />
+              </label>
+            </div>
+          </SetupDetails>
+        </div>
+      )}
 
       {!simple && <SetupDetails title="Recipe details" description="SKU and notes" className="card card-pad">
         <div className="stack gap-14">
@@ -722,7 +755,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
             </div>
           )}
           {!menu.length && (
-            <RecordEmpty
+            <EmptyState
               icon={<LayoutGrid size={22} strokeWidth={1.6} />}
               title="No items yet"
               text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
@@ -1303,7 +1336,7 @@ export function CategoriesPage(props: RecipesProps) {
           ))}
         </RecordGroup>
       ) : (
-        <RecordEmpty
+        <EmptyState
           icon={<TagIcon size={22} strokeWidth={1.6} />}
           title={menu.length ? "No categories yet" : "Add menu items first"}
           text={menu.length ? "Like Drinks, Pastries or Bundles. Pick the items that go in each." : "Categories group the items on your menu."}
@@ -1551,7 +1584,7 @@ export function ChoicesPage(props: RecipesProps) {
         </RecordGroup>
       ))}
       {!list.length && (
-        <RecordEmpty
+        <EmptyState
           icon={<ListPlus size={22} strokeWidth={1.6} />}
           title={menu.length ? "No choices yet" : "Add menu items first"}
           text={

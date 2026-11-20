@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { buzz, CategoryTabs, ConfirmSheet, errorText, Sheet } from "./ui";
+import { buzz, CategoryTabs, ConfirmSheet, EmptyState, errorText, Sheet } from "./ui";
 import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 
 /*
@@ -112,13 +112,15 @@ export function RecordSearch({
 /** What a list shows when search or a filter leaves nothing. */
 export function RecordNoMatch({ query, onClear }: { query: string; onClear: () => void }) {
   return (
-    <div className="card empty">
-      <span className="strong">{query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing here"}</span>
-      <span className="label">Try another name, or see everything.</span>
-      <button type="button" className="btn ghost small" onClick={onClear}>
+    <EmptyState
+      icon={<Search size={22} />}
+      title={query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing here"}
+      text="Try another name, or see everything."
+    >
+      <button type="button" className="btn ghost compact" onClick={onClear}>
         Show all
       </button>
-    </div>
+    </EmptyState>
   );
 }
 
@@ -355,18 +357,6 @@ export function RecordSelectBar({
   );
 }
 
-/** What a list shows before anything is in it. */
-export function RecordEmpty({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
-  return (
-    <div className="card empty">
-      <span className="well">{icon}</span>
-      <span className="strong">{title}</span>
-      <span className="label" style={{ maxWidth: 300 }}>
-        {text}
-      </span>
-    </div>
-  );
-}
 
 /** Saves from a sheet: shows the error, keeps the sheet open on failure, closes it on success. */
 export function useRecordSave(onClose: () => void) {
