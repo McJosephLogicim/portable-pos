@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { inviteLink } from "@/lib/join-link";
-import { ChevronRight, Plus, Trash2, UserPlus } from "lucide-react";
+import { Banknote, ChevronRight, HandPlatter, Plus, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
 import { matches, RecordNoMatch, RecordSearch } from "./records";
-import { MultiSelect } from "./multi-select";
 import { CopyButton } from "./share";
 import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
@@ -51,6 +50,8 @@ export function Avatar({
   );
 }
 
+const roleIcons: Record<Role, typeof Banknote> = { cashier: Banknote, server: HandPlatter };
+
 export function RolePicker({
   value,
   onChange,
@@ -61,16 +62,27 @@ export function RolePicker({
   allowed?: Role[];
 }) {
   return (
-    <MultiSelect
-      label="Role"
-      items={(["cashier", "server"] as const).map((role) => ({
-        id: role,
-        name: roleNames[role],
-        disabled: !allowed.includes(role),
-      }))}
-      picked={value}
-      onChange={onChange}
-    />
+    <div className="methods" role="group" aria-label="Role">
+      {(["cashier", "server"] as Role[]).map((r) => {
+        const Icon = roleIcons[r];
+        const on = value.includes(r);
+        return (
+          <button
+            key={r}
+            type="button"
+            className="method"
+            aria-pressed={on}
+            disabled={!allowed.includes(r)}
+            onClick={() =>
+              onChange(on ? value.filter((x) => x !== r) : [...value, r])
+            }
+          >
+            <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
+            {roleNames[r]}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
