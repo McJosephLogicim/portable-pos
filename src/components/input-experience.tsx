@@ -36,7 +36,9 @@ export function InputExperience() {
         root.style.setProperty("--keyboard-top", `${top}px`);
         root.style.setProperty("--keyboard-bottom", `${Math.max(0, root.clientHeight - top - height)}px`);
         root.style.setProperty("--keyboard-height", `${height}px`);
+        root.dataset.keyboard = "";
       } else {
+        delete root.dataset.keyboard;
         root.style.removeProperty("--keyboard-top");
         root.style.removeProperty("--keyboard-bottom");
         root.style.removeProperty("--keyboard-height");
@@ -159,6 +161,7 @@ export function InputExperience() {
       root.style.removeProperty("--keyboard-top");
       root.style.removeProperty("--keyboard-bottom");
       root.style.removeProperty("--keyboard-height");
+      delete root.dataset.keyboard;
     };
   }, []);
   return null;

@@ -53,7 +53,7 @@ export function SuggestInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
-  useFloatingList(inputRef, listRef, visible, shown.length);
+  useAnchoredList(inputRef, listRef, visible, shown.length);
 
   useLayoutEffect(() => {
     const option = activeRef.current;
@@ -78,7 +78,7 @@ export function SuggestInput({
   }
 
   return (
-    <div className={"suggest " + className}>
+    <div className={"suggest " + (visible ? "open " : "") + className}>
       <input
         id={id}
         ref={inputRef}
@@ -124,12 +124,11 @@ export function SuggestInput({
       {visible && (
         <div
           ref={listRef}
-          className="combo-list combo-float card"
+          className="combo-list combo-drop"
           id={id + "-list"}
           role="listbox"
           aria-label={label}
           data-input-options=""
-          popover="manual"
         >
           <p className="combo-head" aria-hidden="true">{search ? "Matches" : "Suggestions"}</p>
           {shown.map((s, i) => (
@@ -165,88 +164,78 @@ export function SuggestInput({
   );
 }
 
-const GAP = 4;
+const MAX = 240;
+const MIN = 104;
 const EDGE = 8;
-const MAX = 280;
 
 /**
- * Keep the list anchored in the visible viewport, including when a keyboard is open.
+ * The list sits in the form's own flow, absolutely positioned right under its field, so it
+ * scrolls with the field and the keyboard can't pull them apart. When there isn't room under
+ * the field, the field's scroll box scrolls up to make room; the list never moves above it.
  */
-function useFloatingList(
+function useAnchoredList(
   inputRef: React.RefObject<HTMLInputElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
   rows: number,
 ) {
-  const update = useCallback(() => {
+  const fit = useCallback(() => {
     const input = inputRef.current;
     const list = listRef.current;
     if (!input || !list) return;
-    const r = input.getBoundingClientRect();
-    const viewport = window.visualViewport;
-    const top = viewport?.offsetTop ?? 0;
-    const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
-    const below = bottom - r.bottom - GAP - EDGE;
-    const above = r.top - top - GAP - EDGE;
-    list.style.left = `${r.left}px`;
-    list.style.width = `${r.width}px`;
-    const flip = below < Math.min(MAX, list.scrollHeight) && above > below;
-    const room = Math.max(0, Math.min(MAX, flip ? above : below));
-    list.style.visibility = room < 44 || r.bottom <= top || r.top >= bottom || clipped(input, r) ? "hidden" : "";
-    list.style.maxHeight = `${room}px`;
-    list.style.top = `${flip ? r.top - GAP - Math.min(list.scrollHeight, room) : r.bottom + GAP}px`;
+    list.style.maxHeight = `${MAX}px`;
+    const box = scrollBox(input);
+    const vv = window.visualViewport;
+    let top = vv?.offsetTop ?? 0;
+    let bottom = top + (vv?.height ?? document.documentElement.clientHeight);
+    if (box && box !== document.scrollingElement) {
+      const area = box.getBoundingClientRect();
+      top = Math.max(top, area.top);
+      bottom = Math.min(bottom, area.bottom);
+    }
+    const field = input.getBoundingClientRect();
+    const end = list.getBoundingClientRect().bottom;
+    const short = end + EDGE - bottom;
+    if (short > 0 && box) {
+      // Scroll up only as far as keeps the field itself in view.
+      const step = Math.min(short, Math.max(0, field.top - top - EDGE));
+      if (step > 0) box.scrollTop += step;
+    }
+    const room = bottom - list.getBoundingClientRect().top - EDGE;
+    list.style.maxHeight = `${Math.max(MIN, Math.min(MAX, room))}px`;
   }, [inputRef, listRef]);
 
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!visible || !list) return;
-    if (typeof list.showPopover === "function" && !list.matches(":popover-open")) {
-      try {
-        list.showPopover();
-      } catch {
-        // Not connected yet or already shown; the fixed position still works.
-      }
-    }
-    update();
-  }, [listRef, rows, update, visible]);
+  // Wait a frame: scrolling during the tap that focused the field would move the tap target.
+  useEffect(() => {
+    if (!visible) return;
+    const frame = requestAnimationFrame(fit);
+    return () => cancelAnimationFrame(frame);
+  }, [visible, rows, fit]);
 
   useEffect(() => {
     if (!visible) return;
     let frame = 0;
-    const schedule = () => {
+    // The keyboard opening and the page revealing the field both land after focus.
+    const later = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(update);
+      frame = requestAnimationFrame(fit);
     };
     const vv = window.visualViewport;
-    const input = inputRef.current;
-    const dialog = input?.closest("dialog");
-    const observer = new ResizeObserver(schedule);
-    if (input) observer.observe(input);
-    if (dialog) observer.observe(dialog);
-    dialog?.addEventListener("animationend", schedule);
-    window.addEventListener("scroll", schedule, true);
-    window.addEventListener("resize", schedule);
-    vv?.addEventListener("resize", schedule);
-    vv?.addEventListener("scroll", schedule);
+    vv?.addEventListener("resize", later);
+    window.addEventListener("resize", later);
+    const timer = window.setTimeout(fit, 320);
     return () => {
       cancelAnimationFrame(frame);
-      observer.disconnect();
-      dialog?.removeEventListener("animationend", schedule);
-      window.removeEventListener("scroll", schedule, true);
-      window.removeEventListener("resize", schedule);
-      vv?.removeEventListener("resize", schedule);
-      vv?.removeEventListener("scroll", schedule);
+      window.clearTimeout(timer);
+      vv?.removeEventListener("resize", later);
+      window.removeEventListener("resize", later);
     };
-  }, [inputRef, visible, update]);
+  }, [visible, fit]);
 }
 
-/** True once the field has scrolled out of a box that clips it, like a sheet's body. */
-function clipped(input: HTMLElement, r: DOMRect): boolean {
-  for (let el = input.parentElement; el && el !== document.body; el = el.parentElement) {
-    const { overflowY } = getComputedStyle(el);
-    if (overflowY === "visible") continue;
-    const box = el.getBoundingClientRect();
-    if (r.bottom <= box.top || r.top >= box.bottom) return true;
+function scrollBox(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (/^(auto|scroll)$/.test(getComputedStyle(p).overflowY)) return p;
   }
-  return false;
+  return document.scrollingElement as HTMLElement | null;
 }
