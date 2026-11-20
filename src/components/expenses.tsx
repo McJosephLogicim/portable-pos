@@ -3,8 +3,7 @@ import { ChevronDown, Receipt, Trash2 } from "lucide-react";
 import { parseMoney } from "@/lib/domain";
 import { blocked } from "@/lib/reject";
 import type { Expense, ExpenseInput } from "@/lib/types";
-import { AddMenu } from "./add-menu";
-import { BulkRecordsSheet } from "./bulk-add";
+import { AddButton } from "./add-menu";
 import { SuggestInput } from "./combobox";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
 import styles from "./operations.module.css";
@@ -13,14 +12,12 @@ function ExpenseSheet({
   currency,
   suggestions,
   name,
-  staging = false,
   onSave,
   onDismiss,
 }: {
   currency: string;
   suggestions: string[];
   name: string;
-  staging?: boolean;
   onSave: (input: ExpenseInput) => void | Promise<void>;
   onDismiss: () => void;
 }) {
@@ -48,7 +45,7 @@ function ExpenseSheet({
             setError("");
             try {
               await onSave({ label: label.trim(), amount: value!, source });
-              if (!staging) buzz.success();
+              buzz.success();
               onDismiss();
             } catch (e) {
               setError(errorText(e));
@@ -57,7 +54,7 @@ function ExpenseSheet({
             }
           }}
         >
-          {busy ? "Logging…" : staging ? "Add to batch" : value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
+          {busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
         </button>
       }
     >
@@ -119,10 +116,10 @@ export function ExpensesSection({
   suggestions: string[];
   note?: string;
   disabled?: boolean;
-  onExpense: (input: ExpenseInput[]) => void | Promise<void>;
+  onExpense: (input: ExpenseInput) => void | Promise<void>;
   onUnexpense: (id: string) => void | Promise<void>;
 }) {
-  const [addingExpense, setAddingExpense] = useState<"single" | "bulk" | null>(null);
+  const [addingExpense, setAddingExpense] = useState(false);
   const [removing, setRemoving] = useState<(typeof expenses)[number] | null>(null);
   const [allExpenses, setAllExpenses] = useState(false);
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -134,11 +131,9 @@ export function ExpensesSection({
         <p className="group-title">Expenses</p>
         <div className="row gap-8">
           {expenses.length > 0 && <span className="label">{formatMoney(total, currency)}</span>}
-          <AddMenu
-            singleLabel="Add an expense"
+          <AddButton
             disabled={disabled}
-            onSingle={() => setAddingExpense("single")}
-            onBulk={() => setAddingExpense("bulk")}
+            onClick={() => setAddingExpense(true)}
           />
         </div>
       </div>
@@ -182,29 +177,13 @@ export function ExpensesSection({
           </button>
         )}
       </div>
-      {addingExpense === "single" && (
+      {addingExpense && (
         <ExpenseSheet
           currency={currency}
           suggestions={pastLabels}
           name={name}
-          onSave={(input) => onExpense([input])}
-          onDismiss={() => setAddingExpense(null)}
-        />
-      )}
-      {addingExpense === "bulk" && (
-        <BulkRecordsSheet<ExpenseInput>
-          noun="expense"
-          singleLabel="Add an expense"
-          nameOf={(expense) => `${expense.label} · ${formatMoney(expense.amount, currency)}`}
-          onClose={() => setAddingExpense(null)}
-          onSave={async (inputs) => {
-            await onExpense(inputs);
-            buzz.success();
-            return true;
-          }}
-          editor={({ add, close }) => (
-            <ExpenseSheet staging currency={currency} suggestions={pastLabels} name={name} onSave={add} onDismiss={close} />
-          )}
+          onSave={onExpense}
+          onDismiss={() => setAddingExpense(false)}
         />
       )}
       {removing && (

@@ -1757,6 +1757,20 @@ button.list-row:not(.sell-option):active {
   background: var(--ink);
   color: var(--on-accent);
 }
+.item.add-tile {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+.add-plus {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-secondary);
+  border: 1.5px dashed #cfcfcf;
+}
 
 /* calendar */
 .calendar {

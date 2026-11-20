@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { ChevronRight, CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
-import { AddMenu } from "./add-menu";
-import { BulkRecordsSheet } from "./bulk-add";
+import { AddButton } from "./add-menu";
 import { amountText, parseMoney, stockReplay } from "@/lib/domain";
 import { matchesFilters, type FilterFacets, type FilterSelection } from "@/lib/filters";
 import { currencyDigits } from "@/lib/settings";
@@ -54,7 +53,6 @@ export function StockSheet({
   stockLists,
   prepOnly = false,
   initialGroup,
-  staging = false,
   onSave,
   onRemove,
   onClose,
@@ -69,7 +67,6 @@ export function StockSheet({
   stockLists: Record<StockListField, string[]>;
   prepOnly?: boolean;
   initialGroup?: string;
-  staging?: boolean;
   /** stockNow: what the open shift has left now, for amounts changed in this sheet. */
   onSave: (item: StockItem, stockNow?: Record<string, number>) => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
@@ -199,8 +196,6 @@ export function StockSheet({
       busy={busy}
       error={error}
       canSave={Boolean(name.trim() && unit.trim())}
-      saveText={staging ? "Add to batch" : undefined}
-      saveLabel={staging ? "Add to batch" : undefined}
       onSave={() => void run(() => {
         if (!sameName(item?.name ?? "", name) && stockItems.some((stock) => stock.id !== item?.id && sameName(stock.name, name)))
           throw Error("A stock item already has that name. Open it in Stock items to change how it is costed.");
@@ -543,7 +538,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<StockItem | "new" | null>(null);
-  const [addingBulk, setAddingBulk] = useState(false);
   const [merging, setMerging] = useState(false);
   const mergeable = useMergeable(props.state);
   const rows = list.filter((item) => Boolean(item.prep) === prepOnly);
@@ -605,12 +599,10 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
     : count
       ? <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>
       : <>Nothing counted yet. <span className="g">Add what runs out, like milk or ice.</span></>;
-  const addMenu = !select.on && (
-    <AddMenu
-      singleLabel={`Add a ${itemNoun}`}
+  const addButton = !select.on && (
+    <AddButton
       blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
-      onSingle={() => setEditing("new")}
-      onBulk={() => setAddingBulk(true)}
+      onClick={() => setEditing("new")}
     />
   );
   return (
@@ -630,7 +622,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       )}
       backLabel="Back to recipes"
       sentence={sentence}
-      sentenceAction={inTab.length > 0 && addMenu}
+      sentenceAction={inTab.length > 0 && addButton}
       onBack={() => props.onPage(null)}
     >
       {!select.on && (
@@ -728,7 +720,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             ? "Syrups, creams and sauces you make in batches. Enter what goes in and how much it makes, and you'll see what each unit costs."
             : "Add one here, or right from a menu item while you set it up."}
         >
-          {addMenu}
+          {addButton}
         </EmptyState>
       )}
       {shownLegacy.length > 0 && (
@@ -788,43 +780,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
         />
       )}
       {!props.online && <p className="label">Connect to edit {prepOnly ? "prep" : "stock items"}.</p>}
-      {addingBulk && (
-        <BulkRecordsSheet<StockItem>
-          noun={itemNoun}
-          singleLabel={`Add a ${itemNoun}`}
-          limit={100 - list.length}
-          nameOf={(item) => item.name}
-          onSave={(items) => {
-            const byId = new Map(list.map((item) => [item.id, item]));
-            for (const item of items) {
-              if (list.some((stock) => stock.id !== item.id && sameName(stock.name, item.name)))
-                throw Error(`“${item.name}” is already in Stock items.`);
-              byId.set(item.id, item);
-            }
-            const stockItems = [...byId.values()];
-            if (items.some((item) => item.prep?.uses.some((use) => !byId.has(use.stockId) || byId.get(use.stockId)?.prep)))
-              throw Error("An ingredient was removed or changed. Remove and re-add the affected prep item.");
-            return commit.settings(
-              { stockItems, stockLists: stockListsOf({ ...business.settings, stockItems }) },
-              "Added " + plural(items.length, itemNoun),
-            );
-          }}
-          onClose={() => setAddingBulk(false)}
-          editor={({ rows, add, close }) => (
-            <StockSheet
-              stockItems={[...list, ...rows]}
-              stockLists={stockListsOf({ ...business.settings, stockItems: [...list, ...rows] })}
-              currency={business.currency}
-              prepOnly={prepOnly}
-              initialGroup={tab ?? undefined}
-              staging
-              menu={menu}
-              onClose={close}
-              onSave={async (item) => { add(item); return true; }}
-            />
-          )}
-        />
-      )}
       {editing && (
         <StockSheet
           stockItems={list}

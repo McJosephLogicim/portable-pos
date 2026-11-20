@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, Tag, Truck } from "lucide-react";
+import { Boxes, Tag, Tags, Truck } from "lucide-react";
 import { editStockList, stockListFields, stockListKey, stockListsOf } from "@/lib/stock-lists";
 import type { StockListField } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
@@ -130,9 +130,14 @@ export function StockListsPage(props: RecipesProps) {
         setQuery("");
         setTab(null);
       }} />}
+      {!activeField && !count && (
+        <EmptyState icon={<Tags size={22} />} title="No stock list entries yet">
+          {addMenu()}
+        </EmptyState>
+      )}
       {visibleGroups.map(({ field, Icon, shown }) => {
         const { title } = stockListFields[field];
-        if (!lists[field].length && (!hasEntries || !query.trim())) {
+        if (activeField === field && !lists[field].length) {
           return (
             <EmptyState key={field} icon={<Icon size={22} />} title={`No ${title.toLocaleLowerCase()} yet`}>
               {addMenu(field)}

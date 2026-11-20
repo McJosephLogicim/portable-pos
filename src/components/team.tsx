@@ -12,7 +12,7 @@ import { AddMenu } from "./add-menu";
 import { BulkNamesSheet } from "./bulk-add";
 import { matches, RecordNoMatch, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { CopyButton } from "./share";
-import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
+import { ConfirmSheet, EmptyState, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 import { blocked, OFFLINE } from "@/lib/reject";
 
 export function initials(name: string) {
@@ -284,12 +284,17 @@ export function TeamPage(props: SettingsProps) {
   }, [team]);
   const withPin = usePin();
   const sorted = [...team].sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name));
-  const waiting = team.filter((m) => !m.joined).length;
+  const waiting = sorted.filter((m) => !m.joined);
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
   const PENDING = "Yet to sign in";
-  const filtering = pending && waiting > 0 && waiting < team.length;
-  const shown = sorted.filter((m) => (!filtering || !m.joined) && matches(query, m.name, m.email));
+  const inTab = pending ? waiting : sorted;
+  const shown = inTab.filter((m) => matches(query, m.name, m.email));
+  const invite = (
+    <button className="btn" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
+      <UserPlus size={18} /> Invite
+    </button>
+  );
   async function act(input: Parameters<SettingsProps["onAction"]>[0], label?: string) {
     const done = await withPin((pin) => props.onAction({ ...input, pin } as typeof input));
     if (done && label) props.onSaved(label);
@@ -302,26 +307,25 @@ export function TeamPage(props: SettingsProps) {
       sentence={
         <>
           {team.length} {team.length === 1 ? "person" : "people"}{" "}
-          <span className="g">{waiting ? `on the team, ${waiting} yet to sign in.` : "on the team."}</span>
+          <span className="g">{waiting.length ? `on the team, ${waiting.length} yet to sign in.` : "on the team."}</span>
         </>
       }
       onBack={() => props.onPage(null)}
     >
-      <button className="btn" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
-        <UserPlus size={18} /> Invite
-      </button>
+      {inTab.length > 0 && invite}
       <RecordSearch
         count={team.length}
         noun="people"
         query={query}
         onQuery={setQuery}
-        filters={
-          waiting > 0 && waiting < team.length
-            ? { label: "Filter", options: [PENDING], value: filtering ? PENDING : null, onChange: (v) => setPending(v === PENDING) }
-            : undefined
-        }
+        filters={{ label: "Team members", options: [PENDING], value: pending ? PENDING : null, onChange: (v) => setPending(v === PENDING) }}
       />
-      {!shown.length && (
+      {!inTab.length && (
+        <EmptyState icon={<UserPlus size={22} />} title={pending ? "No pending invites" : "No team members yet"}>
+          {invite}
+        </EmptyState>
+      )}
+      {inTab.length > 0 && !shown.length && (
         <RecordNoMatch
           query={query}
           onClear={() => {

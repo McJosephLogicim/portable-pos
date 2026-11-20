@@ -273,10 +273,9 @@ function OpenShift({
         suggestions={(state.expenses ?? []).map((expense) => expense.label)}
         note="Expenses are saved when you open the till."
         disabled={busy}
-        onExpense={(inputs) => {
-          const createdAt = new Date().toISOString();
-          const added = inputs.map((input) => ({ ...input, id: crypto.randomUUID(), createdAt }));
-          setExpenses((current) => [...added, ...current]);
+        onExpense={(input) => {
+          const expense = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+          setExpenses((current) => [expense, ...current]);
         }}
         onUnexpense={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
       />
@@ -510,7 +509,7 @@ export function ShiftScreen({
   onOpen: (opening: Opening) => Promise<void>;
   onJoin?: (shiftId: string) => Promise<void>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
-  onExpense: (inputs: ExpenseInput[]) => Promise<void>;
+  onExpense: (input: ExpenseInput) => Promise<void>;
   onUnexpense: (id: string) => Promise<void>;
   onSell: () => void;
   onGoMenu?: () => void;

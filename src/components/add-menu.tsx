@@ -6,6 +6,28 @@ import { ListPlus, Plus, type LucideIcon } from "lucide-react";
 import { blocked, reject, type Reason } from "@/lib/reject";
 import { buzz } from "./ui";
 
+export function AddButton({ onClick, disabled, blockedReason }: {
+  onClick: () => void;
+  disabled?: boolean;
+  blockedReason?: Reason;
+}) {
+  return (
+    <button
+      type="button"
+      className="add-menu-trigger btn compact"
+      aria-haspopup="dialog"
+      disabled={disabled}
+      {...blocked(blockedReason)}
+      onClick={() => {
+        buzz.tap();
+        onClick();
+      }}
+    >
+      <Plus size={18} aria-hidden="true" /> Add
+    </button>
+  );
+}
+
 export function AddMenu({
   singleLabel,
   onSingle,

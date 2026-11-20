@@ -35,8 +35,7 @@ import { plural, useRecordSave } from "./records";
 import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
 import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
-import { AddMenu } from "./add-menu";
-import { BulkRecordsSheet } from "./bulk-add";
+import { AddButton } from "./add-menu";
 import {
   buzz,
   ConfirmSheet,
@@ -591,7 +590,6 @@ function BusinessPage(props: SettingsProps) {
 function MethodSheet({
   method,
   taken,
-  staging,
   onSave,
   onRemove,
   onClose,
@@ -599,7 +597,6 @@ function MethodSheet({
 }: {
   method?: PaymentMethod;
   taken: string[];
-  staging?: boolean;
   onSave: (m: PaymentMethod) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -630,7 +627,7 @@ function MethodSheet({
               onClose();
             }}
           >
-            {method ? "Done" : staging ? "Add to batch" : "Add"}
+            {method ? "Done" : "Add"}
           </button>
           {method && onRemove && (
             <button
@@ -709,7 +706,6 @@ function MethodSheet({
 function PaymentsPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
   const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
-  const [addingBulk, setAddingBulk] = useState(false);
   const list = draft.settings.payments;
   const set = (payments: PaymentMethod[]) =>
     setDraft({ ...draft, settings: { ...draft.settings, payments } });
@@ -729,11 +725,9 @@ function PaymentsPage(props: SettingsProps) {
         </>
       }
       sentenceAction={
-        <AddMenu
-          singleLabel="Add a payment method"
+        <AddButton
           blockedReason={list.length >= 24 && "You can add up to 24 payment methods."}
-          onSingle={() => setEditing("new")}
-          onBulk={() => setAddingBulk(true)}
+          onClick={() => setEditing("new")}
         />
       }
       onBack={() => props.onPage(null)}
@@ -776,22 +770,6 @@ function PaymentsPage(props: SettingsProps) {
           </div>
         ))}
       </div>
-      {addingBulk && (
-        <BulkRecordsSheet<PaymentMethod>
-          noun="payment method"
-          singleLabel="Add a payment method"
-          limit={24 - list.length}
-          nameOf={(method) => method.name}
-          onClose={() => setAddingBulk(false)}
-          onSave={async (methods) => {
-            set([...list, ...methods]);
-            return true;
-          }}
-          editor={({ rows, add, close }) => (
-            <MethodSheet staging taken={[...list, ...rows].map((method) => method.id)} canRemove={false} onSave={add} onClose={close} />
-          )}
-        />
-      )}
       {editing && (
         <MethodSheet
           method={editing === "new" ? undefined : editing}
@@ -827,7 +805,6 @@ function DiscountSheet({
   discount,
   currency,
   taken,
-  staging,
   onSave,
   onRemove,
   onClose,
@@ -835,7 +812,6 @@ function DiscountSheet({
   discount?: Discount;
   currency: string;
   taken: string[];
-  staging?: boolean;
   onSave: (d: Discount) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -887,7 +863,7 @@ function DiscountSheet({
               onClose();
             }}
           >
-            {discount ? "Done" : staging ? "Add to batch" : "Add"}
+            {discount ? "Done" : "Add"}
           </button>
           {onRemove && (
             <button
@@ -987,7 +963,6 @@ function DiscountSheet({
 function DiscountsPage(props: SettingsProps) {
   const { draft, setDraft, bar } = useDraft(props);
   const [editing, setEditing] = useState<Discount | "new" | null>(null);
-  const [addingBulk, setAddingBulk] = useState(false);
   const list = draft.settings.discounts;
   const set = (discounts: Discount[]) =>
     setDraft({ ...draft, settings: { ...draft.settings, discounts } });
@@ -1014,11 +989,9 @@ function DiscountsPage(props: SettingsProps) {
         )
       }
       sentenceAction={
-        <AddMenu
-          singleLabel="Add a discount"
+        <AddButton
           blockedReason={list.length >= 24 && "You can add up to 24 discounts."}
-          onSingle={() => setEditing("new")}
-          onBulk={() => setAddingBulk(true)}
+          onClick={() => setEditing("new")}
         />
       }
       onBack={() => props.onPage(null)}
@@ -1053,22 +1026,6 @@ function DiscountsPage(props: SettingsProps) {
             </div>
           ))}
         </div>
-      )}
-      {addingBulk && (
-        <BulkRecordsSheet<Discount>
-          noun="discount"
-          singleLabel="Add a discount"
-          limit={24 - list.length}
-          nameOf={(discount) => discount.name}
-          onClose={() => setAddingBulk(false)}
-          onSave={async (discounts) => {
-            set([...list, ...discounts]);
-            return true;
-          }}
-          editor={({ rows, add, close }) => (
-            <DiscountSheet staging currency={draft.currency} taken={[...list, ...rows].map((discount) => discount.id)} onSave={add} onClose={close} />
-          )}
-        />
       )}
       {editing && (
         <DiscountSheet

@@ -29,7 +29,8 @@ async function summaryAdd(page: Page) {
 test("Sell explains why Add is blocked while offline", async ({ page, context }) => {
   await startDemo(page);
   await page.getByRole("button", { name: "Sell", exact: true }).click();
-  const add = page.locator(".sell-head .page-top").getByRole("button", { name: "Add", exact: true });
+  const add = page.getByRole("button", { name: "Add an item to the menu", exact: true });
+  await expect(page.locator(".sell-head").getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await context.setOffline(true);
   await expect(add).toHaveAttribute("aria-disabled", "true");
   await add.click({ force: true });
@@ -37,7 +38,7 @@ test("Sell explains why Add is blocked while offline", async ({ page, context })
   await expect(page.getByRole("menuitem")).toHaveCount(0);
 });
 
-test("Bulk menu items reuse choice groups and go live on Sell", async ({ page }) => {
+test("Bulk menu items share one choice editor and go live on Sell", async ({ page }) => {
   await startDemo(page);
   await page.getByRole("button", { name: /^Recipes/ }).click();
   await page.getByRole("button", { name: /^Menu items/ }).click();
@@ -61,32 +62,21 @@ test("Bulk menu items reuse choice groups and go live on Sell", async ({ page })
   await bulk.getByRole("textbox", { name: "Item 2 name", exact: true }).fill("Yuzu soda");
   await bulk.getByRole("textbox", { name: "Item 2 price", exact: true }).fill("95");
 
-  await bulk.getByRole("button", { name: "Choices for Ginger soda", exact: true }).click();
-  const gingerChoices = page.getByRole("dialog", { name: "Choices for Ginger soda", exact: true });
-  await gingerChoices.getByRole("button", { name: "Pick one", exact: true }).click();
-  await gingerChoices.getByRole("combobox", { name: "Choice name", exact: true }).click();
-  await gingerChoices.getByRole("option", { name: /^Milk/ }).click();
-  await expect(gingerChoices.getByRole("combobox", { name: "Option 2 name" })).toHaveValue("Oat milk");
-  await expect(gingerChoices.getByRole("textbox", { name: "Option 2 extra price" })).toHaveValue("30");
+  const choices = bulk.getByRole("region", { name: "Choices for all items", exact: true });
+  await expect(choices).toHaveCount(1);
+  await expect(bulk.locator(".card:has(.quick-row) + section")).toHaveAttribute("aria-label", "Choices for all items");
+  await choices.getByRole("button", { name: "Pick one", exact: true }).click();
+  await choices.getByRole("combobox", { name: "Choice name", exact: true }).click();
+  await choices.getByRole("option", { name: /^Milk/ }).click();
+  await expect(choices.getByRole("combobox", { name: "Option 2 name" })).toHaveValue("Oat milk");
+  await expect(choices.getByRole("textbox", { name: "Option 2 extra price" })).toHaveValue("30");
 
-  await gingerChoices.getByRole("button", { name: "Add-ons", exact: true }).click();
-  await gingerChoices.getByRole("button", { name: "Save choices", exact: true }).click();
-  await expect(gingerChoices.getByRole("alert")).toContainText("Name each choice");
-  await gingerChoices.getByRole("combobox", { name: "Choice name", exact: true }).nth(1).fill("Toppings");
-  await gingerChoices.getByRole("combobox", { name: "Option 1 name", exact: true }).nth(1).fill("Candied ginger");
-  await gingerChoices.getByRole("textbox", { name: "Option 1 extra price", exact: true }).nth(1).fill("15");
-  await gingerChoices.getByRole("button", { name: "Save choices", exact: true }).click();
-  await expect(gingerChoices).toBeHidden();
-  await expect(bulk.getByRole("button", { name: "2 choices for Ginger soda", exact: true })).toBeVisible();
-
-  await bulk.getByRole("button", { name: "Choices for Yuzu soda", exact: true }).click();
-  const yuzuChoices = page.getByRole("dialog", { name: "Choices for Yuzu soda", exact: true });
-  await yuzuChoices.getByRole("button", { name: "Add-ons", exact: true }).click();
-  await yuzuChoices.getByRole("combobox", { name: "Choice name", exact: true }).click();
-  await yuzuChoices.getByRole("option", { name: /^Toppings.*from Ginger soda/ }).click();
-  await expect(yuzuChoices.getByRole("textbox", { name: "Option 1 extra price" })).toHaveValue("15");
-  await yuzuChoices.getByRole("button", { name: "Save choices", exact: true }).click();
-  await expect(yuzuChoices).toBeHidden();
+  await choices.getByRole("button", { name: "Add-ons", exact: true }).click();
+  await bulk.getByRole("button", { name: "Add 2 items" }).click();
+  await expect(bulk.getByRole("alert")).toContainText("Name each choice");
+  await choices.getByRole("combobox", { name: "Choice name", exact: true }).nth(1).fill("Toppings");
+  await choices.getByRole("combobox", { name: "Option 1 name", exact: true }).nth(1).fill("Candied ginger");
+  await choices.getByRole("textbox", { name: "Option 1 extra price", exact: true }).nth(1).fill("15");
   await bulk.getByRole("button", { name: "Add 2 items" }).click();
   await confirmPin(page);
   await expect(bulk).toBeHidden();
@@ -109,26 +99,29 @@ test("Bulk menu items reuse choice groups and go live on Sell", async ({ page })
   await expect(toppings).toBeVisible();
 
   await page.getByRole("button", { name: "Sell", exact: true }).click();
-  await page.getByRole("button", { name: /^Add Ginger soda/ }).click();
-  const orderOptions = page.getByRole("dialog", { name: "Ginger soda", exact: true });
-  await expect(orderOptions.getByRole("radio", { name: "Whole milk" })).toBeChecked();
-  await orderOptions.getByText("Oat milk", { exact: true }).click();
-  await orderOptions.getByRole("button", { name: /^Candied ginger/ }).click();
-  await expect(orderOptions.getByRole("button", { name: /Add ₱125/ })).toBeEnabled();
-  await orderOptions.getByRole("button", { name: "Close", exact: true }).click();
+  for (const [name, total] of [["Ginger soda", 125], ["Yuzu soda", 140]] as const) {
+    await page.getByRole("button", { name: new RegExp(`^Add ${name}`) }).click();
+    const orderOptions = page.getByRole("dialog", { name, exact: true });
+    await expect(orderOptions.getByRole("radio", { name: "Whole milk" })).toBeChecked();
+    await orderOptions.getByText("Oat milk", { exact: true }).click();
+    await orderOptions.getByRole("button", { name: /^Candied ginger/ }).click();
+    await expect(orderOptions.getByRole("button", { name: `Add ₱${total}`, exact: true })).toBeEnabled();
+    await orderOptions.getByRole("button", { name: "Close", exact: true }).click();
+  }
 
   await page.setViewportSize({ width: 320, height: 844 });
-  await page.locator(".sell-head .page-top").getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("menuitem")).toHaveText(["Add an item", "Add bulk"]);
-  await page.getByRole("menuitem", { name: "Add bulk", exact: true }).click();
-  await bulk.getByRole("textbox", { name: "Item 1 name", exact: true }).fill("Test item");
-  await bulk.getByRole("button", { name: "Choices for Test item", exact: true }).click();
-  const sellChoices = page.getByRole("dialog", { name: "Choices for Test item", exact: true });
-  await expect(sellChoices.getByRole("button", { name: "Pick one", exact: true })).toBeVisible();
-  await expect(sellChoices.getByRole("button", { name: "Add-ons", exact: true })).toBeVisible();
+  await expect(page.locator(".sell-head").getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
+  await page.locator(".items").getByRole("button", { name: "Add an item to the menu", exact: true }).click();
+  await expect(single).toBeVisible();
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await single.getByRole("textbox", { name: "Name", exact: true }).fill("Honey latte");
+  await single.getByRole("textbox", { name: "Price", exact: true }).fill("150");
+  await single.getByRole("button", { name: "Add item", exact: true }).click();
+  await expect(single).toBeHidden();
+  await expect(page.getByRole("button", { name: /^Add Honey latte/ })).toBeVisible();
 });
 
-test("Stock Lists tabs keep a contextual Add menu for each empty list", async ({ page }) => {
+test("Stock Lists shows each empty group only on its own tab", async ({ page }) => {
   await startDemo(page);
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
@@ -156,13 +149,17 @@ test("Stock Lists tabs keep a contextual Add menu for each empty list", async ({
   const tabs = page.getByRole("group", { name: "Stock lists", exact: true });
   await expect(tabs.getByRole("button")).toHaveText(["All", "Prep categories", "Stock types", "Suppliers"]);
   await expect(page.getByRole("button", { name: /Filter by list or usage/ })).toHaveCount(0);
+  const empty = page.locator(".empty.card");
+  await expect(empty).toHaveCount(1);
+  await expect(empty).toContainText("No stock list entries yet");
+  await expect(empty.getByRole("button", { name: "Add", exact: true })).toBeVisible();
   for (const [label, noun, field] of [
     ["Prep categories", "prep category", "category"],
     ["Stock types", "stock type", "kind"],
     ["Suppliers", "supplier", "supplier"],
   ]) {
     const card = page.locator(".empty.card").filter({ hasText: `No ${label.toLowerCase()} yet` });
-    await expect(card.getByRole("button", { name: "Add", exact: true })).toBeVisible();
+    await expect(card).toHaveCount(0);
     await tabs.getByRole("button", { name: label, exact: true }).click();
     await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(1);
     await card.getByRole("button", { name: "Add", exact: true }).click();
@@ -184,6 +181,9 @@ test("Stock Lists tabs keep a contextual Add menu for each empty list", async ({
   await expect(bulk).toBeHidden();
   await expect(page.getByRole("button", { name: /^Local mill/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Local orchard/ })).toBeVisible();
+  await tabs.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Local mill/ })).toBeVisible();
+  await expect(empty).toHaveCount(0);
   await tabs.getByRole("button", { name: "Stock types", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Local mill/ })).toBeHidden();
 
@@ -196,64 +196,62 @@ test("Stock Lists tabs keep a contextual Add menu for each empty list", async ({
   await expect(newCategory).toBeHidden();
   await page.getByRole("button", { name: "Back to recipes", exact: true }).click();
   await page.getByRole("button", { name: /^Prep What you make/ }).click();
+  await expect(page.locator(".empty.card")).toHaveText(/Nothing made ahead yet/);
   await page.getByRole("group", { name: "Prep categories", exact: true }).getByRole("button", { name: "Syrups", exact: true }).click();
   await expect(page.locator(".empty.card").filter({ hasText: "No prep items in Syrups" }).getByRole("button", { name: "Add", exact: true })).toBeVisible();
 });
 
-test("Stock items stage two records and save them with one PIN", async ({ page }) => {
+test("Stock Items adds directly to the selected stock type", async ({ page }) => {
   await startDemo(page);
   await page.getByRole("button", { name: /^Recipes/ }).click();
   await page.getByRole("button", { name: /^Stock items/ }).click();
   const types = page.getByRole("group", { name: "Stock types", exact: true });
+  await expect(page.locator(".empty.card")).toHaveCount(0);
   await types.getByRole("button", { name: "Ingredient", exact: true }).click();
   const add = page.locator(".empty.card").filter({ hasText: "No stock items in Ingredient" }).getByRole("button", { name: "Add", exact: true });
   await add.click();
-  await page.getByRole("menuitem", { name: "Add bulk" }).click();
-  const bulk = page.getByRole("dialog", { name: "Add stock items in bulk" });
-  for (const name of ["Cacao nibs", "Tea leaves"]) {
-    await bulk.getByRole("button", { name: "Add a stock item" }).click();
-    const editor = page.getByRole("dialog", { name: "New stock item" });
-    await editor.getByRole("textbox", { name: "Name", exact: true }).fill(name);
-    await editor.getByRole("button", { name: "Add to batch", exact: true }).click();
-    await expect(editor).toBeHidden();
-    await expect(bulk.getByText(name, { exact: true })).toBeVisible();
-  }
-  await bulk.getByRole("button", { name: "Add 2 stock items" }).click();
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  const editor = page.getByRole("dialog", { name: "New stock item", exact: true });
+  await editor.getByRole("textbox", { name: "Name", exact: true }).fill("Cacao nibs");
+  await editor.getByRole("button", { name: "Add stock item", exact: true }).click();
   await confirmPin(page);
-  await expect(bulk).toBeHidden();
+  await expect(editor).toBeHidden();
   await expect(page.getByRole("button", { name: /^Cacao nibs/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Tea leaves/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Fresh milk/ })).toBeHidden();
   await types.getByRole("button", { name: "All", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Fresh milk/ })).toBeVisible();
 });
 
-test("Other editable lists open their own bulk editors from the same menu", async ({ page }) => {
+test("Single-entry pages open their Add form directly and multiline editors keep bulk entry", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await startDemo(page);
 
-  async function check(row: RegExp, singleLabel: string, bulkTitle: string, back: string, empty = false) {
+  async function check(row: RegExp, title: string, back: string, singleLabel?: string, empty = false) {
     await page.getByRole("button", { name: row }).click();
     const add = empty
       ? page.locator(".empty.card").getByRole("button", { name: "Add", exact: true })
       : await summaryAdd(page);
     await add.click();
-    await expect(page.getByRole("menuitem")).toHaveText([singleLabel, "Add bulk"]);
-    await page.getByRole("menuitem", { name: "Add bulk" }).click();
-    const bulk = page.getByRole("dialog", { name: bulkTitle, exact: true });
-    await expect(bulk).toBeVisible();
-    await bulk.getByRole("button", { name: "Close", exact: true }).click();
+    if (singleLabel) {
+      await expect(page.getByRole("menuitem")).toHaveText([singleLabel, "Add bulk"]);
+      await page.getByRole("menuitem", { name: "Add bulk" }).click();
+    } else {
+      await expect(page.getByRole("menuitem")).toHaveCount(0);
+    }
+    const editor = page.getByRole("dialog", { name: title, exact: true });
+    await expect(editor).toBeVisible();
+    await editor.getByRole("button", { name: "Close", exact: true }).click();
     await page.getByRole("button", { name: back, exact: true }).click();
   }
 
-  await check(/^Payment methods/, "Add a payment method", "Add payment methods in bulk", "Back to settings");
-  await check(/^Discounts/, "Add a discount", "Add discounts in bulk", "Back to settings");
-  await check(/^Organizers/, "Add an organizer", "Add organizers in bulk", "Back to settings");
-  await check(/^Opening checklist/, "Add a step", "Add steps in bulk", "Back to settings");
+  await check(/^Payment methods/, "New payment method", "Back to settings");
+  await check(/^Discounts/, "New discount", "Back to settings");
+  await check(/^Organizers/, "Add organizers in bulk", "Back to settings", "Add an organizer");
+  await check(/^Opening checklist/, "Add steps in bulk", "Back to settings", "Add a step");
   await page.getByRole("button", { name: /^Recipes/ }).click();
-  await check(/^Categories/, "Add a category", "Add categories in bulk", "Back to recipes");
-  await check(/^Choices/, "Add a choice", "Add choices in bulk", "Back to recipes");
-  await check(/^Prep What you make/, "Add a prep item", "Add prep items in bulk", "Back to recipes", true);
+  await check(/^Categories/, "New category", "Back to recipes");
+  await check(/^Choices/, "New choice", "Back to recipes");
+  await check(/^Prep What you make/, "New prep item", "Back to recipes", undefined, true);
 
   await page.getByRole("button", { name: /^Menu costing/ }).click();
   const categories = page.getByRole("group", { name: "Menu categories", exact: true });
@@ -266,11 +264,35 @@ test("Choices opens a new optional choice from the empty Add-ons tab", async ({ 
   await startDemo(page);
   await page.getByRole("button", { name: /^Recipes/ }).click();
   await page.getByRole("button", { name: /^Choices/ }).click();
+  await expect(page.locator(".empty.card")).toHaveCount(0);
   await page.getByRole("group", { name: "Choice types" }).getByRole("button", { name: "Add-ons", exact: true }).click();
   const add = page.locator(".empty.card").filter({ hasText: "No add-ons yet" }).getByRole("button", { name: "Add", exact: true });
   await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(1);
   await add.click();
-  await page.getByRole("menuitem", { name: "Add a choice", exact: true }).click();
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
   const sheet = page.getByRole("dialog", { name: "New choice", exact: true });
   await expect(sheet.getByRole("button", { name: "Add-ons", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Team keeps the pending-invites empty state in its own tab", async ({ page }) => {
+  await startDemo(page);
+  await page.getByRole("button", { name: /^Team\b/ }).click();
+  const tabs = page.getByRole("group", { name: "Team members", exact: true });
+  const pending = tabs.getByRole("button", { name: "Yet to sign in", exact: true });
+  await pending.click();
+  await page.getByRole("button", { name: /^Kim Dela Cruz/ }).click();
+  await page.getByRole("dialog", { name: "Kim Dela Cruz", exact: true }).getByRole("button", { name: "Revoke", exact: true }).click();
+  await page.getByRole("dialog", { name: "Cancel invitation?", exact: true }).getByRole("button", { name: "Revoke", exact: true }).click();
+  await confirmPin(page);
+
+  const empty = page.locator(".empty.card").filter({ hasText: "No pending invites" });
+  await expect(pending).toHaveAttribute("aria-pressed", "true");
+  await expect(empty).toBeVisible();
+  await tabs.getByRole("button", { name: "All", exact: true }).click();
+  await expect(empty).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Bea Santos/ })).toBeVisible();
+
+  await pending.click();
+  await empty.getByRole("button", { name: "Invite", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Invite someone", exact: true })).toBeVisible();
 });

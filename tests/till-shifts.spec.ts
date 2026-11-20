@@ -79,8 +79,9 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
     await stock.getByRole("textbox", { name: /How many .* of Espresso/ }).fill("5");
   };
   const logExpense = async (label: string, amount: string, source: "Cash from the till" | "Own pocket", within: Page | Locator = page) => {
-    await within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Add an expense" }).click();
+    const add = within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true });
+    await expect(add).toHaveAttribute("aria-haspopup", "dialog");
+    await add.click();
     const form = page.getByRole("dialog", { name: "Log an expense" });
     await form.getByRole("combobox", { name: "What for" }).fill(label);
     await form.getByRole("textbox", { name: "Amount" }).fill(amount);
@@ -115,26 +116,11 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await expect(drawer.getByText("₱80", { exact: true })).toBeVisible();
   await logExpense("Closing supplies", "10", "Cash from the till", closing);
   await expect(drawer.getByText("₱70", { exact: true })).toBeVisible();
-  await closing.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Add bulk" }).click();
-  const batch = page.getByRole("dialog", { name: "Add expenses in bulk" });
-  for (const [label, amount, source] of [["Batch supplies", "5", "Cash from the till"], ["Batch fare", "10", "Own pocket"]]) {
-    await batch.getByRole("button", { name: "Add an expense" }).click();
-    const form = page.getByRole("dialog", { name: "Log an expense" });
-    await form.getByRole("combobox", { name: "What for" }).fill(label);
-    await form.getByRole("textbox", { name: "Amount" }).fill(amount);
-    await form.getByRole("button", { name: source, exact: true }).click();
-    await form.getByRole("button", { name: "Add to batch" }).click();
-    await expect(form).toBeHidden();
-  }
-  await batch.getByRole("button", { name: "Add 2 expenses", exact: true }).click();
-  await expect(batch).toBeHidden();
-  await expect(drawer.getByText("₱65", { exact: true })).toBeVisible();
   await removeExpense("Opening supplies", closing);
-  await expect(drawer.getByText("₱85", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("₱90", { exact: true })).toBeVisible();
 
   await closing.getByRole("button", { name: "Type the total" }).click();
-  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("85");
+  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("90");
   await closing.getByRole("button", { name: "Close shift and see report" }).click();
   const pin = page.getByRole("dialog", { name: "Owner PIN" });
   for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
@@ -143,8 +129,6 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toContainText("Closing supplies");
   await expect(report.locator("pre")).toContainText("Closing fare");
-  await expect(report.locator("pre")).toContainText("Batch supplies");
-  await expect(report.locator("pre")).toContainText("Batch fare");
   await expect(report.locator("pre")).not.toContainText("Opening supplies");
 });
 

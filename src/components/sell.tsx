@@ -21,9 +21,7 @@ import {
   stockLeft,
   totalLines,
 } from "@/lib/domain";
-import { AddMenu } from "./add-menu";
-import { ItemSheet, QuickAddSheet } from "./menu-settings";
-import { plural } from "./records";
+import { ItemSheet } from "./menu-settings";
 import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
@@ -922,7 +920,7 @@ export function SellScreen({
   onSaved,
   onTill,
 }: SellProps) {
-  const [adding, setAdding] = useState<"single" | "bulk" | null>(null);
+  const [adding, setAdding] = useState(false);
   const withPin = usePin();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -942,6 +940,7 @@ export function SellScreen({
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
   const canEdit = !state.me || state.me.owner;
+  const addItemReason = !online ? "Connect to the internet to add items." : state.menu.length >= 1000 && "The menu can hold up to 1,000 items.";
   const currency = shift.settings.currency;
   const menu = shift.menu;
   const categories = useMemo(
@@ -1087,14 +1086,6 @@ export function SellScreen({
           >
             <Ban size={19} />
           </button>
-          {canEdit && !marking && (
-            <AddMenu
-              singleLabel="Add an item"
-              blockedReason={!online ? "Connect to the internet to add items." : state.menu.length >= 1000 && "The menu can hold up to 1,000 items."}
-              onSingle={() => setAdding("single")}
-              onBulk={() => setAdding("bulk")}
-            />
-          )}
         </div>
         <ShiftStrip state={state} onTill={onTill} />
         {marking && (
@@ -1207,6 +1198,20 @@ export function SellScreen({
                 </button>
               );
             })}
+            {canEdit && !marking && !q && !category && (
+              <button
+                type="button"
+                className="item add-tile"
+                {...blockedBy(addItemReason)}
+                onClick={() => setAdding(true)}
+                aria-label="Add an item to the menu"
+                aria-haspopup="dialog"
+              >
+                <span className="add-plus" aria-hidden="true"><Plus size={22} /></span>
+                <span className="name">Add</span>
+                <span className="price">{online ? "Sells from now" : "Connect to add"}</span>
+              </button>
+            )}
           </div>
         ) : (
           <EmptyState
@@ -1217,7 +1222,19 @@ export function SellScreen({
               : canEdit
                 ? "Add your first item. It goes on sale right away."
                 : "Ask the owner to add items."}
-          />
+          >
+            {canEdit && !menu.length && (
+              <button
+                type="button"
+                className="btn compact"
+                {...blockedBy(addItemReason)}
+                onClick={() => setAdding(true)}
+                aria-haspopup="dialog"
+              >
+                <Plus size={16} aria-hidden="true" /> Add
+              </button>
+            )}
+          </EmptyState>
         )}
       </div>
       {count > 0 && !marking && !cartMenuError && (
@@ -1288,7 +1305,7 @@ export function SellScreen({
           }}
         />
       )}
-      {adding === "single" && (
+      {adding && (
         <ItemSheet
           key={simple ? "simple" : "advanced"}
           simple={simple}
@@ -1299,22 +1316,10 @@ export function SellScreen({
           stockItems={shift.settings.stockItems}
           costItems={business.settings.stockItems}
           pricing={business.settings.pricing}
-          onClose={() => setAdding(null)}
+          onClose={() => setAdding(false)}
           onSave={async (item, counts) => {
             const done = await withPin((pin) => onMenu(saveMenuItem(state.menu, item), pin, counts));
             if (done) onSaved("Added " + item.name);
-            return done;
-          }}
-        />
-      )}
-      {adding === "bulk" && (
-        <QuickAddSheet
-          menu={state.menu}
-          currency={currency}
-          onClose={() => setAdding(null)}
-          onSave={async (items) => {
-            const done = await withPin((pin) => onMenu(items.reduce(saveMenuItem, state.menu), pin));
-            if (done) onSaved("Added " + plural(items.length, "item"));
             return done;
           }}
         />

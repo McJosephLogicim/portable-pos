@@ -463,33 +463,30 @@ export async function uploadProofs(
   }
 }
 
-/** Log the batch in one local transaction. Each expense syncs like a sale. */
-export function logExpenses(
+/** Log money spent during the shift. It syncs like a sale. */
+export function logExpense(
   key: string,
-  inputs: (ExpenseInput & Pick<Expense, "by">)[],
+  input: ExpenseInput & Pick<Expense, "by">,
 ) {
   return updateRegister(key, (current) => {
     const shift = writableShift(current);
-    const createdAt = new Date().toISOString();
-    const added = inputs.map((input): Expense => {
-      const label = input.label.trim().slice(0, 80);
-      if (!label) throw new Error("Say what the money was for.");
-      if (!Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > 2_147_483_647)
-        throw new Error("Enter how much was spent.");
-      return {
-        id: crypto.randomUUID(),
-        shiftId: shift.id,
-        createdAt,
-        label,
-        amount: input.amount,
-        source: input.source,
-        ...(input.by ? { by: input.by.slice(0, 80) } : {}),
-      };
-    });
+    const label = input.label.trim().slice(0, 80);
+    if (!label) throw new Error("Say what the money was for.");
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > 2_147_483_647)
+      throw new Error("Enter how much was spent.");
+    const expense: Expense = {
+      id: crypto.randomUUID(),
+      shiftId: shift.id,
+      createdAt: new Date().toISOString(),
+      label,
+      amount: input.amount,
+      source: input.source,
+      ...(input.by ? { by: input.by.slice(0, 80) } : {}),
+    };
     return {
       ...current,
-      expenses: [...added, ...(current.expenses ?? [])],
-      pending: [...current.pending, ...added.map((expense) => ({ id: expense.id, shiftId: shift.id, type: "expense" as const, expense }))],
+      expenses: [expense, ...(current.expenses ?? [])],
+      pending: [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
     };
   });
 }
