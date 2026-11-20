@@ -55,7 +55,20 @@ export function InputExperience() {
         visibleBottom = Math.min(visibleBottom, bounds.bottom);
       }
       if (rect.top < visibleTop + 8 || rect.bottom > visibleBottom - 8) {
-        field.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+        // Centre the field in the part of the screen the keyboard leaves visible. scrollIntoView
+        // centres it in the layout viewport instead, which on iOS sits partly under the keyboard,
+        // so iOS panned back, we scrolled again, and the page shook. Scroll each container only as
+        // far as it can go, so a field that is already as visible as it can be stays put.
+        let remaining = Math.round((rect.top + rect.bottom) / 2 - (visibleTop + visibleBottom) / 2);
+        for (let container = field.parentElement; container && remaining; container = container.parentElement) {
+          const page = container === document.body;
+          const scroller = page ? document.scrollingElement ?? root : container;
+          if (!page && !/^(auto|scroll)$/.test(getComputedStyle(container).overflowY)) continue;
+          const before = scroller.scrollTop;
+          scroller.scrollTop = before + remaining;
+          remaining -= scroller.scrollTop - before;
+          if (page || container instanceof HTMLDialogElement) break;
+        }
       }
     }
 
