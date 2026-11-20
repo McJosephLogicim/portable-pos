@@ -1,8 +1,9 @@
 import type { Booking, Sale, Shift } from "./types";
+import { countFilterOptions, matchesFilters, type FilterSelection } from "./filters";
 
 /** The ways the Sales page can narrow its list. Values within one are "any of"; across them, "all of". */
 export type FilterKey = "shift" | "event" | "organizer" | "place" | "item" | "payment";
-export type SalesFilter = Partial<Record<FilterKey, string[]>>;
+export type SalesFilter = FilterSelection<FilterKey>;
 
 export const filterKeys: FilterKey[] = ["shift", "event", "organizer", "place", "item", "payment"];
 export const filterNames: Record<FilterKey, string> = {
@@ -58,11 +59,7 @@ export function activeCount(filter: SalesFilter) {
 
 /** Whether a sale passes every filter, optionally ignoring one of them. */
 export function matchesFilter(facets: Record<FilterKey, Facet[]>, filter: SalesFilter, ignore?: FilterKey) {
-  return filterKeys.every((key) => {
-    const values = filter[key];
-    if (key === ignore || !values?.length) return true;
-    return facets[key].some((f) => values.includes(f.value));
-  });
+  return matchesFilters(facets, filter, ignore);
 }
 
 export interface FilterOption extends Facet {
@@ -80,17 +77,9 @@ export function filterOptions(
   filter: SalesFilter,
 ): Record<FilterKey, FilterOption[]> {
   const out = {} as Record<FilterKey, FilterOption[]>;
+  const rows = all.map(({ facets }) => facets);
   for (const key of filterKeys) {
-    const map = new Map<string, FilterOption>();
-    for (const { facets } of all) {
-      const counts = matchesFilter(facets, filter, key);
-      for (const f of facets[key]) {
-        const row = map.get(f.value) ?? { ...f, count: 0 };
-        if (counts) row.count += 1;
-        map.set(f.value, row);
-      }
-    }
-    out[key] = [...map.values()].sort((a, b) =>
+    out[key] = countFilterOptions(rows, filter, key).sort((a, b) =>
       key === "shift" ? (b.at ?? "").localeCompare(a.at ?? "") : b.count - a.count || a.label.localeCompare(b.label),
     );
   }

@@ -87,6 +87,7 @@ export function RolePicker({
 
 function MemberSheet({
   member,
+  canChangeAccess,
   businessId,
   currency,
   onSave,
@@ -95,9 +96,10 @@ function MemberSheet({
   onClose,
 }: {
   member?: Member;
+  canChangeAccess: boolean;
   businessId: string;
   currency: string;
-  onSave: (input: { name: string; email: string; rate: number; photo?: string | null }) => Promise<boolean>;
+  onSave: (input: { name: string; email: string; rate: number; owner?: boolean; photo?: string | null }) => Promise<boolean>;
   onResend?: () => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
   onClose: () => void;
@@ -106,6 +108,7 @@ function MemberSheet({
   const [photo, setPhoto] = useState(member?.photo);
   const [email, setEmail] = useState(member?.email ?? "");
   const [rate, setRate] = useState(member && member.rate ? amountText(member.rate, currency) : "");
+  const [owner, setOwner] = useState(member?.owner ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -137,6 +140,7 @@ function MemberSheet({
                   name: name.trim(),
                   email: email.trim(),
                   rate: rate.trim() ? parseMoney(rate, currency) : 0,
+                  ...(canChangeAccess && owner !== member?.owner ? { owner } : {}),
                   ...(member && photo !== member.photo ? { photo: photo ?? null } : {}),
                 }),
               )
@@ -174,7 +178,7 @@ function MemberSheet({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        {!member?.owner && (
+        {(!member || member.email) && (
           <label className="field">
             {member ? (
               <span>Email they sign in with</span>
@@ -199,6 +203,20 @@ function MemberSheet({
           </label>
         )}
       </div>
+      {canChangeAccess && (
+        <div className="card card-pad stack gap-14">
+          <label className="field">
+            <span className="field-head">
+              Business access
+              <Explain title="Business access">Owners can manage the register, settings, and team, and see pay and profit.</Explain>
+            </span>
+            <select className="select" value={owner ? "owner" : "member"} onChange={(e) => setOwner(e.target.value === "owner")}>
+              <option value="member">Team member</option>
+              <option value="owner">Owner</option>
+            </select>
+          </label>
+        </div>
+      )}
       <MoneyField
         label="Pay for one shift"
         value={rate}
@@ -261,7 +279,7 @@ export function TeamPage(props: SettingsProps) {
   return (
     <SubPage
       title="Team"
-      help={<p>Only you invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.</p>}
+      help={<p>Owners invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.</p>}
       sentence={
         <>
           {team.length} {team.length === 1 ? "person" : "people"}{" "}
@@ -315,6 +333,7 @@ export function TeamPage(props: SettingsProps) {
       {editing && (
         <MemberSheet
           member={editing === "new" ? undefined : editing}
+          canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
           businessId={business.id}
           currency={business.currency}
           onClose={() => setEditing(null)}
@@ -322,7 +341,7 @@ export function TeamPage(props: SettingsProps) {
             editing === "new"
               ? act({ action: "invite", ...input })
               : act(
-                  { action: "member", memberId: editing.id, name: input.name, rate: input.rate },
+                  { action: "member", memberId: editing.id, name: input.name, rate: input.rate, owner: input.owner },
                   "Saved " + input.name,
                 ).then(
                   async (done) =>

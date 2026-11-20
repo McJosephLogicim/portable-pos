@@ -1,4 +1,5 @@
-import type { Product, Settings, Shift, StockItem, StockPrep, StockPurchase, StockUse } from "./types";
+import { currencyDigits } from "./settings";
+import type { PricingRules, Product, Settings, Shift, StockItem, StockPrep, StockPurchase, StockUse } from "./types";
 
 export const units = ["piece", "pack", "box", "bottle", "cup", "tray", "kg", "g", "L", "mL"];
 export const maxBatchServings = 100_000;
@@ -51,7 +52,12 @@ export function menuRecipeCost(
   const materialPerServing = materials.cost / servings;
   const total = menuCost([materialPerServing, laborPerServing, otherPerServing], price);
   if (!total) return undefined;
-  return { ...total, batchMaterialCost: materials.cost, materialPerServing };
+  return { ...total, batchMaterialCost: materials.cost, materialPerServing, costRatio: price ? total.cost / price : undefined };
+}
+
+export function batchStockUses(batch: NonNullable<Product["costing"]>["batch"]): StockUse[] {
+  if (!batch?.deductFromStock) return [];
+  return batch.uses.map(({ stockId, amount }) => ({ stockId, amount: amount / batch.servings }));
 }
 
 /** A batch recipe references current stock items even when the till counts finished servings. */
@@ -64,8 +70,53 @@ export function batchIngredientProblem(menu: Product[], items: StockItem[] = [])
 }
 
 export function withoutMenuCosts(menu: Product[]) {
-  if (!menu.some((product) => product.costing)) return menu;
-  return menu.map(({ costing: _, ...product }) => product);
+  return menu.map((product) => {
+    const hasNotes = product.uses?.some((use) => use.notes !== undefined);
+    if (!product.costing && !hasNotes) return product;
+    const { costing: _, ...tillItem } = product;
+    if (hasNotes) tillItem.uses = product.uses!.map(({ notes: _notes, ...use }) => use);
+    return tillItem;
+  });
+}
+
+export function catalogSku(kind: "stock" | "product", id: string) {
+  const code = id.replace(/[^a-z0-9]/gi, "").slice(0, 12) || id.slice(0, 12);
+  return `${kind === "stock" ? "STK" : "PRD"}-${code.toUpperCase()}`;
+}
+
+export function duplicateSku(skus: (string | undefined)[]) {
+  const seen = new Set<string>();
+  for (const sku of skus) {
+    if (!sku) continue;
+    const key = sku.toUpperCase();
+    if (seen.has(key)) return sku;
+    seen.add(key);
+  }
+}
+
+export function pricingRules(currency: string, saved?: PricingRules): PricingRules {
+  return saved ?? { targetMargin: 70, roundingIncrement: (currency === "PHP" ? 5 : 1) * 10 ** currencyDigits(currency) };
+}
+
+export function readTargetMargin(value: string) {
+  const target = Number(value);
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()) || target < 0 || target >= 100)
+    throw Error("Enter a target margin from 0% to less than 100%.");
+  return target;
+}
+
+export function pricingInCurrency(settings: Settings, previous: string, currency: string) {
+  if (!settings.pricing || previous === currency) return settings;
+  const difference = currencyDigits(currency) - currencyDigits(previous);
+  if (!difference) return settings;
+  const converted = Math.round(settings.pricing.roundingIncrement * 10 ** difference);
+  return {
+    ...settings,
+    pricing: {
+      ...settings.pricing,
+      roundingIncrement: Math.max(1, converted <= 2_147_483_647 ? converted : pricingRules(currency).roundingIncrement),
+    },
+  };
 }
 
 export function prepCost(prep: StockPrep, items: ReadonlyMap<string, StockItem>) {
@@ -117,13 +168,36 @@ export function suggestedPrice(cost: number, targetPercent: number, increment: n
   return rounded <= 2_147_483_647 ? rounded : undefined;
 }
 
+export function menuCostingOverview(menu: Product[], stock: StockItem[], pricing: PricingRules) {
+  const rates = stockCostRates(stock);
+  const rows = menu.map((item) => {
+    const batch = item.costing?.batch;
+    const lines = (batch?.uses ?? item.uses ?? []).map(({ stockId, amount }) => {
+      const rate = rates.get(stockId);
+      return rate === undefined ? undefined : rate * amount;
+    });
+    const cost = menuRecipeCost(lines, batch?.servings ?? 1, item.costing?.laborPerServing ?? 0, item.costing?.otherPerServing ?? 0, item.price);
+    const target = item.costing?.targetMargin ?? pricing.targetMargin;
+    const suggested = cost && suggestedPrice(cost.cost, target, pricing.roundingIncrement);
+    return { item, cost, suggested };
+  });
+  const complete = rows.flatMap(({ cost }) => cost ? [cost] : []);
+  const priced = complete.filter((cost) => cost.costRatio !== undefined);
+  const averageCost = complete.length ? complete.reduce((sum, cost) => sum + cost.cost, 0) / complete.length : undefined;
+  const averageCostRatio = priced.length ? priced.reduce((sum, cost) => sum + cost.costRatio!, 0) / priced.length : undefined;
+  const averageMargin = priced.length ? priced.reduce((sum, cost) => sum + cost.margin!, 0) / priced.length : undefined;
+  return { rows, costed: complete.length, averageCost, averageCostRatio, averageMargin };
+}
+
 /** Cost sources belong to the owner and aren't needed to run the till. */
 export function withoutStockCosts<T extends Settings>(settings: T): T {
-  if (!settings.stockItems?.some((item) => item.purchase || item.prep)) return settings;
-  return {
-    ...settings,
-    stockItems: settings.stockItems.map(({ purchase: _, prep: _prep, ...item }) => item),
-  };
+  if (!settings.pricing && !settings.stockLists && !settings.stockItems?.some((item) => item.purchase || item.prep || item.details)) return settings;
+  const till = { ...settings };
+  delete till.pricing;
+  delete till.stockLists;
+  if (settings.stockItems)
+    till.stockItems = settings.stockItems.map(({ purchase: _, prep: _prep, details: _details, ...item }) => item);
+  return till;
 }
 
 export function hasStockCostAmounts(settings: Settings) {
@@ -168,6 +242,11 @@ export function shiftStock(shift: Pick<Shift, "menu" | "settings">) {
   return stockModel(shift.settings.stockItems, shift.menu);
 }
 
+/** Allow for floating-point arithmetic when comparing fractional deductions. */
+export function stockAmountFits(amount: number, available: number) {
+  return amount <= available + Math.max(1e-12, Math.abs(available) * Number.EPSILON * 8);
+}
+
 /** How many more of a menu item the stock left can make, or undefined if it uses none. */
 export function canMake(model: StockModel, left: Record<string, number>, productId: string) {
   const uses = model.uses.get(productId);
@@ -175,7 +254,9 @@ export function canMake(model: StockModel, left: Record<string, number>, product
   let most = Infinity;
   for (const u of uses) {
     if (!(u.stockId in left)) continue;
-    most = Math.min(most, Math.floor(round(Math.max(0, left[u.stockId]) / u.amount)));
+    const available = Math.max(0, left[u.stockId]);
+    const whole = Math.floor(available / u.amount);
+    most = Math.min(most, stockAmountFits((whole + 1) * u.amount, available) ? whole + 1 : whole);
   }
   return most === Infinity ? undefined : most;
 }

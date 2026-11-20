@@ -1,7 +1,7 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
 import { checkClosing, checkOpening, shiftTotals, stockLeft, updateShiftMenu } from "./domain";
-import { batchIngredientProblem, checkPrepRecipes, hasStockCostAmounts, round, withoutMenuCosts, withoutStockCosts } from "./stock";
+import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
@@ -192,6 +192,8 @@ export function demoAction(
       };
     }
     case "menu": {
+      const duplicate = duplicateSku(input.menu.map((item) => item.costing?.sku));
+      if (duplicate) throw Error(`Menu SKU ${duplicate} is already in use.`);
       const problem = batchIngredientProblem(input.menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
       const shift = state.shift && updateShiftMenu(state.shift, input.menu, input.stock, state.business?.settings.stockItems);
@@ -208,6 +210,8 @@ export function demoAction(
     }
     case "settings": {
       const business = state.business!;
+      const duplicate = duplicateSku(input.settings.stockItems?.map((item) => item.details?.sku) ?? []);
+      if (duplicate) throw Error(`Stock SKU ${duplicate} is already in use.`);
       if (input.currency !== business.currency && state.shift)
         throw Error("Close the shift before changing currency.");
       if (hasStockCostAmounts(input.settings) && currencyDigits(input.currency) !== currencyDigits(business.currency))
@@ -227,7 +231,8 @@ export function demoAction(
           currency: input.currency,
           timeZone: input.timeZone,
           settings: {
-            ...input.settings,
+            ...pricingInCurrency(input.settings, business.currency, input.currency),
+            stockLists: input.settings.stockLists ?? business.settings.stockLists,
             mode: business.settings.mode,
           },
         },

@@ -606,7 +606,7 @@ button.list-row:not(.sell-option):active {
 .sheet {
   width: min(560px, 100%);
   max-width: 100%;
-  max-height: 94dvh;
+  max-height: min(94dvh, var(--keyboard-height, 94dvh));
   margin: auto auto 0;
   padding: 0;
   border: 0;
@@ -619,6 +619,8 @@ button.list-row:not(.sell-option):active {
 }
 .sheet[open] {
   display: flex;
+  top: var(--keyboard-top, 0px);
+  bottom: var(--keyboard-bottom, 0px);
   animation: rise var(--dur-base) var(--ease-out);
 }
 .sheet::backdrop {
@@ -627,6 +629,7 @@ button.list-row:not(.sell-option):active {
 }
 .sheet-head {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   padding: 10px 16px 6px 20px;
@@ -655,6 +658,7 @@ button.list-row:not(.sell-option):active {
   margin-top: 12px;
 }
 .sheet-body {
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -664,6 +668,7 @@ button.list-row:not(.sell-option):active {
   gap: 16px;
 }
 .sheet-foot {
+  flex-shrink: 0;
   padding: 12px var(--gutter) calc(16px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -675,7 +680,7 @@ button.list-row:not(.sell-option):active {
   .sheet {
     margin: auto;
     border-radius: var(--radius-xl);
-    max-height: 86dvh;
+    max-height: min(86dvh, var(--keyboard-height, 86dvh));
   }
   .sheet-head::before {
     display: none;
@@ -797,7 +802,8 @@ button.list-row:not(.sell-option):active {
   width: 100%;
   max-width: 600px;
   margin: 0 auto;
-  padding: calc(14px + env(safe-area-inset-top)) var(--gutter) var(--tabbar-space);
+  padding: calc(14px + env(safe-area-inset-top)) var(--gutter)
+    calc(var(--tabbar-space) + var(--keyboard-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1831,6 +1837,17 @@ button.notice {
   gap: 6px;
   min-width: 0;
 }
+.suggest:has(.suggest-chevron) .input {
+  padding-inline-end: 34px;
+}
+.suggest-chevron {
+  position: absolute;
+  inset-inline-end: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-secondary);
+  pointer-events: none;
+}
 /* The suggestion list floats over the content below (or above) its field. */
 .combo-float {
   position: fixed;
@@ -1858,6 +1875,11 @@ button.notice {
 }
 .suggest .combo-pick {
   padding: 6px 10px;
+}
+@media (hover: hover) {
+  .combo-pick:hover {
+    background: var(--surface-muted);
+  }
 }
 .combo-head {
   padding: 8px 10px 4px;
@@ -2272,7 +2294,7 @@ button.list-row:not(.sell-option):active:not(:disabled),
 }
 .option-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
 }
 .option-row > .suggest {
@@ -2282,21 +2304,15 @@ button.list-row:not(.sell-option):active:not(:disabled),
   width: 92px;
   flex: none;
 }
-.option-row > .round {
-  margin-top: 4px;
+.option-price .input {
+  padding-inline: 26px 8px;
+}
+.option-price .prefix {
+  left: 8px;
 }
 @media (max-width: 359px) {
   .grid-2.dates {
     grid-template-columns: 1fr;
-  }
-  .option-row {
-    flex-wrap: wrap;
-  }
-  .option-row > .suggest {
-    flex-basis: 100%;
-  }
-  .option-price {
-    flex: 1;
   }
   .step-num {
     display: none;
@@ -2691,17 +2707,33 @@ html {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
+.round.flat.ingredient-note-button[data-has-note="true"] {
+  color: var(--on-accent);
+  background: var(--accent);
+}
 .use-amount {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
+  gap: 8px;
   font-size: 15px;
 }
-.use-amount .nowrap {
+.use-amount-group {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
 }
-@media (max-width: 360px) {
+.use-unit {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.use-unit-input {
+  width: 96px;
+}
+@media (max-width: 400px) {
   .use-amount {
     gap: 6px;
     font-size: 14px;
@@ -2710,11 +2742,14 @@ html {
     padding: 0;
     gap: 2px;
   }
+  .use-amount .stepper .round {
+    width: 32px;
+  }
   .use-amount .stepper .input.count {
     width: 44px;
   }
-  .use-amount .use-unit-input {
-    width: 80px;
+  .use-unit-input .input {
+    padding-inline: 4px;
   }
 }
 .recipe-cost {
@@ -2722,8 +2757,50 @@ html {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.recipe-price-fields {
+.recipe-price-fields,
+.recipe-details-fields {
   margin-top: 10px;
+}
+.recipe-details-fields textarea {
+  resize: vertical;
+}
+.costing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.costing-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.costing-grid dt {
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+}
+.costing-grid dd {
+  margin-top: 2px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.costing-entry {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 14px;
+}
+.costing-entry + .costing-entry {
+  border-top: 1px solid var(--line);
+}
+.costing-title {
+  padding: 3px 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.costing-title .chev {
+  flex: none;
+  color: var(--ink-secondary);
 }
 @media (max-width: 360px) {
   .stock-row .well {
@@ -2954,11 +3031,6 @@ html {
 .list-row:disabled {
   opacity: 0.5;
 }
-.use-unit-input {
-  width: 96px;
-  flex: none;
-}
-
 /* ---------- fit any phone, any brand font ---------- */
 .segmented > button {
   flex: 1 1 auto;
@@ -3168,17 +3240,14 @@ html {
   max-width: 100%;
   min-width: 0;
 }
-.near-me {
+.location-action {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
-.near-me .label:empty {
-  display: none;
-}
-.near-me .label {
+.location-action .label {
   min-width: 0;
   line-height: 1.35;
 }
@@ -3195,11 +3264,6 @@ html {
   color: var(--ink);
   font-size: 14px;
 }
-.chip-button[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
 .chip-button:disabled {
   opacity: 0.6;
 }
@@ -3212,10 +3276,10 @@ html {
   cursor: grabbing;
 }
 .map-pin {
-  transition: margin var(--dur-fast) var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .map-pin.lifted {
-  margin-top: -54px;
+  transform: translateY(-8px) rotate(-45deg);
 }
 .page-title {
   display: inline-flex;

@@ -226,6 +226,7 @@ function BookingCard({
 
 function PersonPicker({
   team,
+  myMemberId,
   currency,
   title,
   exclude,
@@ -234,6 +235,7 @@ function PersonPicker({
   onClose,
 }: {
   team: Member[];
+  myMemberId?: string;
   currency: string;
   title: string;
   exclude: string[];
@@ -279,7 +281,7 @@ function PersonPicker({
             >
               <Avatar id={m.id} name={m.name} dim={!m.joined} />
               <span className="grow stack">
-                <span className="ellipsis">{m.owner ? m.name + " (you)" : m.name}</span>
+                <span className="ellipsis">{m.id === myMemberId ? m.name + " (you)" : m.name}</span>
                 <span className="label">
                   {m.rate ? formatMoney(m.rate, currency) + " a shift" : "No set pay"}
                   {m.joined ? "" : " · invite pending"}
@@ -744,6 +746,7 @@ function BookingSheet({
       {picking && (
         <PersonPicker
           team={team}
+          myMemberId={me.memberId}
           currency={state.business!.currency}
           title={picking.replace ? "Swap " + picking.replace.name + " for" : "Assign someone"}
           exclude={b.staff.map((s) => s.memberId)}
@@ -1216,6 +1219,7 @@ function BookingEditor({
       {adding && (
         <PersonPicker
           team={team}
+          myMemberId={state.me?.memberId}
           currency={state.business!.currency}
           title="Assign someone"
           exclude={d.staff.map((s) => s.memberId)}

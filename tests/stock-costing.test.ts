@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { makeSale, stockLeft } from "../src/lib/domain";
+import { checkStock, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import { newShift } from "../src/lib/demo";
 import { defaultSettings } from "../src/lib/settings";
-import { batchIngredientProblem, menuCost, menuRecipeCost, prepCost, stockCostRates, suggestedPrice, unitFor, withoutStockCosts } from "../src/lib/stock";
+import { batchIngredientProblem, canMake, menuCost, menuCostingOverview, menuRecipeCost, prepCost, pricingInCurrency, pricingRules, shiftStock, stockCostRates, suggestedPrice, unitFor, withoutMenuCosts, withoutStockCosts } from "../src/lib/stock";
 import type { Product, StockItem } from "../src/lib/types";
 import { parseCommand } from "../src/server/input";
 
@@ -66,7 +66,7 @@ test("a batch of 12 cookies costs ingredients by batch and labor and other costs
   const result = menuRecipeCost(lines, 12, 800, 200, 9500);
   assert.deepEqual(result, {
     batchMaterialCost: 36000, materialPerServing: 3000, cost: 4000,
-    profit: 5500, margin: 5500 / 9500,
+    profit: 5500, margin: 5500 / 9500, costRatio: 4000 / 9500,
   });
   assert.equal(suggestedPrice(result!.cost, 70, 500), 13500);
   assert.equal(menuRecipeCost(lines, 24, 800, 200)?.cost, 2500);
@@ -77,20 +77,51 @@ test("a batch of 12 cookies costs ingredients by batch and labor and other costs
   assert.equal(menuRecipeCost(lines, 1.5, 800, 200), undefined);
 });
 
+test("menu costing summarizes complete recipes and applies saved defaults and item overrides", () => {
+  const base: Product = { id: "cookie", name: "Cookie", category: "Bakery", price: 10000, groups: [] };
+  const stock: StockItem[] = [
+    { id: "flour", name: "Flour", unit: "kg", purchase: { quantity: 1, price: 12000 } },
+    { id: "free", name: "Free stock", unit: "piece", purchase: { quantity: 1, price: 0 } },
+  ];
+  const menu: Product[] = [
+    { ...base, uses: [{ stockId: "flour", amount: 0.25 }], costing: { laborPerServing: 500 } },
+    { ...base, id: "batch", price: 5000, costing: { targetMargin: 0, batch: { servings: 12, uses: [{ stockId: "flour", amount: 2 }] } } },
+    { ...base, id: "sample", price: 0, uses: [{ stockId: "free", amount: 1 }] },
+    { ...base, id: "missing", uses: [{ stockId: "missing", amount: 1 }] },
+  ];
+  const pricing = pricingRules("PHP", { targetMargin: 60, roundingIncrement: 500 });
+  const overview = menuCostingOverview(menu, stock, pricing);
+  assert.equal(overview.costed, 3);
+  assert.equal(overview.averageCost, (3500 + 2000) / 3);
+  assert.equal(overview.averageCostRatio, (0.35 + 0.4) / 2);
+  assert.equal(overview.averageMargin, (0.65 + 0.6) / 2);
+  assert.deepEqual(overview.rows.map((row) => row.suggested), [9000, 2000, 0, undefined]);
+  assert.equal(overview.rows[2].cost?.costRatio, undefined);
+  assert.equal(menuCostingOverview(menu, stock, pricingRules("PHP")).rows[0].suggested, 12000);
+  assert.deepEqual(pricingInCurrency({ ...defaultSettings("PHP"), pricing }, "PHP", "JPY").pricing, { targetMargin: 60, roundingIncrement: 5 });
+});
+
 test("the menu keeps batch data for costing and selling still consumes a finished cookie", () => {
   const stockItems = [{ id: "flour", name: "Flour", unit: "kg" }, { id: "cookie", name: "Cookie", unit: "piece" }];
   const product: Product = {
     id: "cookie-menu", name: "Cookie", category: "Bakery", price: 9500, groups: [],
-    uses: [{ stockId: "cookie", amount: 1 }],
+    uses: [{ stockId: "cookie", amount: 1, notes: "Count the finished cookie" }],
     costing: {
-      batch: { servings: 12, uses: [{ stockId: "flour", amount: 0.5 }] },
+      batch: { servings: 12, uses: [{ stockId: "flour", amount: 0.5, notes: "Sift first" }] },
       laborPerServing: 800,
       otherPerServing: 200,
+      targetMargin: 55,
+      sku: "BAK-COOKIE",
+      notes: "Cool on a rack",
     },
   };
   const command = parseCommand({ action: "menu", menu: [product], pin: "1234" });
   assert.equal(command.action, "menu");
   assert.deepEqual(command.menu, [product]);
+  assert.deepEqual(withoutMenuCosts(command.menu)[0].uses, [{ stockId: "cookie", amount: 1 }]);
+  assert.throws(() => parseCommand({
+    action: "menu", menu: [{ ...product, costing: { targetMargin: 100 } }], pin: "1234",
+  }));
   assert.equal(batchIngredientProblem(command.menu, stockItems), undefined);
   assert.match(batchIngredientProblem(command.menu, stockItems.slice(1)) ?? "", /missing/);
   const shift = {
@@ -108,19 +139,58 @@ test("the menu keeps batch data for costing and selling still consumes a finishe
   assert.deepEqual(stockLeft(shift, [sale]), { flour: 2, cookie: 11 });
 });
 
+test("batch deductions let the till sell the full yield and preserve the open shift's recipe", () => {
+  const stockItems = [{ id: "juice", name: "Juice", unit: "L" }, { id: "spice", name: "Spice", unit: "kg" }];
+  const product: Product = {
+    id: "cup", name: "Juice cup", category: "Drinks", price: 100, groups: [],
+    costing: { batch: { servings: 6, deductFromStock: true, uses: [
+      { stockId: "juice", amount: 1, notes: "Stir" }, { stockId: "spice", amount: 0.001 },
+    ] } },
+  };
+  const command = parseCommand({ action: "menu", menu: [product], pin: "1234" });
+  assert.equal(command.action, "menu");
+  assert.deepEqual(command.menu[0].uses, [{ stockId: "juice", amount: 1 / 6 }, { stockId: "spice", amount: 0.001 / 6 }]);
+  const shift = {
+    ...newShift("device", "business", 1, 0, command.menu, { ...defaultSettings("PHP"), currency: "PHP", stockItems }),
+    stock: { juice: 1, spice: 0.001 },
+  };
+  assert.equal(shift.menu[0].costing, undefined);
+  const cart = (quantity: number) => [{ productId: product.id, optionIds: [], quantity }];
+  assert.equal(canMake(shiftStock(shift), shift.stock, product.id), 6);
+  assert.doesNotThrow(() => checkStock(shift, cart(6), shift.stock));
+  assert.throws(() => checkStock(shift, cart(7), shift.stock), /Only 6 more/);
+  const sales = [];
+  for (let i = 1; i <= 6; i++) {
+    const left = stockLeft(shift, sales);
+    assert.equal(canMake(shiftStock(shift), left, product.id), 7 - i);
+    sales.push(makeSale({
+      id: crypto.randomUUID(), shift, sequence: i, cart: cart(1), createdAt: shift.openedAt,
+      tender: "cash", received: 100, soldOut: [], stock: left,
+    }));
+  }
+  assert.deepEqual(stockLeft(shift, sales), { juice: 0, spice: 0 });
+  const withReversal = [...sales.slice(0, -1), { ...sales[5], reversedAt: shift.openedAt }];
+  assert.equal(canMake(shiftStock(shift), stockLeft(shift, withReversal), product.id), 1);
+  const next = updateShiftMenu(shift, [{ ...command.menu[0], uses: [{ stockId: "juice", amount: 0.5 }] }]);
+  assert.deepEqual(next.menu[0].uses, shift.menu[0].uses);
+});
+
 test("settings accept optional purchase data and till settings omit it", () => {
   const milk = { id: "milk", name: "Milk", unit: "L" };
-  const stockItems = [milk, whip, cream, {
+  const stockItems = [milk, whip, { ...cream, details: { category: "Cream", sku: "PREP-1" } }, {
     id: "matcha", name: "Matcha", unit: "g",
     purchase: { price: 300000, quantity: 100, yieldPercent: 98 },
+    details: { supplier: "Sample supplier", kind: "ingredient", sku: "ITM-MATCHA", packDescription: "100 g bag", costUpdatedOn: "2026-11-20", notes: "Keep sealed" },
   }];
   const command = {
     action: "settings", deviceId: "device", name: "Cafe", currency: "PHP", timeZone: "Asia/Manila", pin: "1234",
-    settings: { ...defaultSettings("PHP"), stockItems },
+    settings: { ...defaultSettings("PHP"), stockItems, pricing: { targetMargin: 70, roundingIncrement: 500 } },
   };
   const parsed = parseCommand(command);
   assert.equal(parsed.action, "settings");
   assert.deepEqual(parsed.settings.stockItems, stockItems);
+  assert.deepEqual(parsed.settings.pricing, command.settings.pricing);
+  assert.equal(withoutStockCosts(parsed.settings).pricing, undefined);
   assert.deepEqual(withoutStockCosts(parsed.settings).stockItems, [
     milk, { id: whip.id, name: whip.name, unit: whip.unit }, { id: cream.id, name: cream.name, unit: cream.unit },
     { id: "matcha", name: "Matcha", unit: "g" },

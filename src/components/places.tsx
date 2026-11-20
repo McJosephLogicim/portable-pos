@@ -191,6 +191,7 @@ export function LocationPicker({
   const [picked, setPicked] = useState<Place | null>(null);
   const moved = Boolean(preview && picked && (preview.lat !== picked.lat || preview.lon !== picked.lon));
   const seq = useRef(0);
+  const locationRequest = useRef(0);
   const center = here ?? zoneCenters[timeZone];
 
   useEffect(() => {
@@ -236,23 +237,31 @@ export function LocationPicker({
     return () => clearTimeout(timer);
   }, [query, center?.lat, center?.lon]);
 
+  function showPreview(place: Place) {
+    locationRequest.current += 1;
+    setLocating(false);
+    setLocateError("");
+    setPicked(place);
+    setPreview(place);
+  }
+
   function locate() {
-    if (here) {
-      setHere(null);
-      return;
-    }
     setLocateError("");
     if (!navigator.geolocation) {
       setLocateError("This phone can't share its location here.");
       return;
     }
+    const request = ++locationRequest.current;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setHere({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        setLocating(false);
+        if (request !== locationRequest.current) return;
+        const point = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setHere(point);
+        showPreview({ name: "My location", ...point });
       },
       (e) => {
+        if (request !== locationRequest.current) return;
         setLocating(false);
         setLocateError(e.code === e.PERMISSION_DENIED
           ? "Location is blocked. Allow it for this site in your browser settings, then try again."
@@ -288,12 +297,12 @@ export function LocationPicker({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="near-me">
-          <button type="button" className="chip-button" aria-pressed={Boolean(here)} disabled={locating} onClick={locate}>
-            <LocateFixed size={15} strokeWidth={2} />
-            {locating ? "Finding you…" : here ? "Near me · on" : "Search near me"}
+        <div className="location-action">
+          <button type="button" className="chip-button" disabled={locating} onClick={locate}>
+            <LocateFixed size={15} strokeWidth={2} aria-hidden="true" />
+            {locating ? "Finding you…" : "My location"}
           </button>
-          <span className="label">{locateError || (here ? "Closest places first, with how far they are." : "")}</span>
+          {locateError && <p className="label" role="alert">{locateError}</p>}
         </div>
         <div className="place-list" role="listbox" aria-label="Places">
           {typed.length < 2 && recent.length > 0 && <p className="group-title">Used before</p>}
@@ -308,8 +317,7 @@ export function LocationPicker({
                 className="place-row"
                 onClick={() => {
                   if (p.lat === undefined) return onPick(p);
-                  setPicked(p);
-                  setPreview(p);
+                  showPreview(p);
                 }}
               >
                 <span className="ellipsis strong-ish">{p.name}</span>

@@ -9,7 +9,7 @@ import {
   legacyShiftSettings,
   mergeShiftSettings,
 } from "../lib/settings";
-import { batchIngredientProblem, hasStockCostAmounts, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
+import { batchIngredientProblem, hasStockCostAmounts, pricingInCurrency, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
 import { normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
 import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
@@ -58,6 +58,7 @@ export async function runCommand(
     // Joining by invite happens here too, so the PIN is checked against the right business.
     const access = await getDb().transaction((tx) => resolveAccess(tx, actor));
     ensure(access, "Create your business first.", 404);
+    actor.businessId = access.business.id;
     // Taking yourself off a shift needs no PIN. Taking someone else off does.
     const others = cmd.action === "profile" ? cmd.memberId && cmd.memberId !== access.member.id : true;
     if (!selfAction || (cmd.action === "profile" ? others : cmd.memberId !== access.member.id)) {
@@ -186,7 +187,8 @@ export async function runCommand(
           currency: cmd.currency,
           timeZone: cmd.timeZone,
           settings: {
-            ...cmd.settings,
+            ...pricingInCurrency(cmd.settings, business.currency, cmd.currency),
+            stockLists: cmd.settings.stockLists ?? business.settings?.stockLists,
             mode: business.settings?.mode,
           },
         })
