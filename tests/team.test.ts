@@ -173,16 +173,19 @@ test(
     await o({ action: "menu", menu: [bread], pin });
     const stockItem = { id: bread.id, name: bread.name, unit: "piece" };
     const purchase = { price: 500, quantity: 1 };
+    const details = { sku: "BAK-BREAD", supplier: "Bakery", notes: "Order weekly" };
+    const pricing = { targetMargin: 55, roundingIncrement: 500 };
     const garnish = { id: "crumbs", name: "Bread crumbs", unit: "g" };
     const prep = { yieldQuantity: 50, uses: [{ stockId: stockItem.id, amount: 1 }] };
-    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }], stockItems: [{ ...stockItem, purchase }, { ...garnish, prep }] } });
-    const costing = { laborPerServing: 200, batch: { servings: 12, uses: [{ stockId: garnish.id, amount: 50 }] } };
+    await o({ action: "settings", deviceId, name: "Pop-up", currency: "PHP", timeZone: "Asia/Manila", pin, settings: { receiptNote: "", payments: [{ id: "cash", name: "Cash", kind: "cash", on: true }], discounts: [], checklist: [{ id: "float", text: "Count float" }], stockItems: [{ ...stockItem, purchase, details }, { ...garnish, prep }], pricing } });
+    const costing = { laborPerServing: 200, targetMargin: 60, sku: "MENU-BREAD", notes: "Toast lightly", batch: { servings: 12, uses: [{ stockId: garnish.id, amount: 50, notes: "Use fine crumbs" }] } };
     await o({ action: "menu", menu: [{ ...bread, costing }], pin });
     let snap = await o({ action: "invite", name: "Bea", email: beaEmail.toUpperCase(), rate: 70000, pin });
     snap = await o({ action: "invite", name: "Paolo", email: paoloEmail, rate: 60000, pin });
     assert.equal(snap.team!.length, 3);
     assert.equal(snap.me!.owner, true);
-    assert.deepEqual(snap.business!.settings.stockItems, [{ ...stockItem, purchase }, { ...garnish, prep }]);
+    assert.deepEqual(snap.business!.settings.stockItems, [{ ...stockItem, purchase, details }, { ...garnish, prep }]);
+    assert.deepEqual(snap.business!.settings.pricing, pricing);
     assert.deepEqual(snap.menu[0].costing, costing);
     // An unconfirmed address can't claim the invite.
     assert.equal((await runCommand({ id: beaUser.id, email: null }, { action: "bootstrap" })).business, null);
@@ -191,6 +194,7 @@ test(
     assert.equal(asBea.business!.name, "Pop-up");
     assert.equal(asBea.me!.owner, false);
     assert.deepEqual(asBea.business!.settings.stockItems, [stockItem, garnish]);
+    assert.equal(asBea.business!.settings.pricing, undefined);
     assert.equal(asBea.menu[0].costing, undefined);
     assert.deepEqual(asBea.team, []);
     await assert.rejects(bea({ action: "menu", menu: [], pin }), /owner/);
@@ -226,6 +230,7 @@ test(
     const shift = opened.shift!;
     assert.equal(shift.menu[0].costing, undefined);
     assert.deepEqual(shift.settings.stockItems, [stockItem, garnish]);
+    assert.equal(shift.settings.pricing, undefined);
     assert.deepEqual(shift.stock, openingStock);
     assert.equal(shift.bookingId, id);
     const recosted = await o({ action: "menu", menu: [{ ...bread, costing: { ...costing, laborPerServing: 250 } }], pin });
@@ -336,6 +341,10 @@ test(
     const failed = await night(invite);
     assert.equal(failed.inviteDelivery, "failed");
     assert.equal(failed.team!.filter((m) => m.email === beaEmail && !m.joined).length, 1);
+    const pendingBea = failed.team!.find((m) => m.email === beaEmail)!;
+    await assert.rejects(night({
+      action: "member", memberId: pendingBea.id, name: pendingBea.name, rate: pendingBea.rate, owner: true, pin: "9999",
+    }), /accept the invitation/);
     mailStatus = 200;
     const resent = await night(invite);
     assert.equal(resent.inviteDelivery, "sent");
@@ -355,5 +364,38 @@ test(
     assert.equal(mail.length, 4);
     // Someone not on a business can't open it by id.
     assert.equal((await runCommand({ ...paoloUser, businessId: second }, { action: "bootstrap" })).business, null);
+
+    await t.test("owner access can be assigned and revoked for one business", async () => {
+      const asBeaAtNight = (input: object) => runCommand({ ...beaUser, businessId: second }, input);
+      const originalOwner = resent.team!.find((m) => m.id === resent.me!.memberId)!;
+      assert.equal(originalOwner.primaryOwner, true);
+      const promote = {
+        action: "member", memberId: pendingBea.id, name: pendingBea.name, rate: pendingBea.rate, owner: true, pin: "9999",
+      };
+      await assert.rejects(night({ ...promote, pin: "0000" }), /PIN/);
+      await assert.rejects(asBeaAtNight(promote), /Only the owner/);
+      await assert.rejects(night({ ...promote, memberId: asBea.me!.memberId }), { status: 404 });
+      const granted = await night(promote);
+      assert.equal(granted.team!.find((m) => m.id === pendingBea.id)?.owner, true);
+      assert.equal((await night(promote)).team!.length, granted.team!.length);
+
+      const ownerSettings = { action: "mode", mode: "simple", pin: "9999" };
+      const promoted = await asBeaAtNight(ownerSettings);
+      assert.equal(promoted.me!.owner, true);
+      assert.equal(promoted.business!.settings.mode, "simple");
+      assert.equal(promoted.businesses!.find((b) => b.id === second)?.owner, true);
+      assert.equal(promoted.businesses!.find((b) => b.id === asBea.business!.id)?.owner, false);
+      assert.equal(promoted.businesses!.find((b) => b.id === ownBusiness)?.owner, true);
+      assert.equal((await bea({ action: "bootstrap" })).business?.id, ownBusiness);
+      await assert.rejects(asBeaAtNight({
+        ...promote, memberId: originalOwner.id, name: originalOwner.name, rate: originalOwner.rate, owner: false,
+      }), /original owner/);
+
+      await night({ ...promote, owner: false });
+      const revoked = await asBeaAtNight({ action: "bootstrap" });
+      assert.equal(revoked.me!.owner, false);
+      assert.equal(revoked.team!.length, 0);
+      await assert.rejects(asBeaAtNight(ownerSettings), /Only the owner/);
+    });
   },
 );

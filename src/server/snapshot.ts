@@ -234,7 +234,8 @@ export async function snapshot(
     me,
     faces,
     team: me.owner
-      ? (await tx.select().from(members).where(eq(members.businessId, business.id))).map(presentMember)
+      ? (await tx.select().from(members).where(eq(members.businessId, business.id)))
+          .map((member) => presentMember(member, business.ownerId))
       : [],
     organizers: me.owner ? business.organizers : [],
     bookings: bookingRows.map((row) =>

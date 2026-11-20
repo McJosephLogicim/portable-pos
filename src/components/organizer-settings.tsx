@@ -6,7 +6,7 @@ import type { Organizer, Tag } from "@/lib/types";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
 import { buzz } from "./ui";
-import { namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordRow, RecordSheet, useRecordSave } from "./records";
+import { matches, namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
 
 /** An organizer, like a mall or a market group, and the events they run. */
 function OrganizerSheet({
@@ -137,6 +137,8 @@ export function OrganizersPage(props: SettingsProps) {
   const bookings = props.state.bookings ?? [];
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Organizer | "new" | null>(null);
+  const [query, setQuery] = useState("");
+  const shown = list.filter((o) => matches(query, o.name, ...o.events.map((e) => e.name)));
   const events = list.reduce((n, o) => n + o.events.length, 0);
   const taken = list.flatMap((o) => [o.id, ...o.events.map((e) => e.id)]);
   const save = (next: Organizer[], label: string) =>
@@ -159,9 +161,12 @@ export function OrganizersPage(props: SettingsProps) {
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label="Add organizer" disabled={!props.online && !props.demo} onClick={() => setEditing("new")} />
-      {list.length > 0 ? (
+      <RecordSearch count={list.length} noun="organizers and events" query={query} onQuery={setQuery} />
+      {list.length > 0 && !shown.length ? (
+        <RecordNoMatch query={query} onClear={() => setQuery("")} />
+      ) : list.length > 0 ? (
         <RecordGroup>
-          {list.map((o) => (
+          {shown.map((o) => (
             <RecordRow
               key={o.id}
               disabled={!props.online && !props.demo}

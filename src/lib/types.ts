@@ -26,6 +26,7 @@ export interface ChecklistItem {
   image?: string;
 }
 export type RegisterMode = "simple" | "advanced";
+export type StockListField = "category" | "kind" | "supplier";
 
 export interface Settings {
   /** Business-wide display mode. Registers without a saved mode use Advanced. */
@@ -37,6 +38,9 @@ export interface Settings {
   checklist?: ChecklistItem[];
   /** Things counted at opening and closing. */
   stockItems?: StockItem[];
+  /** Reusable names, including choices that are not assigned to an item yet. */
+  stockLists?: Partial<Record<StockListField, string[]>>;
+  pricing?: PricingRules;
   /** The business logo, an image address. */
   logo?: string;
   /** Brand color as #rrggbb. Buttons, highlights and dark cards take it. */
@@ -81,10 +85,18 @@ export interface Product {
 }
 export interface ProductCosting {
   /** A costing recipe for the whole batch. The till uses Product.uses for stock deductions. */
-  batch?: { servings: number; uses: StockUse[] };
+  batch?: { servings: number; uses: StockUse[]; deductFromStock?: boolean };
   /** Minor currency units for one serving. */
   laborPerServing?: number;
   otherPerServing?: number;
+  targetMargin?: number;
+  sku?: string;
+  notes?: string;
+}
+export interface PricingRules {
+  targetMargin: number;
+  /** Minor currency units. */
+  roundingIncrement: number;
 }
 /** Something counted at opening and closing, like a strawberry pack or a kilo of ice. */
 export interface StockItem {
@@ -94,6 +106,16 @@ export interface StockItem {
   unit: string;
   purchase?: StockPurchase;
   prep?: StockPrep;
+  details?: StockItemDetails;
+}
+export interface StockItemDetails {
+  sku?: string;
+  category?: string;
+  kind?: string;
+  packDescription?: string;
+  supplier?: string;
+  costUpdatedOn?: string;
+  notes?: string;
 }
 export interface StockPurchase {
   /** Cost of the whole pack, in minor currency units. */
@@ -113,6 +135,7 @@ export interface StockPrep {
 export interface StockUse {
   stockId: string;
   amount: number;
+  notes?: string;
 }
 export interface Expense {
   id: string;
@@ -214,6 +237,8 @@ export interface Member {
   /** Default pay for one shift, in minor units. */
   rate: number;
   owner: boolean;
+  /** The account that created the business. */
+  primaryOwner?: boolean;
   /** True once they signed in with the invited email. */
   joined: boolean;
   photo?: string;

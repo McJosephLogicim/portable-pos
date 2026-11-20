@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { CookingPot, LayoutGrid, ListPlus, Package, Tag } from "lucide-react";
+import { Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
 import { isSimpleMode } from "@/lib/settings";
 import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
 import { Row, type EditorProps } from "./settings";
 import { StockPage } from "./stock-settings";
+import { StockListsPage } from "./stock-list-settings";
+import { PricingRulesPage } from "./recipe-costing";
 
-export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep";
+export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing";
 
 export interface RecipesProps extends EditorProps {
   page: RecipesPage | null;
@@ -25,7 +27,10 @@ export function RecipesScreen(props: RecipesProps) {
   if (page === "categories") return <CategoriesPage {...props} />;
   if (page === "choices") return <ChoicesPage {...props} />;
   if (!simple) {
+    if (page === "costing") return <MenuPage key={page} {...props} costingView />;
     if (page === "stock" || page === "prep") return <StockPage key={page} {...props} prepOnly={page === "prep"} />;
+    if (page === "stock-lists") return <StockListsPage {...props} />;
+    if (page === "pricing") return <PricingRulesPage {...props} />;
   }
 
   const stock = state.business?.settings.stockItems ?? [];
@@ -62,6 +67,12 @@ export function RecipesScreen(props: RecipesProps) {
           <p className="group-title">Stock and costing</p>
           <div className="card card-list">
             <Row
+              icon={<Calculator size={18} />}
+              title="Menu costing"
+              description="Compare costs, margins and suggested prices"
+              onClick={() => onPage("costing")}
+            />
+            <Row
               icon={<Package size={18} />}
               title="Stock items"
               description="What you buy and count each shift"
@@ -74,6 +85,12 @@ export function RecipesScreen(props: RecipesProps) {
               description="What you make ahead, like syrups and creams"
               detail={count(stock.filter((item) => item.prep).length)}
               onClick={() => onPage("prep")}
+            />
+            <Row
+              icon={<Tags size={18} />}
+              title="Stock lists"
+              description="Prep categories, stock types and suppliers"
+              onClick={() => onPage("stock-lists")}
             />
           </div>
         </>

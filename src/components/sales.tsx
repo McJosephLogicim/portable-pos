@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, ReceiptText, Search, SlidersHorizontal, X } from "lucide-react";
+import { ChevronRight, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -19,7 +19,8 @@ import {
   type SalesFilter,
 } from "@/lib/sales-filter";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
-import { buzz, formatMoney, Money, Sheet } from "./ui";
+import { FilterBar, FilterChoices, toggleFilter } from "./filter-controls";
+import { formatMoney, Money, Sheet } from "./ui";
 
 /** Opens Sales already filtered, like from "All sales" on a shift. */
 export interface SalesFocus {
@@ -102,13 +103,6 @@ export function SalesScreen({
   const itemRevenue = items.reduce((t, x) => t + x.revenue, 0);
   const active = activeCount(filter);
   const onlyThisShift = active === 1 && Boolean(shift) && filter.shift?.[0] === shiftKey(shift!);
-  const chips = filterKeys.flatMap((key) =>
-    (filter[key] ?? []).map((value) => ({
-      key,
-      value,
-      label: options[key].find((o) => o.value === value)?.label ?? value,
-    })),
-  );
   const open = state.sales.find((s) => s.id === openId);
   const openShift = open && shifts.get(open.shiftId);
   return (
@@ -166,25 +160,13 @@ export function SalesScreen({
         />
       )}
       {all.length > 0 && (
-        <div className="chips filter-chips" role="group" aria-label="Filters">
-          <button type="button" className="filter-open" onClick={() => setFiltering(true)}>
-            <SlidersHorizontal size={15} strokeWidth={1.9} />
-            {active ? "Filters · " + active : "Filter by shift, item, payment…"}
-          </button>
-          {chips.map((c) => (
-            <button
-              key={c.key + c.value}
-              type="button"
-              aria-label={`Remove ${filterNames[c.key].toLowerCase()} ${c.label}`}
-              onClick={() => {
-                buzz.tap();
-                setFilter({ ...filter, [c.key]: filter[c.key]!.filter((v) => v !== c.value) });
-              }}
-            >
-              <span className="g">{filterNames[c.key]}</span> {c.label} <X size={14} />
-            </button>
-          ))}
-        </div>
+        <FilterBar
+          label="Filter by shift, item, payment…"
+          groups={filterKeys.map((key) => ({ key, name: filterNames[key], options: options[key] }))}
+          filter={filter}
+          onChange={setFilter}
+          onOpen={() => setFiltering(true)}
+        />
       )}
       {!isSimpleMode(business.settings) && !searching && live.length >= 3 && (
         <HourChart
@@ -330,11 +312,6 @@ function FilterSheet({
   const options = useMemo(() => filterOptions(all, draft), [all, draft]);
   const count = all.filter((x) => matchesFilter(x.facets, draft)).length;
   const date = new Intl.DateTimeFormat("en", { timeZone: zone, month: "short", day: "numeric" });
-  function toggle(key: FilterKey, value: string) {
-    buzz.tap();
-    const now = draft[key] ?? [];
-    setDraft({ ...draft, [key]: now.includes(value) ? now.filter((v) => v !== value) : [...now, value] });
-  }
   const label = (key: FilterKey, o: FilterOption) =>
     (key === "shift" && o.at ? date.format(new Date(o.at)) + " · " : "") + o.label;
   return (
@@ -363,26 +340,19 @@ function FilterSheet({
         // Keep picked shifts visible even when they're older than the first few.
         const extra = key === "shift" && !moreShifts ? list.filter((o) => chosen.includes(o.value) && !shown.includes(o)) : [];
         return (
-          <div key={key} className="stack gap-10">
-            <p className="group-title">{filterNames[key]}</p>
-            <div className="chips wrap" role="group" aria-label={filterNames[key]}>
-              {[...shown, ...extra].map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  aria-pressed={chosen.includes(o.value)}
-                  onClick={() => toggle(key, o.value)}
-                >
-                  {label(key, o)} <span className="filter-count">{o.count}</span>
-                </button>
-              ))}
-              {key === "shift" && list.length > shown.length + extra.length && (
-                <button type="button" className="link" onClick={() => setMoreShifts(true)}>
-                  {list.length - shown.length - extra.length} more
-                </button>
-              )}
-            </div>
-          </div>
+          <FilterChoices
+            key={key}
+            name={filterNames[key]}
+            options={[...shown, ...extra].map((option) => ({ ...option, label: label(key, option) }))}
+            picked={chosen}
+            onToggle={(value) => setDraft(toggleFilter(draft, key, value))}
+          >
+            {key === "shift" && list.length > shown.length + extra.length && (
+              <button type="button" className="link" onClick={() => setMoreShifts(true)}>
+                {list.length - shown.length - extra.length} more
+              </button>
+            )}
+          </FilterChoices>
         );
       })}
     </Sheet>

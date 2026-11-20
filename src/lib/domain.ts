@@ -1,5 +1,5 @@
 import { currencyDigits, discountAmount } from "./settings";
-import { canMake, round, shiftStock, stockModel, withoutMenuCosts } from "./stock";
+import { canMake, round, shiftStock, stockAmountFits, stockModel, withoutMenuCosts } from "./stock";
 import type {
   CartLine,
   Expense,
@@ -117,11 +117,23 @@ export function totalLines(lines: ReceiptLine[]) {
 export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
   const left = { ...(shift.stock ?? {}) };
   const model = shiftStock(shift);
+  const sold = new Map<string, number>();
   for (const sale of sales) {
     if (sale.shiftId !== shift.id || sale.reversedAt) continue;
-    for (const line of sale.lines)
-      for (const use of model.uses.get(line.productId) ?? [])
-        if (use.stockId in left) left[use.stockId] = round(left[use.stockId] - line.quantity * use.amount);
+    for (const line of sale.lines) sold.set(line.productId, (sold.get(line.productId) ?? 0) + line.quantity);
+  }
+  const used = new Map<string, number>();
+  for (const [productId, quantity] of sold) {
+    for (const { stockId, amount } of model.uses.get(productId) ?? []) {
+      if (stockId in left) used.set(stockId, (used.get(stockId) ?? 0) + quantity * amount);
+    }
+  }
+  for (const [stockId, amount] of used) {
+    const start = left[stockId];
+    const remaining = start - amount;
+    // Keep the precision of a per-serving fraction, snapping away floating-point drift.
+    const rounded = round(remaining);
+    left[stockId] = stockAmountFits(Math.abs(remaining - rounded), 0) ? rounded : remaining;
   }
   return left;
 }
@@ -218,13 +230,13 @@ export function checkStock(
       if (use.stockId in left) {
         const now = wanted.get(use.stockId);
         wanted.set(use.stockId, {
-          amount: round((now?.amount ?? 0) + line.quantity * use.amount),
+          amount: (now?.amount ?? 0) + line.quantity * use.amount,
           productId: now?.productId ?? line.productId,
         });
       }
   for (const [id, need] of wanted) {
     const have = Math.max(0, left[id]);
-    if (need.amount > have + 1e-9) {
+    if (!stockAmountFits(need.amount, have)) {
       const name = shift.menu.find((p) => p.id === need.productId)?.name ?? "That item";
       const most = canMake(model, left, need.productId) ?? 0;
       throw Error(most ? `Only ${most} more ${name} can be made.` : `${name} is sold out.`);

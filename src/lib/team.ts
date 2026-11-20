@@ -21,7 +21,7 @@ export type BookingInput = Omit<Booking, "sales">;
 
 export type PlanCommand =
   | { action: "invite"; name: string; email: string; rate: number }
-  | { action: "member"; memberId: string; name: string; rate: number }
+  | { action: "member"; memberId: string; name: string; rate: number; owner?: boolean }
   | { action: "removeMember"; memberId: string }
   | { action: "organizers"; organizers: Organizer[] }
   | { action: "booking"; booking: BookingInput }
@@ -169,7 +169,13 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "member": {
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person left the team.", 404);
-      const next = { ...member, name: cmd.name.trim(), rate: cmd.rate };
+      const owner = cmd.owner ?? member.owner;
+      if (owner !== member.owner) {
+        check(member.joined, "They must accept the invitation before you can change their access.");
+        check(!member.primaryOwner, "The original owner keeps owner access.");
+        check(member.id !== me.memberId, "Ask another owner to change your access.");
+      }
+      const next = { ...member, name: cmd.name.trim(), rate: cmd.rate, owner };
       return {
         ...plan,
         members: members.map((m) => (m.id === member.id ? next : m)),
@@ -182,7 +188,8 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "removeMember": {
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person already left the team.", 404);
-      check(!member.owner, "The owner stays on the team.");
+      check(!member.primaryOwner, "The original owner stays on the team.");
+      check(!member.owner, "Change their access to Team member before removing them.");
       // Shifts that haven't started open their seat again. Past shifts keep the name for the books.
       return {
         ...plan,

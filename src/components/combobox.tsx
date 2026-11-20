@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 
 export interface Suggestion {
   key: string;
@@ -41,21 +41,40 @@ export function SuggestInput({
   const id = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [editing, setEditing] = useState(false);
   const q = value.trim().toLocaleLowerCase();
+  const hasMatch = suggestions.some((s) => s.name.toLocaleLowerCase() === q);
+  const search = editing || !hasMatch ? q : "";
   const shown = suggestions
-    .filter((s) => s.name.toLocaleLowerCase() !== q || s.detail)
-    .filter((s) => !q || s.name.toLocaleLowerCase().includes(q))
-    .slice(0, 8);
+    .filter((s) => s.name.toLocaleLowerCase() !== search || s.detail)
+    .filter((s) => !search || s.name.toLocaleLowerCase().includes(search));
   const visible = open && shown.length > 0;
+  const activeSuggestion = visible ? shown[active] : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
   useFloatingList(inputRef, listRef, visible, shown.length);
+
+  useLayoutEffect(() => {
+    const option = activeRef.current;
+    const list = listRef.current;
+    if (!option || !list) return;
+    const row = option.getBoundingClientRect();
+    const bounds = list.getBoundingClientRect();
+    if (row.bottom > bounds.bottom) list.scrollTop += row.bottom - bounds.bottom;
+    else if (row.top < bounds.top) list.scrollTop += row.top - bounds.top;
+  }, [activeSuggestion]);
+
+  function close() {
+    setOpen(false);
+    setActive(-1);
+    setEditing(false);
+  }
 
   function pick(s: Suggestion) {
     if (onPick) onPick(s);
     else onChange(s.name);
-    setOpen(false);
-    setActive(-1);
+    close();
   }
 
   return (
@@ -67,41 +86,41 @@ export function SuggestInput({
         role="combobox"
         aria-label={label}
         aria-expanded={visible}
-        aria-controls={id + "-list"}
+        aria-controls={visible ? id + "-list" : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={visible && active >= 0 ? `${id}-s${active}` : undefined}
+        aria-activedescendant={activeSuggestion ? `${id}-s${active}` : undefined}
         autoComplete="off"
         autoFocus={autoFocus}
         maxLength={maxLength}
         placeholder={placeholder}
         value={value}
         onFocus={() => setOpen(true)}
-        onBlur={(e) => {
-          if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) setOpen(false);
-        }}
+        onClick={() => setOpen(true)}
+        onBlur={close}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
           setActive(-1);
+          setEditing(true);
         }}
         onKeyDown={(e) => {
-          if (!visible) return;
-          if (e.key === "ArrowDown") {
+          if (e.nativeEvent.isComposing || !shown.length) return;
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            setActive((a) => Math.min(shown.length - 1, a + 1));
-          } else if (e.key === "ArrowUp") {
+            setOpen(true);
+            if (e.key === "ArrowDown") setActive(Math.min(shown.length - 1, (activeSuggestion ? active : -1) + 1));
+            else setActive(activeSuggestion ? Math.max(0, active - 1) : shown.length - 1);
+          } else if (e.key === "Enter" && activeSuggestion) {
             e.preventDefault();
-            setActive((a) => Math.max(-1, a - 1));
-          } else if (e.key === "Enter" && active >= 0) {
-            e.preventDefault();
-            pick(shown[active]);
-          } else if (e.key === "Escape") {
+            pick(activeSuggestion);
+          } else if (e.key === "Escape" && visible) {
             e.stopPropagation();
             e.preventDefault();
-            setOpen(false);
+            close();
           }
         }}
       />
+      {shown.length > 0 && <ChevronDown aria-hidden="true" className="suggest-chevron" size={16} />}
       {visible && (
         <div
           ref={listRef}
@@ -109,19 +128,25 @@ export function SuggestInput({
           id={id + "-list"}
           role="listbox"
           aria-label={label}
+          data-input-options=""
           popover="manual"
         >
-          <p className="combo-head">{q ? "Matches" : "Used before"}</p>
+          <p className="combo-head" aria-hidden="true">{search ? "Matches" : "Suggestions"}</p>
           {shown.map((s, i) => (
             <button
               key={s.key}
               type="button"
               id={`${id}-s${i}`}
+              ref={i === active ? activeRef : undefined}
               role="option"
+              tabIndex={-1}
               aria-selected={i === active}
               className={"combo-row combo-pick" + (i === active ? " active" : "")}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(s)}
+              onClick={(event) => {
+                pick(s);
+                if (event.detail > 0) inputRef.current?.blur();
+              }}
             >
               <span className="grow stack">
                 <span className="ellipsis">{s.name}</span>
@@ -129,9 +154,9 @@ export function SuggestInput({
               </span>
             </button>
           ))}
-          {newText && q && !suggestions.some((s) => s.name.toLocaleLowerCase() === q) && (
+          {newText && q && !hasMatch && (
             <p className="combo-foot label">
-              <Plus size={14} /> {newText} “{value.trim()}”. Keep typing to add it.
+              <Plus size={14} aria-hidden="true" /> {newText} “{value.trim()}”
             </p>
           )}
         </div>
@@ -143,20 +168,14 @@ export function SuggestInput({
 const GAP = 4;
 const EDGE = 8;
 const MAX = 280;
-/** The list always wants at least this much room under its field. */
-const WANT = 200;
 
 /**
- * Keeps the list pinned right under its field, like a native dropdown: it overlays what is
- * below (in the top layer, above open sheets), follows the field while anything scrolls, and
- * never covers the field. When the keyboard or the screen edge leaves too little room, the
- * field's scroll box is scrolled up to make room instead of moving the list.
+ * Keep the list anchored in the visible viewport, including when a keyboard is open.
  */
 function useFloatingList(
   inputRef: React.RefObject<HTMLInputElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
-  /** How many rows show; the list grows as typing changes it, so room is made again. */
   rows: number,
 ) {
   const update = useCallback(() => {
@@ -164,35 +183,18 @@ function useFloatingList(
     const list = listRef.current;
     if (!input || !list) return;
     const r = input.getBoundingClientRect();
-    const vv = window.visualViewport;
-    const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-    const room = Math.max(88, Math.min(MAX, bottom - r.bottom - GAP - EDGE));
-    list.style.visibility = clipped(input, r) ? "hidden" : "";
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0;
+    const bottom = top + (viewport?.height ?? document.documentElement.clientHeight);
+    const below = bottom - r.bottom - GAP - EDGE;
+    const above = r.top - top - GAP - EDGE;
     list.style.left = `${r.left}px`;
     list.style.width = `${r.width}px`;
-    list.style.top = `${r.bottom + GAP}px`;
+    const flip = below < Math.min(MAX, list.scrollHeight) && above > below;
+    const room = Math.max(0, Math.min(MAX, flip ? above : below));
+    list.style.visibility = room < 44 || r.bottom <= top || r.top >= bottom || clipped(input, r) ? "hidden" : "";
     list.style.maxHeight = `${room}px`;
-  }, [inputRef, listRef]);
-
-  /** Scrolls the field's scroll box so the list has room under it, where content allows. */
-  const makeRoom = useCallback(() => {
-    const input = inputRef.current;
-    const list = listRef.current;
-    if (!input || !list) return;
-    const box = scrollBox(input);
-    if (!box) return;
-    const r = input.getBoundingClientRect();
-    const vv = window.visualViewport;
-    const page = box === document.scrollingElement;
-    const area = page ? { top: 0, bottom: Infinity } : box.getBoundingClientRect();
-    // The visible part of the scroll box, so a sheet's footer and the keyboard both count.
-    const bottom = Math.min(area.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
-    const want = Math.min(WANT, list.scrollHeight);
-    const short = r.bottom + GAP + want + EDGE - bottom;
-    if (short <= 0) return;
-    // Never push the field itself above the top of its scroll box.
-    const top = area.top;
-    box.scrollTop += Math.min(short, Math.max(0, r.top - top - EDGE));
+    list.style.top = `${flip ? r.top - GAP - Math.min(list.scrollHeight, room) : r.bottom + GAP}px`;
   }, [inputRef, listRef]);
 
   useLayoutEffect(() => {
@@ -206,7 +208,7 @@ function useFloatingList(
       }
     }
     update();
-  });
+  }, [listRef, rows, update, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -215,36 +217,27 @@ function useFloatingList(
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
-    // The keyboard opening shrinks the visible area, so make room again then.
-    const resized = () => {
-      makeRoom();
-      schedule();
-    };
     const vv = window.visualViewport;
+    const input = inputRef.current;
+    const dialog = input?.closest("dialog");
+    const observer = new ResizeObserver(schedule);
+    if (input) observer.observe(input);
+    if (dialog) observer.observe(dialog);
+    dialog?.addEventListener("animationend", schedule);
     window.addEventListener("scroll", schedule, true);
-    window.addEventListener("resize", resized);
-    vv?.addEventListener("resize", resized);
+    window.addEventListener("resize", schedule);
+    vv?.addEventListener("resize", schedule);
     vv?.addEventListener("scroll", schedule);
     return () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
+      dialog?.removeEventListener("animationend", schedule);
       window.removeEventListener("scroll", schedule, true);
-      window.removeEventListener("resize", resized);
-      vv?.removeEventListener("resize", resized);
+      window.removeEventListener("resize", schedule);
+      vv?.removeEventListener("resize", schedule);
       vv?.removeEventListener("scroll", schedule);
     };
-  }, [visible, update, makeRoom]);
-
-  useEffect(() => {
-    if (visible) makeRoom();
-  }, [visible, rows, makeRoom]);
-}
-
-function scrollBox(el: HTMLElement): HTMLElement | null {
-  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-    const { overflowY } = getComputedStyle(p);
-    if ((overflowY === "auto" || overflowY === "scroll") && p.scrollHeight > p.clientHeight) return p;
-  }
-  return document.scrollingElement as HTMLElement | null;
+  }, [inputRef, visible, update]);
 }
 
 /** True once the field has scrolled out of a box that clips it, like a sheet's body. */

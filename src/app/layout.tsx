@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { InputExperience } from "@/components/input-experience";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "PORTABLE POS",
@@ -22,7 +23,10 @@ export const viewport: Viewport = {
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <InputExperience />
+        {children}
+      </body>
     </html>
   );
 }

@@ -41,7 +41,11 @@ Recipes › Stock items lists what is counted at opening and closing, like a str
 
 Recipes › Stock items lists what you buy; Recipes › Prep lists what you make ahead in batches. A prep item's cost uses its purchased ingredients, how much one batch makes, and any other batch cost. To add a recipe to a stock item that the menu already uses, open that item in Stock items and choose **Make it** under How you get it; it then moves to Prep. Menu costing picks up the result whenever an ingredient price or batch yield changes. The till counts the finished prep as its own stock item.
 
-In a menu item's **Cost and margin** section, turn on **Made in batches** to enter ingredient quantities for the whole batch and its serving yield. The editor divides material costs by the yield, then adds labor and other variable costs per serving. The Stock section controls what the till deducts when a serving sells.
+In a menu item's **Stock** section, turn on **Made in batches** to enter ingredient quantities for the whole batch and its serving yield. With **Uses stock** and **Deduct batch ingredients per sale** on, each sale deducts the batch ingredients divided by the yield. Turn off that deduction switch to enter separate stock items per sale, such as one finished pastry. The editor divides material costs by the yield, then adds labor and other variable costs per serving in either setup.
+
+Recipes › Menu costing compares unit cost, cost percentage, gross profit, gross margin, and suggested price across the menu. The averages use completed costs, and percentage averages use items with a positive selling price. In **Pricing rules**, set the business target margin and how much to round suggested prices up by. A menu item can save its own target margin.
+
+Stock items can record purchase details, supplier, cost update date, SKU, and notes. Menu items and prep recipes have their own SKU and notes, and ingredient rows can carry a note.
 
 When adding an item, categories, pick-one choices, add-ons and options already on the menu are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
 
@@ -61,7 +65,9 @@ Checkout can ask for a photo before a sale completes. For a discount, switch on 
 
 ## Team and schedule
 
-Only the owner invites people (Settings › Team). Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. Roles belong to each shift. A person joins a seat as cashier or server and can switch on that shift until it ends. The owner can change anyone's role. Anyone on the team can run the till.
+Owners invite people in Settings › Team. Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. A person joins a shift as cashier or server and can switch until the shift ends. Owners can change anyone's shift role. Anyone on the team can run the till.
+
+To give someone owner access, open **Settings › Team**, select someone who has accepted their invitation, set **Business access** to **Owner**, and save with the business's owner PIN. Owners can manage the register, settings and team, and see pay and profit. Select **Team member** to revoke access for an additional owner. The original owner keeps owner access.
 
 The Shifts tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
 
@@ -69,7 +75,7 @@ When the till opens, it asks which scheduled shift it's for. That shift's profit
 
 A shift's sheet on the Shifts tab shows its best sellers. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The trophy button at the top of Shifts opens leaderboards for events, organizers, places and people, for this month or the last 60 days. The Sales tab charts sales by hour once there are a few. The owner sees them ranked by sales with profit; everyone else sees them ranked by quotas hit, then shifts worked.
 
-Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. In the map preview, drag the map or tap a spot to move the pin. **Search near me** sorts places by distance from the phone. Both need a connection. Without one, the typed name can still be saved as the location.
+Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. **My location** opens the map at the phone's location. Drag the map or tap a spot to adjust the pin, then choose **Use this location**. Search and map tiles need a connection. Without one, the typed name can still be saved as the location.
 
 ## Verification
 
