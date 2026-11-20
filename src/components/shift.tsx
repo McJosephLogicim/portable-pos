@@ -346,6 +346,13 @@ function OpenShift({
       <h1 className="headline">
         Count the drawer{tracked.length ? " and stock" : ""}. <span className="g">Then open the shift.</span>
       </h1>
+      {(tracked.length > 0 || checklist.length > 0) && (
+        <div className="steps" role="list" aria-label="Before you open">
+          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash float</em></span>
+          {tracked.length > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
+          {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
+        </div>
+      )}
       {booking && (
         <div className="stack gap-10">
           <div className="between section-head">
@@ -474,7 +481,7 @@ function OpenShift({
           {busy
             ? "Opening…"
             : value === undefined
-              ? "Open shift"
+              ? "Count the cash float"
               : uncounted
                 ? `Count ${uncounted} more stock ${uncounted === 1 ? "item" : "items"}`
                 : unticked

@@ -108,7 +108,7 @@ export function Row({
       <span className="well">{icon}</span>
       {description ? (
         <span className="row-text">
-          <span className="ellipsis">{title}</span>
+          <span>{title}</span>
           <span className="label">{description}</span>
         </span>
       ) : (
@@ -1229,12 +1229,14 @@ export function SettingsScreen(props: SettingsProps) {
             <Row
               icon={<ListChecks size={18} strokeWidth={1.8} />}
               title="Opening checklist"
+              description="Steps to tick before the till opens"
               detail={(s.checklist?.length ?? 0) ? plural(s.checklist!.length, "step") : "Off"}
               onClick={() => onPage("checklist")}
             />
             <Row
               icon={<Ticket size={18} strokeWidth={1.8} />}
               title="Organizers"
+              description="The bazaars and markets you join"
               detail={countText(state.organizers?.length ?? 0)}
               onClick={() => onPage("organizers")}
             />

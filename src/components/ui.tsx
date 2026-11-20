@@ -429,6 +429,47 @@ export function Explain({ title, children }: { title: string; children: ReactNod
   );
 }
 
+/**
+ * A one-time pointer to something that's easy to miss, like where a button lives. It stays
+ * until it's dismissed on this phone, then never comes back.
+ */
+export function Tip({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  const key = "portable-pos-tip:" + id;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    try {
+      setShown(!localStorage.getItem(key));
+    } catch {
+      setShown(false);
+    }
+  }, [key]);
+  if (!shown) return null;
+  return (
+    <div className="card card-pad tip" role="note">
+      <span className="row-text">
+        <span className="strong">{title}</span>
+        <span className="label">{children}</span>
+      </span>
+      <button
+        type="button"
+        className="round flat small"
+        aria-label="Dismiss tip"
+        onClick={() => {
+          buzz.tap();
+          setShown(false);
+          try {
+            localStorage.setItem(key, "1");
+          } catch {
+            // Hidden for now; it may show again on a phone that can't store it.
+          }
+        }}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
 export function Switch({
   checked,
   onChange,
