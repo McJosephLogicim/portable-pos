@@ -3105,6 +3105,11 @@ html {
   color: var(--ink-tertiary);
   vertical-align: middle;
   flex: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.explain-layer {
+  display: contents;
 }
 .explain:active {
   background: var(--surface-muted);
