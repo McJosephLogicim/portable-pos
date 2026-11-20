@@ -3254,10 +3254,10 @@ html {
   cursor: grabbing;
 }
 .map-pin {
-  transition: margin var(--dur-fast) var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .map-pin.lifted {
-  margin-top: -54px;
+  transform: translateY(-8px) rotate(-45deg);
 }
 .page-title {
   display: inline-flex;
