@@ -1,6 +1,6 @@
 # PORTABLE POS
 
-A mobile-first, installable register for small food and beverage businesses. The first visit opens a sample coffee counter priced in pesos. Its PIN is **1234** and its records stay in that browser. Sign in to create a separate live business with an empty menu, local currency, time zone, and owner PIN.
+A mobile-first, installable register for small food and beverage businesses. Sign in to open your register or create a business. **Try the demo** opens a sample coffee counter priced in pesos. Its PIN is **1234** and its records stay in that browser.
 
 ## Run locally
 
@@ -31,7 +31,7 @@ Opening asks for the cash float, counted by coin and bill (for example ₱5 × 1
 
 After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Share** shares a PNG made on the phone. If file sharing is unavailable, use **Save**. **Copy** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
 
-The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. Teammates need an invite to join.
+The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. A shared schedule or shift opens after sign-in or email confirmation for teammates with access. To invite someone new to the team, send them a business invitation from Settings › Team.
 
 ## Menu and stock
 
@@ -80,6 +80,8 @@ Location search uses OpenStreetMap's Photon geocoder, and the map preview uses O
 ## Verification
 
 For toast interactions and shared action labels, start the app locally, then run `POS_TEST_APP_URL=http://localhost:3000 npx playwright test tests/toast.spec.ts`. This uses an isolated browser demo and checks tap, downward touch swipe, keyboard dismissal, drag direction, and Undo.
+
+For the sign-in and invitation flows, run `npx playwright test tests/auth-entry.spec.ts`. To include the mocked sign-in and email confirmation tests, start the local app with `NEXT_PUBLIC_SUPABASE_URL=https://portable-pos-test.supabase.co NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=local-test-key` and set `POS_TEST_MOCK_AUTH=1` when running Playwright.
 
 `npm test` exercises local persistence, retry behavior, and the API authentication boundary. For the integration suite, migrate a disposable PostgreSQL database and set `POS_TEST_DATABASE_URL` before running the same command. Optional `POS_TEST_AUTH_URL` and `POS_TEST_AUTH_KEY` enable the real Supabase Auth tests against an isolated instance configured to confirm test accounts automatically.
 

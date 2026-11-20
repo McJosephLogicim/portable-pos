@@ -8,6 +8,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 async function seedTill(page: Page, withShifts: boolean, withPastSale = false) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
+  await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
   const demo = demoBootstrap("test-device");
   const espresso = demo.menu.find((item) => item.name === "Espresso")!;

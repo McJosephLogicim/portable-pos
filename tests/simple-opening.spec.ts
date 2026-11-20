@@ -6,6 +6,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", requirements = false, scheduled = false) {
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
+  await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
   await page.evaluate(async ({ mode, requirements, scheduled }) => {
     await new Promise<void>((resolve, reject) => {

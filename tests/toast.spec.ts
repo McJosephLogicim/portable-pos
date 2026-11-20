@@ -5,6 +5,7 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers
 
 async function removeItem(page: Page) {
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
+  await page.getByRole("button", { name: "Try the demo" }).click();
   await page.getByRole("button", { name: "Account and settings" }).click();
   await page.getByRole("button", { name: /^Recipes/ }).click();
   await page.getByRole("button", { name: /^Menu items/ }).click();

@@ -1,5 +1,6 @@
 "use client";
 
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
@@ -8,11 +9,11 @@ import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
-import { Account, Setup } from "./account";
+import { Account, AccountLinkError, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
-import { api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
+import { accountsEnabled, api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import { priceLines, updateShiftMenu } from "@/lib/domain";
 import {
   beginClose,
@@ -52,23 +53,20 @@ type JoinTarget =
   | { businessId: string; bookingId: string | null }
   | { code: NonNullable<ReturnType<typeof readJoinCode>> };
 const ACTIVE = "portable-pos-account";
-// An invite link waits here through sign-up and email confirmation.
-const INVITE = "portable-pos-invite";
-let openedInvite: string | null = null;
-function pendingInvite() {
-  try {
-    return openedInvite ?? readInviteCode(localStorage.getItem(INVITE));
-  } catch {
-    return openedInvite;
-  }
+const DEMO_SESSION = "portable-pos-demo";
+const LEGACY_INVITE = "portable-pos-invite";
+const REGISTER_ENTRY: AccountEntry = { kind: "register" };
+
+function clearLinkParams(...params: string[]) {
+  const url = new URL(location.href);
+  for (const param of params) url.searchParams.delete(param);
+  history.replaceState(history.state, "", url);
 }
-function forgetInvite() {
-  openedInvite = null;
-  try {
-    localStorage.removeItem(INVITE);
-  } catch {
-    /* storage is blocked */
-  }
+
+/** Keep the account's usual cache key when a link opens its primary business. */
+async function keyForBusiness(userId: string, businessId: string) {
+  const first = await loadRegister(userId);
+  return first.business?.id === businessId ? userId : registerKey(userId, businessId);
 }
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
@@ -149,10 +147,13 @@ export function Workspace() {
     [confirmSignOut, setConfirmSignOut] = useState(false),
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
+  const [entry, setEntry] = useState<AccountEntry | null>(null);
+  const [resolvingLink, setResolvingLink] = useState(false);
+  const [linkProblem, setLinkProblem] = useState<{ title: string; detail: string; switchAccount?: boolean } | null>(null);
   const active = useRef<string | null>(null),
     syncBusy = useRef(false),
     joinTarget = useRef<JoinTarget | null>(null),
-    joinAsked = useRef(false);
+    inviteTarget = useRef<string | null>(null);
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
   }, []);
@@ -167,34 +168,37 @@ export function Workspace() {
       setTillBooking(null);
       setSharedSchedule(null);
       setTab("sell");
+      const { userId } = parseKey(id);
+      const invite = id !== DEMO ? inviteTarget.current : null;
+      const linked = id !== DEMO && (invite || joinTarget.current);
+      setLinkProblem(null);
+      setResolvingLink(Boolean(linked));
       try {
-        const invite = id !== DEMO && navigator.onLine ? pendingInvite() : null;
+        if (linked && !navigator.onLine)
+          throw Error("Connect to the internet to open this link.");
         if (invite) {
-          // Join the team first, then open its register: their first, or one more on this phone.
-          const { userId } = parseKey(id);
-          let data;
+          let data: RegisterResponse | undefined;
           try {
             data = await api(userId, { action: "acceptInvite", code: invite });
-            forgetInvite();
           } catch (e) {
-            if (e instanceof RequestFailure && e.status >= 400 && e.status < 500) {
-              forgetInvite();
-              setNotice(message(e));
-            } else throw e;
+            if (!(e instanceof RequestFailure) || e.status !== 404) throw e;
+            setLinkProblem({ title: "Invitation unavailable", detail: message(e) });
           }
-          const joined = data?.business;
-          if (data && joined) {
-            const first = await loadRegister(userId);
-            const target = !first.business || first.business.id === joined.id ? userId : registerKey(userId, joined.id);
-            await locked("write-" + target, () => mergeServer(target, data));
-            joinTarget.current = { businessId: joined.id, bookingId: null };
+          if (data?.business) {
+            const joined = data.business;
+            const next = await keyForBusiness(userId, joined.id);
+            await locked("write-" + next, () => mergeServer(next, data));
+            id = next;
+            joinTarget.current ??= { businessId: joined.id, bookingId: null };
             setToast("You joined " + joined.name);
-            id = target;
             active.current = id;
             setKey(id);
           }
+          inviteTarget.current = null;
+          localStorage.removeItem(LEGACY_INVITE);
+          clearLinkParams("invite");
         }
-        localStorage.setItem(ACTIVE, id);
+        if (id !== DEMO) localStorage.setItem(ACTIVE, id);
         let local = await loadRegister(id);
         if (id === DEMO && !local.business)
           local = await locked("write-" + id, async () => {
@@ -203,22 +207,61 @@ export function Workspace() {
               ? current
               : mergeServer(id, demoBootstrap(current.deviceId));
           });
-        // An invitation may have arrived after this device last cached the team list.
-        if (local.business && !joinTarget.current) show(id, local);
+        // Wait for current membership before opening a shared destination.
+        if (local.business && !linked) show(id, local);
         if (id !== DEMO && navigator.onLine) {
           try {
             local = await syncRegister(id, true);
           } catch (e) {
-            if (!local.business) throw e;
+            if (!local.business || linked) throw e;
             setSyncErr(message(e));
           }
         } else if (id !== DEMO && !local.business)
           throw Error(
             "Connect to the internet to open this account for the first time.",
           );
+        const target = id !== DEMO ? joinTarget.current : null;
+        if (target) {
+          const businessId = "code" in target
+            ? (matchCode(local.business ? [local.business] : [], target.code.team, TEAM_CODE) ??
+                matchCode(local.businesses, target.code.team, TEAM_CODE))?.id
+            : target.businessId;
+          const asked = "code" in target ? target.code.shift : target.bookingId;
+          if (businessId && local.business?.id !== businessId && local.businesses?.some((b) => b.id === businessId)) {
+            const next = await keyForBusiness(userId, businessId);
+            local = await syncRegister(next, true);
+            id = next;
+            active.current = id;
+            setKey(id);
+            localStorage.setItem(ACTIVE, id);
+          }
+          if (!businessId || local.business?.id !== businessId) {
+            setLinkProblem({
+              title: asked ? "You can’t open this shift" : "You can’t open this schedule",
+              detail: "Sign in with an account on this team, or ask the business owner for an invitation.",
+              switchAccount: true,
+            });
+          } else {
+            const booking = "code" in target
+              ? target.code.shift ? matchCode(local.bookings, target.code.shift, SHIFT_CODE) : undefined
+              : local.bookings?.find((b) => b.id === target.bookingId);
+            if (asked && !booking) {
+              setLinkProblem({ title: "Shift unavailable", detail: "Ask your team for a current shift link." });
+            } else {
+              joinTarget.current = null;
+              clearLinkParams("shifts", "shift", "j");
+              setEntry(REGISTER_ENTRY);
+              setLinkProblem(null);
+              setSharedSchedule({ bookingId: booking?.id ?? null });
+              setTab("schedule");
+            }
+          }
+        }
         show(id, local);
       } catch (e) {
         if (active.current === id) setBootError(message(e));
+      } finally {
+        if (active.current === id) setResolvingLink(false);
       }
     },
     [show],
@@ -227,47 +270,57 @@ export function Workspace() {
     let alive = true;
     async function start() {
       const params = new URLSearchParams(location.search);
-      const invite = readInviteCode(params.get("invite"));
-      if (params.has("invite")) {
-        const url = new URL(location.href);
-        url.searchParams.delete("invite");
-        history.replaceState(null, "", url);
-      }
-      openedInvite = invite;
-      if (invite)
-        try {
-          localStorage.setItem(INVITE, invite);
-        } catch {
-          /* storage is blocked; the link still works if they are signed in */
-        }
-      const businessId = params.get("shifts"),
-        code = readJoinCode(params.get("j") ?? "");
+      const authParams = new URLSearchParams(location.hash.slice(1));
+      const confirmation = authParams.has("access_token") || params.has("code");
+      const invite = readInviteCode(params.get("invite")) ??
+        (confirmation ? readInviteCode(localStorage.getItem(LEGACY_INVITE)) : null);
+      const shortLink = params.get("j") ?? "";
+      const code = readJoinCode(shortLink);
+      const businessId = params.get("shifts");
+      const bookingId = params.get("shift");
+      inviteTarget.current = invite;
       joinTarget.current = code
         ? { code }
         : businessId
-          ? { businessId, bookingId: params.get("shift") }
+          ? { businessId, bookingId }
           : null;
-      let id = localStorage.getItem(ACTIVE) || DEMO;
-      // Supabase processes the confirmation callback on the application origin.
-      if (
-        id === DEMO &&
-        (location.hash.includes("access_token=") ||
-          location.search.includes("code="))
-      ) {
-        try {
-          const { data } = await authClient().auth.getSession();
-          if (data.session) id = data.session.user.id;
-        } catch (e) {
-          if (alive) setNotice(message(e));
+      const kind = code?.shift || (businessId && bookingId) ? "shift"
+        : invite ? "invite" : code || businessId ? "business" : "register";
+      const returnTo = new URL("/", location.origin);
+      if (invite) returnTo.searchParams.set("invite", invite);
+      if (code) returnTo.searchParams.set("j", shortLink);
+      else if (businessId) {
+        returnTo.searchParams.set("shifts", businessId);
+        if (bookingId) returnTo.searchParams.set("shift", bookingId);
+      }
+      const loginEntry: AccountEntry = kind === "register" ? REGISTER_ENTRY : { kind, returnTo: returnTo.href };
+      let id: string | null = null;
+      if (accountsEnabled) {
+        const previous = localStorage.getItem(ACTIVE);
+        // Supabase finishes a confirmation URL before returning the session.
+        const { data: { session }, error } = await authClient().auth.getSession();
+        if (!alive) return;
+        if (session && !session.user.is_anonymous)
+          id = previous && parseKey(previous).userId === session.user.id ? previous : session.user.id;
+        else if (!navigator.onLine && previous && previous !== DEMO && isAuthRetryableFetchError(error))
+          id = previous; // A cached session can be unable to refresh offline.
+        else if (authParams.has("error_code") || params.has("error_code"))
+          setNotice("This confirmation link is no longer valid. Try signing in or creating an account again.");
+        else if (error) {
+          setNotice(message(error));
         }
       }
-      if (alive && id === DEMO && invite) {
-        setNotice("Sign in or create an account to join the team.");
-        setAccount(true);
-      }
-      if (alive) await connect(id);
+      if (!alive) return;
+      if (!id && kind === "register" && sessionStorage.getItem(DEMO_SESSION)) id = DEMO;
+      if (id) void connect(id);
+      setEntry(loginEntry);
     }
-    void start().catch((e) => setBootError(message(e)));
+    void start().catch((e) => {
+      if (alive) {
+        setNotice(message(e));
+        setEntry(REGISTER_ENTRY);
+      }
+    });
     return () => {
       alive = false;
     };
@@ -485,6 +538,18 @@ export function Workspace() {
     );
     void flush();
   }
+  function openLogin() {
+    sessionStorage.removeItem(DEMO_SESSION);
+    active.current = null;
+    setKey(null);
+    setState(null);
+    setAccount(false);
+    setBootError("");
+    setNotice("");
+    setSyncErr("");
+    setLinkProblem(null);
+    window.scrollTo(0, 0);
+  }
   async function signOut() {
     if (!key || key === DEMO) return;
     await locked("write-" + key, async () => {
@@ -496,9 +561,10 @@ export function Workspace() {
       if (error) throw error;
       await clearRegister(key);
     });
+    localStorage.removeItem(ACTIVE);
     setSettingsPage(null);
     setRecipesPage(null);
-    await connect(DEMO);
+    openLogin();
   }
   const demo = key === DEMO;
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
@@ -532,64 +598,15 @@ export function Workspace() {
     if (!navigator.onLine) throw Error("Connect to add photos.");
     return uploadImage(key, photo, false, face);
   }
-  // Shared schedules open a specific shift. Team invitations open the team's open seats.
-  useEffect(() => {
-    const target = joinTarget.current;
-    if (!target || !state || !key) return;
-    const done = () => {
-      joinTarget.current = null;
-      const url = new URL(location.href);
-      url.searchParams.delete("shifts");
-      url.searchParams.delete("shift");
-      url.searchParams.delete("j");
-      history.replaceState(null, "", url);
-    };
-    // Short links carry codes cut from the ids. Match them against this person's teams.
-    const businessId =
-      "code" in target
-        ? (matchCode(state.business ? [state.business] : [], target.code.team, TEAM_CODE) ??
-            matchCode(state.businesses, target.code.team, TEAM_CODE))?.id
-        : target.businessId;
-    const asked = "code" in target ? target.code.shift : target.bookingId;
-    if (!businessId || state.business?.id !== businessId) {
-      if (key === DEMO) {
-        if (!joinAsked.current) {
-          joinAsked.current = true;
-          setNotice(asked ? "Sign in to see this shift." : "Sign in to see the open shifts.");
-          setAccount(true);
-        }
-        return;
-      }
-      if (!online || syncErr) return;
-      if (businessId && state.businesses?.some((b) => b.id === businessId))
-        void switchBusiness(businessId).catch((e) => setNotice(message(e)));
-      else {
-        done();
-        setNotice("You're not on that team yet. Ask the owner for an invite link.");
-      }
-      return;
-    }
-    done();
-    const bookingId =
-      ("code" in target
-        ? target.code.shift ? matchCode(state.bookings, target.code.shift, SHIFT_CODE) : undefined
-        : state.bookings?.find((b) => b.id === target.bookingId)
-      )?.id ?? null;
-    if (asked && !bookingId) setNotice("This shift is no longer available.");
-    setSharedSchedule({ bookingId });
-    setTab("schedule");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.business?.id, state?.businesses, key, online, syncErr]);
   /** Open another business on this phone. Each keeps its own till and sync queue. */
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;
     const { userId } = parseKey(key);
     if (navigator.onLine) await flush();
-    const first = await loadRegister(userId);
     buzz.tick();
     setSettingsPage(null);
     setRecipesPage(null);
-    await connect(first.business?.id === businessId ? userId : registerKey(userId, businessId));
+    await connect(await keyForBusiness(userId, businessId));
   }
   async function addBusiness(input: OwnerAction) {
     if (!key || key === DEMO) throw Error("Sign in to add a business.");
@@ -613,6 +630,40 @@ export function Workspace() {
   const reverse = (saleId: string, reason: string, pin: string) =>
     owner({ action: "reverse", saleId, reason, pin });
 
+  if (!entry || resolvingLink)
+    return <main className="loading" role="status">{resolvingLink ? "Opening link…" : "Opening Portable POS…"}</main>;
+  if (!key)
+    return (
+      <Account
+        entry={entry}
+        notice={notice}
+        onSignedIn={async (id) => {
+          sessionStorage.removeItem(DEMO_SESSION);
+          setNotice("");
+          await connect(id);
+        }}
+        onDemo={() => {
+          sessionStorage.setItem(DEMO_SESSION, "1");
+          setNotice("");
+          void connect(DEMO);
+        }}
+      />
+    );
+  if (linkProblem && !bootError)
+    return (
+      <AccountLinkError
+        title={linkProblem.title}
+        detail={linkProblem.detail}
+        onSwitch={linkProblem.switchAccount ? signOut : undefined}
+        onContinue={() => {
+          joinTarget.current = null;
+          clearLinkParams("shifts", "shift", "j");
+          setEntry(REGISTER_ENTRY);
+          setLinkProblem(null);
+        }}
+      />
+    );
+
   let screen: React.ReactNode;
   if (bootError)
     screen = (
@@ -623,8 +674,8 @@ export function Workspace() {
         <button className="btn" onClick={() => key && void connect(key)}>
           Retry
         </button>
-        <button className="link" onClick={() => setAccount(true)}>
-          Sign in
+        <button className="link" onClick={demo ? openLogin : () => setAccount(true)}>
+          {demo ? "Back to sign in" : "Sign in"}
         </button>
       </div>
     );
@@ -663,7 +714,7 @@ export function Workspace() {
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
         onAction={owner}
-        onSignIn={() => setAccount(true)}
+        onSignIn={openLogin}
         onSignOut={() => setConfirmSignOut(true)}
         onBusinesses={() => setSwitching(true)}
         onRecipes={() => go("recipes")}
@@ -887,13 +938,13 @@ export function Workspace() {
           }}
         />
       )}
-      {account && (
+      {account && !demo && (
         <Account
           onDismiss={() => setAccount(false)}
-          requiredUser={key && key !== DEMO ? parseKey(key).userId : undefined}
-          onSignedIn={async (id) => {
+          requiredUser={parseKey(key).userId}
+          onSignedIn={async () => {
             setAccount(false);
-            await connect(id);
+            await connect(key);
           }}
         />
       )}
