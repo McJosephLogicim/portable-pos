@@ -5,7 +5,6 @@ import { ChevronRight, Crown } from "lucide-react";
 import { bestSellers, leaderboard, salesByHour, type Board } from "@/lib/insights";
 import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
-import type { SalesFocus } from "./sales";
 import { Avatar } from "./team";
 import { buzz, Explain, formatMoney, Money, progressStyle } from "./ui";
 
@@ -53,15 +52,14 @@ export function ShiftSales({
   shiftIds,
   menu,
   currency,
-  label,
   onSales,
 }: {
   state: RegisterState;
   shiftIds: string[];
   menu: Product[];
   currency: string;
-  label: string;
-  onSales?: (focus: SalesFocus) => void;
+  /** Opens Sales for this shift, or for one item in it. */
+  onSales?: (productId?: string) => void;
 }) {
   const zone = state.business!.timeZone;
   const sellers = useMemo(() => bestSellers(state.sales, shiftIds), [state.sales, shiftIds]);
@@ -75,7 +73,7 @@ export function ShiftSales({
       <div className="between section-head">
         <p className="group-title">Best sellers</p>
         {onSales && (
-          <button className="link small-link" onClick={() => onSales({ shiftIds, label })}>
+          <button className="link small-link" onClick={() => onSales()}>
             All {count} {count === 1 ? "sale" : "sales"} <ChevronRight size={14} />
           </button>
         )}
@@ -89,7 +87,7 @@ export function ShiftSales({
             disabled={!onSales}
             onClick={() => {
               buzz.tap();
-              onSales?.({ shiftIds, productId: s.productId, label: s.name });
+              onSales?.(s.productId);
             }}
           >
             <span className={"rank-num" + (i === 0 ? " first" : "")}>{i + 1}</span>

@@ -598,10 +598,12 @@ function BookingSheet({
           shiftIds={tills}
           menu={state.menu}
           currency={currency}
-          label={bookingTitle(b)}
-          onSales={(focus) => {
+          onSales={(productId) => {
             onClose();
-            props.onSales(focus);
+            props.onSales({
+              filter: { shift: [b.id], ...(productId ? { item: [productId] } : {}) },
+              back: { bookingId: b.id, label: bookingTitle(b) },
+            });
           }}
         />
 

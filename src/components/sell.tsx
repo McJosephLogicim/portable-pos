@@ -29,6 +29,7 @@ import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import {
   buzz,
+  CategoryTabs,
   DoneCheck,
   errorText,
   usePin,
@@ -453,6 +454,8 @@ function Checkout({
   const [cash, setCash] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState<Done | null>(null);
+  /** Cash received, once a payment is picked. The sale is saved only after Confirm. */
+  const [review, setReview] = useState<number | null>(null);
   const chosen = methods.find((m) => m.id === method);
   const order = lines.length ? priceOrder(shift, lines, discountId) : null;
   const total = order?.total ?? 0;
@@ -477,7 +480,7 @@ function Checkout({
     }
   }
 
-  async function pay(received: number) {
+  function ask(received: number) {
     if (!chosen || busy) return;
     if (missing) {
       setError(missingText);
@@ -485,10 +488,17 @@ function Checkout({
       return;
     }
     setError("");
+    buzz.tap();
+    setReview(received);
+  }
+
+  async function pay(received: number) {
+    if (!chosen || busy) return;
+    setError("");
     try {
       const sale = await onPay(chosen.id, received, discountId, proofs);
       if (sale) {
-        haptic(18);
+        buzz.success();
         setDone({ sale, shiftNumber: shift.number });
       }
     } catch (e) {
@@ -505,7 +515,7 @@ function Checkout({
         onClose={onClose}
         footer={
           <>
-            <button className="btn block" autoFocus onClick={onClose}>
+            <button className="btn block" onClick={onClose}>
               New sale
             </button>
             <button
@@ -549,6 +559,67 @@ function Checkout({
     );
   }
 
+  if (review !== null && chosen) {
+    const isCash = chosen.kind === "cash";
+    const change = review - total;
+    return (
+      <Sheet
+        title="Confirm sale"
+        onClose={onClose}
+        busy={busy}
+        footer={
+          <>
+            <button className="btn block" disabled={busy || !lines.length} onClick={() => void pay(review)}>
+              {busy ? "Saving…" : "Confirm sale"}
+            </button>
+            <button
+              className="btn ghost block compact"
+              disabled={busy}
+              onClick={() => {
+                setReview(null);
+                setError("");
+              }}
+            >
+              Back
+            </button>
+          </>
+        }
+      >
+        <div className="confirm-sale">
+          <div className="stack gap-8 confirm-main">
+            <p className="label">
+              {!isCash ? "Paid with " + chosen.name : change > 0 ? "Change to give" : "Exact cash, no change"}
+            </p>
+            <Money value={isCash && change > 0 ? change : total} currency={currency} className="due-num" />
+          </div>
+          <div className="card card-list">
+            <div className="list-row">
+              <span className="grow">
+                Total
+                {order?.discount && <span className="label"> · {order.discount.name}</span>}
+              </span>
+              <Money value={total} currency={currency} />
+            </div>
+            <div className="list-row">
+              <span className="grow">{isCash ? "Cash received" : chosen.name + " received"}</span>
+              <Money value={review} currency={currency} />
+            </div>
+          </div>
+          {!isCash && (
+            <p className="label">
+              Check that {formatMoney(total, currency)} arrived in {chosen.name} first.
+            </p>
+          )}
+        </div>
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+      </Sheet>
+    );
+  }
+
   const quick = quickCash(total, currency);
   const exactText = amountText(total, currency);
   return (
@@ -566,7 +637,7 @@ function Checkout({
           <button
             className="btn block"
             disabled={busy || !lines.length || missing}
-            onClick={() => void pay(total)}
+            onClick={() => ask(total)}
           >
             {busy ? "Saving…" : missing ? "Take the photo first ·" : `${chosen.name} received ·`}
             {!busy && <Money value={total} currency={currency} />}
@@ -575,7 +646,7 @@ function Checkout({
           <button
             className="btn block"
             disabled={busy || typed < total || missing}
-            onClick={() => void pay(typed!)}
+            onClick={() => ask(typed!)}
           >
             {typed < total ? (
               <>
@@ -583,7 +654,7 @@ function Checkout({
               </>
             ) : (
               <>
-                Complete · change{" "}
+                Next · change{" "}
                 <Money value={typed - total} currency={currency} />
               </>
             )}
@@ -682,12 +753,12 @@ function Checkout({
       )}
       {chosen?.kind === "cash" && (
         <div className="stack gap-10">
-          <p className="label">{missing ? missingText : "Cash received · tap to finish"}</p>
+          <p className="label">{missing ? missingText : "Cash received"}</p>
           <div className="quick">
             <button
               type="button"
               disabled={busy || !total || missing}
-              onClick={() => void pay(total)}
+              onClick={() => ask(total)}
             >
               Exact
             </button>
@@ -696,7 +767,7 @@ function Checkout({
                 key={amount}
                 type="button"
                 disabled={busy || missing}
-                onClick={() => void pay(amount)}
+                onClick={() => ask(amount)}
               >
                 {formatMoney(amount, currency)}
               </button>
@@ -712,8 +783,7 @@ function Checkout({
       )}
       {chosen && chosen.kind !== "cash" && (
         <p className="label">
-          Check that {formatMoney(total, currency)} arrived in {chosen.name}{" "}
-          before you tap.
+          Check that {formatMoney(total, currency)} arrived in {chosen.name}.
         </p>
       )}
       {error && (
@@ -802,6 +872,8 @@ export function SellScreen({
   const [marking, setMarking] = useState(false);
   const [picked, setPicked] = useState<Product | null>(null);
   const [charging, setCharging] = useState(false);
+  /** The sale just went through: keep the sheet up for its change and receipt though the cart is empty. */
+  const [paid, setPaid] = useState(false);
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
@@ -932,7 +1004,7 @@ export function SellScreen({
       <button
         className="btn block"
         disabled={!count || busy || blocked || cartMenuError}
-        onClick={() => setCharging(true)}
+        onClick={() => { setPaid(false); setCharging(true); }}
       >
         Charge {count > 0 && !cartMenuError && <Money value={total} currency={currency} />}
       </button>
@@ -1009,27 +1081,7 @@ export function SellScreen({
             onChange={(e) => setQuery(e.target.value)}
           />
         )}
-        {categories.length > 1 && (
-          <div className="chips" role="group" aria-label="Categories">
-            <button
-              type="button"
-              aria-pressed={category === null}
-              onClick={() => setCategory(null)}
-            >
-              All
-            </button>
-            {categories.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-pressed={category === c}
-                onClick={() => setCategory(category === c ? null : c)}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
+        {categories.length > 1 && <CategoryTabs categories={categories} value={category} onChange={setCategory} />}
       </div>
       {error && (
         <p className="notice alert" role="alert">
@@ -1141,7 +1193,7 @@ export function SellScreen({
         <button
           className="charge-bar"
           disabled={busy && !charging}
-          onClick={() => setCharging(true)}
+          onClick={() => { setPaid(false); setCharging(true); }}
           aria-label={`Charge ${formatMoney(total, currency)} for ${count} items`}
         >
           <span className="badge">{count}</span>
@@ -1171,7 +1223,7 @@ export function SellScreen({
             onClose={() => setPicked(null)}
           />
         ))}
-      {charging && !cartMenuError && count > 0 && (
+      {charging && (paid || (!cartMenuError && count > 0)) && (
         <Checkout
           key={shift.menuVersion ?? "opening"}
           state={state}
@@ -1187,7 +1239,9 @@ export function SellScreen({
             lock.current = true;
             setWorking(true);
             try {
-              return await onCheckout(tender, received, discountId, proofs);
+              const sale = await onCheckout(tender, received, discountId, proofs);
+              setPaid(true);
+              return sale;
             } finally {
               lock.current = false;
               setWorking(false);
@@ -1195,10 +1249,12 @@ export function SellScreen({
           }}
           onClose={() => {
             setCharging(false);
+            setPaid(false);
             setQuery("");
           }}
           onReceipt={(sale) => {
             setCharging(false);
+            setPaid(false);
             setReceipt(sale);
           }}
         />

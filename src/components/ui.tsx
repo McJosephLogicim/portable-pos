@@ -19,6 +19,7 @@ import {
   CreditCard,
   Delete,
   Info,
+  Plus,
   Smartphone,
   Wallet,
   X,
@@ -322,6 +323,27 @@ export function PhotoPicker({
   );
 }
 
+/*
+ * Focus rings are for keyboard users. Browsers mostly agree, but Safari also rings buttons that
+ * get focus from a script or a dialog after a tap. Track how the person last interacted, and
+ * let CSS hide rings (html[data-input="touch"]) until they press a key.
+ */
+let usingKeyboard = false;
+if (typeof window !== "undefined") {
+  const mark = (keyboard: boolean) => {
+    usingKeyboard = keyboard;
+    document.documentElement.dataset.input = keyboard ? "keyboard" : "touch";
+  };
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) mark(true);
+    },
+    true,
+  );
+  window.addEventListener("pointerdown", () => mark(false), true);
+}
+
 /** Bottom sheet on phones, centered dialog on wide screens. Uses the native dialog for focus. */
 export function Sheet({
   title,
@@ -349,16 +371,21 @@ export function Sheet({
     const node = ref.current;
     const trigger = document.activeElement;
     node?.showModal();
+    // showModal focuses the first button (often Edit or Close), and Safari rings it. Focus the
+    // sheet itself instead, so nothing looks selected; Tab still moves into it from there.
+    node?.focus({ preventScroll: true });
     return () => {
       node?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected)
-        trigger.focus();
+      // Hand focus back only to keyboard users; after a tap it would ring the button behind.
+      if (usingKeyboard && trigger instanceof HTMLElement && trigger.isConnected)
+        trigger.focus({ preventScroll: true });
     };
   }, []);
   return (
     <dialog
       ref={ref}
       className="sheet"
+      tabIndex={-1}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
@@ -778,3 +805,42 @@ export function EmptyRow({ title, detail }: { title: string; detail?: string }) 
   );
 }
 
+
+/**
+ * Category tabs, as on Sell: "All" then each category. Tapping the open tab goes back to All.
+ * onNew adds a dashed "New category" tab at the end.
+ */
+export function CategoryTabs({
+  label = "Categories",
+  categories,
+  value,
+  onChange,
+  onNew,
+  newDisabled,
+}: {
+  label?: string;
+  categories: string[];
+  value: string | null;
+  onChange: (category: string | null) => void;
+  onNew?: () => void;
+  newDisabled?: boolean;
+}) {
+  return (
+    <div className="chips" role="group" aria-label={label}>
+      <button type="button" aria-pressed={value === null} onClick={() => onChange(null)}>
+        All
+      </button>
+      {categories.map((c) => (
+        <button key={c} type="button" aria-pressed={value === c} onClick={() => onChange(value === c ? null : c)}>
+          {c}
+        </button>
+      ))}
+      {onNew && (
+        <button type="button" className="chip-new" disabled={newDisabled} onClick={onNew}>
+          <Plus size={16} strokeWidth={2} aria-hidden />
+          New category
+        </button>
+      )}
+    </div>
+  );
+}

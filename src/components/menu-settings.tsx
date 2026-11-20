@@ -12,13 +12,16 @@ import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, 
 import { SuggestInput, type Suggestion } from "./combobox";
 import { buzz, Explain, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
+  matches,
   namesText,
   PickChips,
   plural,
   RecordAdd,
   RecordEmpty,
   RecordGroup,
+  RecordNoMatch,
   RecordRow,
+  RecordSearch,
   RecordSheet,
   useRecordSave,
 } from "./records";
@@ -158,6 +161,7 @@ type StockMode = "off" | "count" | "uses";
 
 export function ItemSheet({
   product,
+  category: startCategory = "",
   currency,
   menu,
   simple = false,
@@ -171,6 +175,8 @@ export function ItemSheet({
   onClose,
 }: {
   product?: Product;
+  /** A new item's category, when it is added from a category tab. */
+  category?: string;
   simple?: boolean;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
@@ -234,7 +240,7 @@ export function ItemSheet({
       // Wait for a complete selling price before previewing margins.
     }
   }
-  const [category, setCategory] = useState(product?.category ?? "");
+  const [category, setCategory] = useState(product?.category ?? startCategory);
   const [image, setImage] = useState(product?.image);
   const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
@@ -560,8 +566,22 @@ export function MenuPage(props: RecipesProps) {
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [newCategory, setNewCategory] = useState(false);
+  const [picked, setTab] = useState<string | null>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
-  const grouped = [...categories, ""].map((c) => ({ name: c, items: menu.filter((m) => (m.category || "") === c) }));
+  const [query, setQuery] = useState("");
+  const tab = picked && categories.includes(picked) ? picked : null;
+  const detailOf = (p: Product) =>
+    [
+      !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
+      ...p.groups.map((x) => x.name),
+    ]
+      .filter(Boolean)
+      .join(" · ") || undefined;
+  const shown = menu.filter((p) => matches(query, p.name, p.category, detailOf(p)));
+  const grouped = [...categories, ""]
+    .filter((c) => tab === null || c === tab)
+    .map((c) => ({ name: c, items: shown.filter((m) => (m.category || "") === c) }));
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   return (
     <SubPage
@@ -588,10 +608,35 @@ export function MenuPage(props: RecipesProps) {
           text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
         />
       )}
+      {menu.length > 0 && (
+        <RecordSearch
+          count={menu.length}
+          noun="items"
+          query={query}
+          onQuery={setQuery}
+          filters={{
+            label: "Categories",
+            options: categories,
+            value: tab,
+            onChange: setTab,
+            onNew: () => setNewCategory(true),
+            newDisabled: !props.online,
+          }}
+        />
+      )}
+      {menu.length > 0 && !grouped.some((g) => g.items.length) && (
+        <RecordNoMatch
+          query={query}
+          onClear={() => {
+            setQuery("");
+            setTab(null);
+          }}
+        />
+      )}
       {grouped
         .filter((g) => g.items.length)
         .map((g) => (
-          <RecordGroup key={g.name || "none"} title={g.name || (categories.length ? "No category" : undefined)}>
+          <RecordGroup key={g.name || "none"} title={tab ? undefined : g.name || (categories.length ? "No category" : undefined)}>
             {g.items.map((p) => (
               <RecordRow
                 key={p.id}
@@ -599,14 +644,7 @@ export function MenuPage(props: RecipesProps) {
                 onClick={() => setEditing(p)}
                 lead={<Thumb src={p.image} />}
                 title={p.name}
-                detail={
-                  [
-                    !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
-                    ...p.groups.map((x) => x.name),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || undefined
-                }
+                detail={detailOf(p)}
                 end={<Money value={p.price} currency={business.currency} />}
               />
             ))}
@@ -626,6 +664,7 @@ export function MenuPage(props: RecipesProps) {
           key={simple ? "simple" : "advanced"}
           simple={simple}
           product={editing === "new" ? undefined : editing}
+          category={tab ?? undefined}
           currency={business.currency}
           menu={menu}
           liveShift={live}
@@ -649,11 +688,35 @@ export function MenuPage(props: RecipesProps) {
           }
         />
       )}
+      {newCategory && (
+        <CategorySheet
+          menu={menu}
+          onClose={() => setNewCategory(false)}
+          onSave={async (name, ids) => {
+            const saved = await commit.menu(withCategory(menu, "", name, ids), "Added " + name);
+            if (saved) setTab(name);
+            return saved;
+          }}
+        />
+      )}
     </SubPage>
   );
 }
 
 /* ---------- categories ---------- */
+
+/** The menu with these items in the category, and any others that were in it (under its old name) taken out. */
+function withCategory(menu: Product[], before: string, name: string, ids: string[]) {
+  return menu.map((p) =>
+    ids.includes(p.id)
+      ? p.category === name
+        ? p
+        : { ...p, category: name }
+      : before && p.category.trim() === before
+        ? { ...p, category: "" }
+        : p,
+  );
+}
 
 export function categoriesOf(menu: Product[]) {
   const map = new Map<string, Product[]>();
@@ -729,6 +792,8 @@ export function CategoriesPage(props: RecipesProps) {
   const commit = useCommit(props);
   const list = categoriesOf(menu);
   const [editing, setEditing] = useState<(typeof list)[number] | "new" | null>(null);
+  const [query, setQuery] = useState("");
+  const shown = list.filter((c) => matches(query, c.name, ...c.items.map((p) => p.name)));
   const loose = menu.filter((p) => !p.category.trim()).length;
   return (
     <SubPage
@@ -749,9 +814,12 @@ export function CategoriesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label="Add category" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
-      {list.length > 0 ? (
+      <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
+      {list.length > 0 && !shown.length ? (
+        <RecordNoMatch query={query} onClear={() => setQuery("")} />
+      ) : list.length > 0 ? (
         <RecordGroup>
-          {list.map((c) => (
+          {shown.map((c) => (
             <RecordRow
               key={c.name}
               disabled={!props.online}
@@ -787,16 +855,7 @@ export function CategoriesPage(props: RecipesProps) {
           onClose={() => setEditing(null)}
           onSave={(name, ids) => {
             const before = editing === "new" ? "" : editing.name;
-            const next = menu.map((p) =>
-              ids.includes(p.id)
-                ? p.category === name
-                  ? p
-                  : { ...p, category: name }
-                : before && p.category.trim() === before
-                  ? { ...p, category: "" }
-                  : p,
-            );
-            return commit.menu(next, (editing === "new" ? "Added " : "Saved ") + name);
+            return commit.menu(withCategory(menu, before, name, ids), (editing === "new" ? "Added " : "Saved ") + name);
           }}
           onRemove={
             editing === "new"
@@ -925,9 +984,13 @@ export function ChoicesPage(props: RecipesProps) {
   const commit = useCommit(props);
   const list = choicesOf(menu);
   const [editing, setEditing] = useState<Choice | "new" | null>(null);
+  const [query, setQuery] = useState("");
+  const optionsText = (c: Choice) =>
+    c.options.map((o) => o.name + (o.price ? " +" + formatMoney(o.price, business.currency) : "")).join(", ");
+  const shown = list.filter((c) => matches(query, c.name, optionsText(c), ...c.items.map((p) => p.name)));
   const kinds = [
-    { title: "Pick one", items: list.filter((c) => c.required) },
-    { title: "Add-ons", items: list.filter((c) => !c.required) },
+    { title: "Pick one", items: shown.filter((c) => c.required) },
+    { title: "Add-ons", items: shown.filter((c) => !c.required) },
   ].filter((k) => k.items.length);
 
   function apply(group: Omit<OptionGroup, "id">, ids: string[]) {
@@ -974,6 +1037,8 @@ export function ChoicesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label="Add choice" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      <RecordSearch count={list.length} noun="choices" query={query} onQuery={setQuery} />
+      {list.length > 0 && !shown.length && <RecordNoMatch query={query} onClear={() => setQuery("")} />}
       {kinds.map((k) => (
         <RecordGroup key={k.title} title={k.title}>
           {k.items.map((c) => (
@@ -987,7 +1052,7 @@ export function ChoicesPage(props: RecipesProps) {
                 </span>
               }
               title={c.name}
-              detail={c.options.map((o) => o.name + (o.price ? " +" + formatMoney(o.price, business.currency) : "")).join(", ")}
+              detail={optionsText(c)}
               end={plural(c.items.length, "item")}
             />
           ))}

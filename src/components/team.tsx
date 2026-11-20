@@ -8,6 +8,7 @@ import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
 import { SubPage, useDraft } from "./settings";
+import { matches, RecordNoMatch, RecordSearch } from "./records";
 import { errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 
 export function initials(name: string) {
@@ -247,6 +248,11 @@ export function TeamPage(props: SettingsProps) {
   const withPin = usePin();
   const sorted = [...team].sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name));
   const waiting = team.filter((m) => !m.joined).length;
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState(false);
+  const PENDING = "Yet to sign in";
+  const filtering = pending && waiting > 0 && waiting < team.length;
+  const shown = sorted.filter((m) => (!filtering || !m.joined) && matches(query, m.name, m.email));
   async function act(input: Parameters<SettingsProps["onAction"]>[0], label?: string) {
     const done = await withPin((pin) => props.onAction({ ...input, pin } as typeof input));
     if (done && label) props.onSaved(label);
@@ -267,23 +273,45 @@ export function TeamPage(props: SettingsProps) {
       <button className="btn" disabled={!props.online} onClick={() => setEditing("new")}>
         <UserPlus size={18} /> Invite someone
       </button>
-      <div className="card card-list">
-        {sorted.map((m) => (
-          <button key={m.id} className="list-row" disabled={!props.online} onClick={() => setEditing(m)}>
-            <Avatar id={m.id} name={m.name} dim={!m.joined} />
-            <span className="grow stack">
-              <span className="ellipsis">
-                {m.name}
+      <RecordSearch
+        count={team.length}
+        noun="people"
+        query={query}
+        onQuery={setQuery}
+        filters={
+          waiting > 0 && waiting < team.length
+            ? { label: "Filter", options: [PENDING], value: filtering ? PENDING : null, onChange: (v) => setPending(v === PENDING) }
+            : undefined
+        }
+      />
+      {!shown.length && (
+        <RecordNoMatch
+          query={query}
+          onClear={() => {
+            setQuery("");
+            setPending(false);
+          }}
+        />
+      )}
+      {shown.length > 0 && (
+        <div className="card card-list">
+          {shown.map((m) => (
+            <button key={m.id} className="list-row" disabled={!props.online} onClick={() => setEditing(m)}>
+              <Avatar id={m.id} name={m.name} dim={!m.joined} />
+              <span className="grow stack">
+                <span className="ellipsis">
+                  {m.name}
+                </span>
+                <span className="label ellipsis">
+                  {m.joined ? (m.owner ? "Owner" : m.email) : "Invite pending for " + m.email}
+                </span>
               </span>
-              <span className="label ellipsis">
-                {m.joined ? (m.owner ? "Owner" : m.email) : "Invite pending for " + m.email}
-              </span>
-            </span>
-            {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
-            <ChevronRight size={18} className="chev" />
-          </button>
-        ))}
-      </div>
+              {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
+              <ChevronRight size={18} className="chev" />
+            </button>
+          ))}
+        </div>
+      )}
       {editing && (
         <MemberSheet
           member={editing === "new" ? undefined : editing}
