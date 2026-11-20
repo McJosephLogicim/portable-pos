@@ -7,7 +7,7 @@ import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
-import { ScheduleScreen } from "./schedule";
+import { ScheduleScreen, ScheduledShiftSheet } from "./schedule";
 import { Account, Setup } from "./account";
 import { BusinessSwitcher } from "./businesses";
 import { buzz, CelebrateProvider, FacesProvider, facesOf, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
@@ -133,6 +133,7 @@ export function Workspace() {
     [syncErr, setSyncErr] = useState(""),
     [ready, setReady] = useState(false);
   const [account, setAccount] = useState(false),
+    [tillBooking, setTillBooking] = useState<string | null>(null),
     [pending, setPending] = useState(false),
     [bootError, setBootError] = useState(""),
     [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
@@ -156,6 +157,7 @@ export function Workspace() {
       setState(null);
       setSyncErr("");
       setBootError("");
+      setTillBooking(null);
       setSharedSchedule(null);
       setTab("sell");
       try {
@@ -682,6 +684,7 @@ export function Workspace() {
           online={online}
           onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
           onSchedule={() => go("schedule")}
+          onShift={setTillBooking}
           demo={demo}
           onSales={(focus: SalesFocus) => {
             setSalesFocus(focus);
@@ -781,6 +784,23 @@ export function Workspace() {
           onSwitch={(id) => {
             setSwitching(false);
             void switchBusiness(id).catch((e) => setNotice(message(e)));
+          }}
+        />
+      )}
+      {tillBooking && state?.business && (
+        <ScheduledShiftSheet
+          key={state.business.id + ":" + tillBooking}
+          bookingId={tillBooking}
+          state={state}
+          online={online}
+          demo={demo}
+          onAction={owner}
+          onSaved={setToast}
+          onClose={() => setTillBooking(null)}
+          onSales={(focus) => {
+            setTillBooking(null);
+            setSalesFocus(focus);
+            go("sales");
           }}
         />
       )}

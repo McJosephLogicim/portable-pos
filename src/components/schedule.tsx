@@ -1336,6 +1336,39 @@ function AddShiftMenu({ disabled, onAdd }: { disabled: boolean; onAdd: (mode: "n
 
 /* ---------- screen ---------- */
 
+/** Open an existing scheduled shift over another page, including its usual edit flow. */
+export function ScheduledShiftSheet({
+  bookingId,
+  onClose,
+  ...props
+}: ScheduleProps & { bookingId: string; onClose: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const { state, demo } = props;
+  const booking = state.bookings?.find((b) => b.id === bookingId);
+  if (!booking) return null;
+  const sales = state.me?.owner
+    ? !demo && booking.sales !== undefined
+      ? booking.sales
+      : (booking.sales ?? 0) + (salesByBooking(state.shifts, state.sales).get(booking.id) ?? 0)
+    : undefined;
+  return editing ? (
+    <BookingEditor
+      booking={booking}
+      props={props}
+      defaultDay={dayOf(booking.startsAt, state.business!.timeZone)}
+      onClose={() => setEditing(false)}
+    />
+  ) : (
+    <BookingSheet
+      booking={booking}
+      props={props}
+      sales={sales}
+      onEdit={() => setEditing(true)}
+      onClose={onClose}
+    />
+  );
+}
+
 type Filter = "day" | "open" | "mine";
 
 export function ScheduleScreen(props: ScheduleProps) {

@@ -673,6 +673,7 @@ export function ShiftScreen({
   onSell,
   onGoMenu,
   onSchedule,
+  onShift,
   onSales,
   demo,
   compact,
@@ -687,6 +688,7 @@ export function ShiftScreen({
   onSell: () => void;
   onGoMenu?: () => void;
   onSchedule: () => void;
+  onShift: (bookingId: string) => void;
   onSales: (focus: SalesFocus) => void;
   demo: boolean;
   /** On Sell: just the shift, without the past ones. */
@@ -707,6 +709,7 @@ export function ShiftScreen({
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
+  const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
   const startingBooking = starting ? upcomingBookings(state).find((b) => b.id === starting) : undefined;
   const opening = simple ? state.menu.length > 0 : Boolean(startingBooking);
   const expenses = state.expenses ?? [];
@@ -751,7 +754,7 @@ export function ShiftScreen({
             <ShiftStrip
               state={state}
               onTillPage
-              onTill={shift.bookingId && (state.bookings ?? []).some((b) => b.id === shift.bookingId) ? onSchedule : () => setLinking(true)}
+              onTill={activeBooking ? () => onShift(activeBooking.id) : () => setLinking(true)}
             />
           )}
           {history.length > 0 && !compact && !startingBooking && (
