@@ -1241,6 +1241,7 @@ export function SettingsScreen(props: SettingsProps) {
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;
+  const waiting = state.pending.length;
   return (
     <div className="page narrow">
       <div className="page-top">
@@ -1321,17 +1322,22 @@ export function SettingsScreen(props: SettingsProps) {
       <div className="card card-list">
         <div className="list-row">
           <span className="grow">Connection</span>
-          <span className="label row gap-6">
-            <span className={"dot " + (props.online ? "success" : "danger")} />
-            {props.status}
+          <span className="record-end row gap-6 sync-status">
+            <span
+              className={"dot " + (props.online ? (waiting ? "syncing" : "success") : "danger")}
+              aria-hidden="true"
+            />
+            {waiting ? (props.online ? "Syncing " + waiting : "Offline · " + waiting + " to sync") : props.status}
           </span>
         </div>
         <div className="list-row">
-          <span className="grow stack">
-            <span>Works offline</span>
-            <span className="label">Sales save here and sync when you reconnect.</span>
+          <span className="grow row gap-6">
+            Works offline
+            <Explain title="Works offline">
+              Sales save on this phone first and sync when you're back online.
+            </Explain>
           </span>
-          <span className="label">{props.offlineReady ? "Ready" : "Getting ready"}</span>
+          <span className="record-end">{props.offlineReady ? "Ready" : "Getting ready"}</span>
         </div>
       </div>
       <div className="card card-pad stack gap-12">
