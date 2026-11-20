@@ -339,10 +339,11 @@ test(
     const soon = await at(0.4, 5);
     const first = await open(soon);
     assert.equal(first.shift!.bookingId, soon);
-    // A second start while one runs joins it instead of opening another.
+    // The same phone can't start a second shift while its first one runs.
     const other = await at(-1, 3);
-    const second = await open(other);
-    assert.equal(second.shift!.id, first.shift!.id);
+    await assert.rejects(open(other), /Close shift 1 on this phone/);
+    // Starting the same scheduled shift again joins it.
+    assert.equal((await open(soon)).shift!.id, first.shift!.id);
     await cmd({ action: "close", shiftId: first.shift!.id, countedCash: 0, deviceId, pin });
     // Closing before the scheduled end must make the booking unavailable, even
     // for an old Start request sent by another phone.

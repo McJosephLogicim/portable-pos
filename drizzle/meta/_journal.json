@@ -71,6 +71,13 @@
       "when": 1795206870170,
       "tag": "0009_shift_stock_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795207813801,
+      "tag": "0010_booths",
+      "breakpoints": true
     }
   ]
 }

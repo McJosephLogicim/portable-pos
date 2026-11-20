@@ -290,6 +290,36 @@ export function checkClosing(shift: Shift, counted: Record<string, number> | und
  * new amount; earlier sales stay as they were. A stock item the shift wasn't tracking is
  * tracked from now.
  */
+/**
+ * What a closed shift had left of each stock item. Shifts closed before this was saved
+ * fall back to the closing count, or the opening amount less what the sales used.
+ */
+export function shiftLeftovers(shift: Shift): Record<string, number> {
+  if (shift.leftStock) return shift.leftStock;
+  const left: Record<string, number> = {};
+  for (const [id, n] of Object.entries(shift.stock ?? {}))
+    if (!shift.stockSets?.some((set) => set.stockId === id)) left[id] = Math.max(0, round(n - (shift.usedStock?.[id] ?? 0)));
+  return { ...left, ...shift.closingStock };
+}
+
+/**
+ * Add up what finished booths had left of each stock and prep item. Items none of them
+ * tracked are left out, so their starting amount stays as it is.
+ */
+export function mergeLeftovers(shifts: Shift[], stockItems: StockItem[] | undefined) {
+  const ids = new Set((stockItems ?? []).map((item) => item.id));
+  const total: Record<string, number> = {};
+  for (const shift of shifts)
+    for (const [id, n] of Object.entries(shiftLeftovers(shift)))
+      if (ids.has(id) && Number.isFinite(n)) total[id] = round((total[id] ?? 0) + Math.max(0, n));
+  return total;
+}
+
+/** Shifts whose leftovers can still be merged: closed, not merged yet, with something tracked. */
+export function mergeableShifts(shifts: Shift[], stockItems: StockItem[] | undefined) {
+  return shifts.filter((s) => s.closedAt && !s.mergedAt && Object.keys(mergeLeftovers([s], stockItems)).length);
+}
+
 export function setShiftStock(
   shift: Shift,
   stockItems: StockItem[] | undefined,

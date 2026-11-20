@@ -271,7 +271,7 @@ test(
         saleId: cash.id,
         reason: "wrong shop",
       }),
-      { status: 409 },
+      { status: 404 },
     );
     const reverse = {
       action: "reverse",

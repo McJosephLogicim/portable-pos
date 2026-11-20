@@ -45,11 +45,16 @@ export async function closingFigures(tx: Transaction, shift: Shift, countedCash:
   const sold = (await tx.select().from(sales).where(eq(sales.shiftId, shift.id))).map(presentSale);
   const spent = (await tx.select().from(expenses).where(eq(expenses.shiftId, shift.id))).map(presentExpense);
   const { expectedCash } = shiftTotals(shift, sold, spent);
-  const { used } = stockReplay(shift, sold);
+  const { used, left } = stockReplay(shift, sold);
   const usedStock = Object.keys(used).length
     ? Object.fromEntries(Object.entries(used).map(([id, n]) => [id, Math.round(n * 1000) / 1000]))
     : null;
-  return { difference: countedCash - expectedCash, usedStock };
+  // A count at closing wins over what the sales say is left.
+  const kept = { ...left, ...shift.closingStock };
+  const leftStock = Object.keys(kept).length
+    ? Object.fromEntries(Object.entries(kept).map(([id, n]) => [id, Math.max(0, Math.round(n * 1000) / 1000)]))
+    : null;
+  return { difference: countedCash - expectedCash, usedStock, leftStock };
 }
 
 /**

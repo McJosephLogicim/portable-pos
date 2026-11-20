@@ -368,6 +368,11 @@ const command = z.discriminatedUnion("action", [
     closingStock: counts.optional(),
     pin,
   }),
+  z.object({
+    action: z.literal("mergeStock"),
+    shiftIds: z.array(z.uuid()).min(1).max(30),
+    pin,
+  }),
 ]);
 
 export function parseCommand(input: unknown) {
@@ -418,4 +423,18 @@ export function validateMenu(menu: Product[]) {
   ]);
   ensure(new Set(ids).size === ids.length,
     "Two menu items or options ended up the same. Reload the app and try again.");
+}
+
+/**
+ * Which open shift the phone is running. Every booth runs its own shift on its own phone,
+ * so the app sends it with each command. Older app versions don't, and get undefined.
+ */
+export function readTill(input: unknown): { till?: string | null; deviceId?: string } {
+  if (typeof input !== "object" || !input) return {};
+  const raw = input as { till?: unknown; deviceId?: unknown };
+  const deviceId = key.safeParse(raw.deviceId);
+  return {
+    ...("till" in raw ? { till: z.uuid().safeParse(raw.till).success ? (raw.till as string) : null } : {}),
+    ...(deviceId.success ? { deviceId: deviceId.data } : {}),
+  };
 }

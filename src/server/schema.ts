@@ -83,10 +83,15 @@ export const shifts = register
       closingCount: jsonb("closing_count").$type<Record<string, number>>(),
       usedStock: jsonb("used_stock").$type<Record<string, number>>(),
       stockSets: jsonb("stock_sets").$type<StockSet[]>(),
+      // What each stock item had left at closing: counted, or worked out from the sales.
+      leftStock: jsonb("left_stock").$type<Record<string, number>>(),
+      // When its leftovers were added into the stock items' starting amounts.
+      mergedAt: date("merged_at"),
     },
     (t) => [
       unique().on(t.businessId, t.number),
-      uniqueIndex("one_open_shift").on(t.businessId).where(isNull(t.closedAt)),
+      // Booths run side by side on their own phones, one open till per scheduled shift.
+      uniqueIndex("one_open_booking").on(t.businessId, t.bookingId).where(isNull(t.closedAt)),
     ],
   )
   .enableRLS();

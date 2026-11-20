@@ -95,7 +95,7 @@ async function syncRegister(
       return current;
     }
     if (!current.pending.length && force)
-      return mergeServer(key, await api(key, { action: "bootstrap" }));
+      return mergeServer(key, await api(key, { action: "bootstrap", deviceId: current.deviceId, till: current.shift?.id ?? null }));
     if (current.pending.length) {
       await uploadProofs(key, (url) => uploadImage(key, dataUrlToBlob(url), true));
       current = await loadRegister(key);
@@ -115,6 +115,7 @@ async function syncRegister(
       const data = await api(key, {
         action: "sync",
         deviceId: current.deviceId,
+        till: current.shift?.id ?? null,
         events,
       });
       current = await mergeServer(
@@ -446,6 +447,7 @@ export function Workspace() {
               : await api(key, {
                   ...input,
                   deviceId: s.deviceId,
+                  till: s.shift?.id ?? null,
                   ...(closingId ? { shiftId: closingId } : {}),
                 });
           const { inviteDelivery, deletedRecord, ...snapshot } = data;
@@ -525,6 +527,23 @@ export function Workspace() {
       show(key, await logExpense(key, { ...input, by: state?.me?.name || undefined })),
     );
     void flush();
+  }
+  /** Sell on a booth another phone already opened. Each phone runs one shift at a time. */
+  async function join(shiftId: string) {
+    if (!key) throw Error("Register unavailable.");
+    if (!navigator.onLine) throw Error("Connect to the internet to join this shift.");
+    if (!(await prepareOffline()))
+      throw Error("Could not prepare offline storage. Reload while online and try again.");
+    await locked("write-" + key, async () => {
+      await syncRegister(key);
+      await locked("sync-" + key, async () => {
+        const s = await loadRegister(key);
+        if (s.shift && !s.shift.closedAt) throw Error(`Close shift ${s.shift.number} on this phone first.`);
+        const data = await api(key, { action: "bootstrap", deviceId: s.deviceId, till: shiftId });
+        show(key, await mergeServer(key, data));
+        if (data.shift?.id !== shiftId) throw Error("That shift just closed.");
+      });
+    });
   }
   async function unexpense(id: string) {
     if (!key) throw Error("Register unavailable.");
@@ -732,6 +751,7 @@ export function Workspace() {
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
         onRemoveMenuItem={(productId, pin) => owner({ action: "removeMenuItem", productId, pin })}
+        onMergeStock={(shiftIds, pin) => owner({ action: "mergeStock", shiftIds, pin })}
       />
     );
   else if (view === "sales")
@@ -761,6 +781,7 @@ export function Workspace() {
           state={state}
           online={online}
           onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
+          onJoin={demo ? undefined : join}
           onSchedule={() => go("schedule")}
           onShift={setTillBooking}
           demo={demo}

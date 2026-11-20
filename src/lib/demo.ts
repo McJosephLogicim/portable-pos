@@ -1,6 +1,6 @@
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
-import { changeMenuItem, checkClosing, checkOpening, setShiftStock, shiftTotals, stockReplay, updateShiftMenu, type MenuItemChange } from "./domain";
+import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftStock, shiftTotals, stockReplay, updateShiftMenu, type MenuItemChange } from "./domain";
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
@@ -106,6 +106,7 @@ export type OwnerAction =
   | (MenuItemChange & { pin: string })
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
+  | { action: "mergeStock"; shiftIds: string[]; pin: string }
   | Closing
   | { action: "mode"; mode: RegisterMode; pin: string }
   | {
@@ -293,7 +294,10 @@ export function demoAction(
       const shift = state.shift;
       const closingStock = checkClosing(shift, input.closingStock);
       const closingCount = checkCount(input.closingCount, input.countedCash);
-      const { used } = stockReplay(shift, state.sales);
+      const { used, left } = stockReplay(shift, state.sales);
+      const leftStock = Object.fromEntries(
+        Object.entries({ ...left, ...closingStock }).map(([id, n]) => [id, Math.max(0, round(n))]),
+      );
       const closed: Shift = {
         ...shift,
         countedCash: input.countedCash,
@@ -303,6 +307,7 @@ export function demoAction(
         closedAt: new Date().toISOString(),
         ...(closingStock ? { closingStock } : {}),
         ...(closingCount ? { closingCount } : {}),
+        ...(Object.keys(leftStock).length ? { leftStock } : {}),
         ...(Object.keys(used).length
           ? { usedStock: Object.fromEntries(Object.entries(used).map(([id, n]) => [id, round(n)])) }
           : {}),
@@ -312,6 +317,25 @@ export function demoAction(
         shift: null,
         shifts: state.shifts.map((s) => (s.id === closed.id ? closed : s)),
         soldOut: [],
+      };
+    }
+    case "mergeStock": {
+      const business = state.business!;
+      const picked = state.shifts.filter((s) => input.shiftIds.includes(s.id));
+      if (picked.some((s) => !s.closedAt)) throw Error("Close every shift you picked before merging what's left.");
+      if (picked.some((s) => s.mergedAt)) throw Error("Some of these leftovers were already merged. Open the list again.");
+      const total = mergeLeftovers(picked, business.settings.stockItems);
+      const mergedAt = new Date().toISOString();
+      return {
+        ...state,
+        business: {
+          ...business,
+          settings: {
+            ...business.settings,
+            stockItems: business.settings.stockItems?.map((item) => (item.id in total ? { ...item, onHand: total[item.id] } : item)),
+          },
+        },
+        shifts: state.shifts.map((s) => (input.shiftIds.includes(s.id) ? { ...s, mergedAt } : s)),
       };
     }
     case "setup":

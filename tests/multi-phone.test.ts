@@ -31,7 +31,7 @@ test(
     const shift = opened.shift!;
 
     // Phone B joins the shift phone A opened.
-    const joined = await cmd({ action: "open", deviceId: phoneB, bookingId: await shiftNow(cmd, pin), openingCash: 0, stock: { tea: 9 } });
+    const joined = await cmd({ action: "open", deviceId: phoneB, till: null, bookingId, openingCash: 0, stock: { tea: 9 } });
     assert.equal(joined.shift!.id, shift.id);
     assert.equal(joined.shift!.openingCash, 50000);
 
