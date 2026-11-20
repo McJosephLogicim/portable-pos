@@ -216,9 +216,11 @@ export function ItemSheet({
     return drafts.length ? drafts : [blankUseDraft()];
   });
   const batchItems = costItems ?? stockItems;
-  const [batchEnabled, setBatchEnabled] = useState(Boolean(product?.costing?.batch));
+  const [batchOn, setBatchOn] = useState(Boolean(product?.costing?.batch));
+  // Batches only apply to items that use stock.
+  const batchEnabled = !simple && mode === "uses" && batchOn;
   const [deductBatch, setDeductBatch] = useState(() => product?.costing?.batch?.deductFromStock ?? !product?.costing?.batch);
-  const deductFromStock = !simple && mode === "uses" && batchEnabled && deductBatch;
+  const deductFromStock = batchEnabled && deductBatch;
   const [batchServings, setBatchServings] = useState(String(product?.costing?.batch?.servings ?? 1));
   const servings = Number(batchServings);
   const validServings = Number.isInteger(servings) && servings >= 1 && servings <= maxBatchServings;
@@ -424,12 +426,6 @@ export function ItemSheet({
 
       {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-12">
         <span className="strong">Stock</span>
-        {!simple && (
-          <div className="between gap-12">
-            <span>Made in batches</span>
-            <Switch checked={batchEnabled} onChange={setBatchEnabled} label="Made in batches" />
-          </div>
-        )}
         <div className="segmented" role="group" aria-label="How this item is counted">
           {(
             [
@@ -451,6 +447,12 @@ export function ItemSheet({
             </button>
           ))}
         </div>
+        {!simple && mode === "uses" && (
+          <div className="between gap-12">
+            <span>Made in batches</span>
+            <Switch checked={batchOn} onChange={setBatchOn} label="Made in batches" />
+          </div>
+        )}
         <p className="label">
           {mode === "off"
             ? "Not counted. It sells without limit, like drinks made to order."
