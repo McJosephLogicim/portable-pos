@@ -1782,6 +1782,40 @@ button.notice {
   gap: 6px;
   min-width: 0;
 }
+/* The suggestion list floats over the content below (or above) its field. */
+.combo-float {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  z-index: 300;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  animation: combo-in var(--dur-fast, 120ms) var(--ease-out);
+}
+.combo-float.above {
+  animation-name: combo-in-up;
+}
+@keyframes combo-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes combo-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .combo-float {
+    animation: none;
+  }
+}
 .suggest .combo-pick {
   padding: 6px 10px;
 }
