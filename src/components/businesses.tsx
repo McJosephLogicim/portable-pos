@@ -90,7 +90,7 @@ export function BusinessSwitcher({
       }
       footer={
         <button className="btn secondary block" disabled={demo || !online} onClick={onAdd}>
-          <Plus size={18} /> Add a business
+          <Plus size={18} /> Add
         </button>
       }
     >

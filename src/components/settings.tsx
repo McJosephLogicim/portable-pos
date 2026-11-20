@@ -226,10 +226,11 @@ export function useDraft(
           type="button"
           className="btn"
           aria-busy={busy}
+          aria-label={saveLabel}
           disabled={!dirty || busy || !props.online}
           onClick={() => void save()}
         >
-          {busy ? "Saving…" : props.online ? saveLabel : "Connect to save"}
+          {busy ? "Saving…" : props.online ? "Save" : "Connect to save"}
         </button>
       </div>
     ) : null;
@@ -613,7 +614,7 @@ function MethodSheet({
               onClose();
             }}
           >
-            {method ? "Done" : "Add method"}
+            {method ? "Done" : "Add"}
           </button>
           {method && onRemove && (
             <button
@@ -621,7 +622,7 @@ function MethodSheet({
               disabled={!canRemove}
               onClick={() => setRemoving(true)}
             >
-              <Trash2 size={16} /> Remove {method.name}
+              <Trash2 size={16} /> Remove
             </button>
           )}
         </>
@@ -677,7 +678,7 @@ function MethodSheet({
       <ConfirmSheet
         title="Remove payment method?"
         detail={`${method.name} will be removed when you save your payment methods.`}
-        confirmLabel="Remove method"
+        confirmLabel="Remove"
         onClose={() => setRemoving(false)}
         onConfirm={() => {
           onRemove();
@@ -751,7 +752,7 @@ function PaymentsPage(props: SettingsProps) {
         ))}
       </div>
       <button className="btn secondary" onClick={() => setEditing("new")}>
-        <Plus size={18} /> Add payment method
+        <Plus size={18} /> Add
       </button>
       {editing && (
         <MethodSheet
@@ -846,14 +847,14 @@ function DiscountSheet({
               onClose();
             }}
           >
-            {discount ? "Done" : "Add discount"}
+            {discount ? "Done" : "Add"}
           </button>
           {onRemove && (
             <button
               className="btn ghost danger compact block"
               onClick={() => setRemoving(true)}
             >
-              <Trash2 size={16} /> Remove discount
+              <Trash2 size={16} /> Remove
             </button>
           )}
         </>
@@ -931,7 +932,7 @@ function DiscountSheet({
       <ConfirmSheet
         title="Remove discount?"
         detail={`${discount.name} will be removed when you save your discounts.`}
-        confirmLabel="Remove discount"
+        confirmLabel="Remove"
         onClose={() => setRemoving(false)}
         onConfirm={() => {
           onRemove();
@@ -1005,7 +1006,7 @@ function DiscountsPage(props: SettingsProps) {
         </div>
       )}
       <button className="btn secondary" onClick={() => setEditing("new")}>
-        <Plus size={18} /> Add discount
+        <Plus size={18} /> Add
       </button>
       {editing && (
         <DiscountSheet

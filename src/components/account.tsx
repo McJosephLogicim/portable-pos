@@ -220,7 +220,7 @@ export function Setup({
           </p>
         )}
         <button className="btn block" disabled={busy}>
-          {busy ? "Creating…" : adding ? "Add business" : "Create register"}
+          {busy ? "Creating…" : adding ? "Add" : "Create register"}
         </button>
       </form>
       <button className="link" onClick={onSignOut}>

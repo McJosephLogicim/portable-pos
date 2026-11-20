@@ -621,7 +621,7 @@ export function Workspace() {
           Can't open the register. <span className="g">{bootError}</span>
         </h1>
         <button className="btn" onClick={() => key && void connect(key)}>
-          Try again
+          Retry
         </button>
         <button className="link" onClick={() => setAccount(true)}>
           Sign in

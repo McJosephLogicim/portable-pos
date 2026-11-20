@@ -1025,10 +1025,14 @@ button.list-row:not(.sell-option):active {
   transition: opacity var(--dur-fast) var(--ease-out);
   overflow-wrap: anywhere;
   pointer-events: auto;
+  touch-action: pan-x;
+  user-select: none;
+  cursor: pointer;
 }
 @starting-style {
   .toast { opacity: 0; }
 }
+.toast-dismiss,
 .toast-action {
   flex: none;
   min-height: 44px;
@@ -1037,10 +1041,21 @@ button.list-row:not(.sell-option):active {
   border-radius: var(--radius-pill);
   background: transparent;
   color: inherit;
+}
+.toast-dismiss {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.toast-action {
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.toast-dismiss:focus-visible,
 .toast-action:focus-visible {
   outline-color: currentColor;
 }

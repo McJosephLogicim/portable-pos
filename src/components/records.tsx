@@ -21,8 +21,8 @@ export function RecordAdd({
   disabled?: boolean;
 }) {
   return (
-    <button className="btn" disabled={disabled} onClick={onClick}>
-      <Plus size={18} /> {label}
+    <button className="btn" aria-label={label} disabled={disabled} onClick={onClick}>
+      <Plus size={18} /> Add
     </button>
   );
 }
@@ -240,12 +240,12 @@ export function RecordSheet({
               {error}
             </p>
           )}
-          <button className="btn block" disabled={busy || !canSave} onClick={onSave}>
-            {busy ? "Saving…" : (saveLabel ?? (editing ? "Save " : "Add ") + noun)}
+          <button className="btn block" aria-label={saveLabel ?? (editing ? "Save " : "Add ") + noun} disabled={busy || !canSave} onClick={onSave}>
+            {busy ? "Saving…" : editing ? "Save" : "Add"}
           </button>
           {editing && onRemove && (
-            <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirming(true)}>
-              <Trash2 size={16} /> {remove}
+            <button className="btn ghost danger compact block" aria-label={remove} disabled={busy} onClick={() => setConfirming(true)}>
+              <Trash2 size={16} /> Remove
             </button>
           )}
         </>
@@ -257,7 +257,7 @@ export function RecordSheet({
       <ConfirmSheet
         title={remove + "?"}
         detail={removeDetail ?? `This will remove this ${noun} for your business.`}
-        confirmLabel={remove}
+        confirmLabel="Remove"
         onClose={() => setConfirming(false)}
         onConfirm={async () => {
           const done = await onRemove();

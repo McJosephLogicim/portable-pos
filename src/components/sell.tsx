@@ -645,7 +645,7 @@ function Checkout({
       busy={busy}
       action={
         <button className="btn ghost compact" disabled={busy} onClick={onClear}>
-          Clear order
+          Clear
         </button>
       }
       footer={
@@ -1131,7 +1131,7 @@ export function SellScreen({
         <div className="notice between" role="alert">
           <span>The menu changed. Clear the order and add its items again.</span>
           <button className="btn ghost compact" disabled={busy} onClick={() => setConfirmClear(true)}>
-            Clear order
+            Clear
           </button>
         </div>
       )}
@@ -1211,7 +1211,7 @@ export function SellScreen({
                 <span className="add-plus" aria-hidden="true">
                   <Plus size={22} />
                 </span>
-                <span className="name">Add item</span>
+                <span className="name">Add</span>
                 <span className="price">{online ? "Sells from now" : "Connect to add"}</span>
               </button>
             )}
@@ -1233,7 +1233,7 @@ export function SellScreen({
             </p>
             {canEdit && !menu.length && (
               <button className="btn" disabled={!online} onClick={() => setAdding(true)}>
-                <Plus size={18} /> Add item
+                <Plus size={18} /> Add
               </button>
             )}
           </div>
@@ -1333,7 +1333,7 @@ export function SellScreen({
         <ConfirmSheet
           title="Clear this order?"
           detail="All items in the current order will be removed."
-          confirmLabel="Clear order"
+          confirmLabel="Clear"
           onClose={() => setConfirmClear(false)}
           onConfirm={async () => {
             const cleared = await write(() => onCart([]), false);

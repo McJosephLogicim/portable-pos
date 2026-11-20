@@ -109,7 +109,7 @@ export function ReportSheet({
                 }
               }}
             >
-              <Copy size={17} /> {action === "copy" ? "Copying…" : "Copy text"}
+              <Copy size={17} /> {action === "copy" ? "Copying…" : "Copy"}
             </button>
             <button
               type="button"
@@ -138,7 +138,7 @@ export function ReportSheet({
               }}
             >
               {canShare ? <Share2 size={17} /> : <Download size={17} />}
-              {previewError ? "Image unavailable" : !image ? "Preparing…" : action === "image" ? "Opening…" : canShare ? "Share image" : "Save image"}
+              {previewError ? "Image unavailable" : !image ? "Preparing…" : action === "image" ? "Opening…" : canShare ? "Share" : "Save"}
             </button>
           </div>
         </div>

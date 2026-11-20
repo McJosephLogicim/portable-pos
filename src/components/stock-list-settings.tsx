@@ -118,7 +118,7 @@ export function StockListsPage(props: RecipesProps) {
             ))}
             <button type="button" className="list-row" disabled={!props.online} onClick={() => setEditing({ field })}>
               <span className="well"><Plus size={18} /></span>
-              <span className="grow row-title">Add {noun}</span>
+              <span className="grow row-title">Add</span>
             </button>
           </RecordGroup>
         );

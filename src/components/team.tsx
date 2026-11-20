@@ -183,16 +183,16 @@ function MemberSheet({
               )
             }
           >
-            {busy ? "Saving…" : member ? "Save" : email.trim() ? "Send invite" : "Create invite link"}
+            {busy ? "Saving…" : member ? "Save" : email.trim() ? "Invite" : "Create"}
           </button>
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
-              Resend invitation email
+              Resend
             </button>
           )}
           {onRemove && (
             <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirmRemove(true)}>
-              <Trash2 size={16} /> Remove from team
+              <Trash2 size={16} /> {member?.joined ? "Remove" : "Revoke"}
             </button>
           )}
         </>
@@ -277,7 +277,7 @@ function MemberSheet({
         detail={member.joined
           ? `${member.name} will lose access to this business and be removed from upcoming shifts.`
           : `${member.name}’s invitation link will stop working.`}
-        confirmLabel={member.joined ? "Remove member" : "Cancel invitation"}
+        confirmLabel={member.joined ? "Remove" : "Revoke"}
         onClose={() => setConfirmRemove(false)}
         onConfirm={async () => {
           const done = await onRemove();
@@ -330,7 +330,7 @@ export function TeamPage(props: SettingsProps) {
       onBack={() => props.onPage(null)}
     >
       <button className="btn" disabled={!props.online} onClick={() => setEditing("new")}>
-        <UserPlus size={18} /> Invite someone
+        <UserPlus size={18} /> Invite
       </button>
       <RecordSearch
         count={team.length}
@@ -503,7 +503,7 @@ export function ChecklistPage(props: SettingsProps) {
           }}
         />
         <button type="button" className="btn secondary compact" onClick={add} disabled={!text.trim() || full}>
-          Add step
+          Add
         </button>
       </div>
       {full && <p className="label">The checklist can hold up to 30 steps.</p>}
@@ -512,7 +512,7 @@ export function ChecklistPage(props: SettingsProps) {
         <ConfirmSheet
           title="Remove checklist step?"
           detail={`“${removing.text}” will be removed when you save the checklist.`}
-          confirmLabel="Remove step"
+          confirmLabel="Remove"
           onClose={() => setRemoving(null)}
           onConfirm={() => update((steps) => steps.filter((step) => step.id !== removing.id))}
         />

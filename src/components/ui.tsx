@@ -296,7 +296,7 @@ export function PhotoPicker({
           )}
           {value && (
             <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} disabled={disabled || busy} onClick={() => setRemoving(true)}>
-              Remove photo
+              Remove
             </button>
           )}
         </span>
@@ -332,7 +332,7 @@ export function PhotoPicker({
           detail={face && size === "small"
             ? "Your profile photo will be removed from shifts and reports."
             : "The image will be cleared when you save."}
-          confirmLabel="Remove photo"
+          confirmLabel="Remove"
           onClose={() => setRemoving(false)}
           onConfirm={() => onChange(undefined)}
         />
@@ -643,7 +643,7 @@ export function Explain({ title, label, children }: { title: string; label?: str
               onClose={() => setOpen(false)}
               footer={
                 <button type="button" className="btn block" onClick={() => setOpen(false)}>
-                  Got it
+                  Done
                 </button>
               }
             >
@@ -1012,12 +1012,31 @@ export function Toast({
   const restoring = useRef(false);
   const [hover, setHover] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (busy || hover || focused) return;
+    if (busy || hover || focused || pressed) return;
     const t = setTimeout(() => done.current(), undo ? 10000 : 2200);
     return () => clearTimeout(t);
-  }, [text, undo, busy, hover, focused]);
+  }, [text, undo, busy, hover, focused, pressed]);
+
+  function endGesture(event: ReactPointerEvent<HTMLDivElement>, cancelled = false) {
+    const start = gesture.current;
+    if (!start || event.pointerId !== start.id) return;
+    gesture.current = null;
+    setPressed(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    suppressClick.current = cancelled || Math.hypot(dx, dy) > 8;
+    if (!cancelled && !restoring.current && dy >= 36 && dy > Math.abs(dx) * 1.2) {
+      done.current();
+    }
+  }
 
   async function restore() {
     if (!undo || restoring.current) return;
@@ -1038,12 +1057,36 @@ export function Toast({
     <div
       className="toast"
       ref={fadeOnExit}
+      onClick={(event) => {
+        if ((event.target as Element).closest(".toast-action")) return;
+        const dragged = suppressClick.current;
+        suppressClick.current = false;
+        if (dragged && event.detail !== 0) return;
+        if (!restoring.current) done.current();
+      }}
+      onPointerDown={(event) => {
+        suppressClick.current = false;
+        if (!event.isPrimary || event.button !== 0 || restoring.current || (event.target as Element).closest(".toast-action")) return;
+        gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        setPressed(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerUp={(event) => endGesture(event)}
+      onPointerCancel={(event) => endGesture(event, true)}
+      onLostPointerCapture={(event) => endGesture(event, true)}
       onPointerEnter={(event) => { if (undo && event.pointerType === "mouse") setHover(true); }}
       onPointerLeave={() => setHover(false)}
       onFocus={() => setFocused(true)}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
     >
-      <span role={error ? "alert" : undefined}>{error || text}</span>
+      <button
+        type="button"
+        className="toast-dismiss"
+        aria-label={`Dismiss notification: ${error || text}`}
+        disabled={busy}
+      >
+        <span role={error ? "alert" : undefined}>{error || text}</span>
+      </button>
       {undo && (
         <button type="button" className="toast-action" disabled={busy} onClick={() => void restore()}>
           {busy ? "Restoring…" : "Undo"}
@@ -1068,7 +1111,7 @@ export function EmptyRow({ title, detail }: { title: string; detail?: string }) 
 
 /**
  * Category tabs, as on Sell: "All" then each category. Tapping the open tab goes back to All.
- * onNew adds a dashed "New category" tab at the end.
+ * onNew adds a dashed Add button at the end.
  */
 export function CategoryTabs({
   label = "Categories",
@@ -1096,9 +1139,9 @@ export function CategoryTabs({
         </button>
       ))}
       {onNew && (
-        <button type="button" className="chip-new" disabled={newDisabled} onClick={onNew}>
+        <button type="button" className="chip-new" aria-label="Add category" disabled={newDisabled} onClick={onNew}>
           <Plus size={16} strokeWidth={2} aria-hidden />
-          New category
+          Add
         </button>
       )}
     </div>

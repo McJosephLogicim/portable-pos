@@ -124,7 +124,7 @@ export function RecordFilters<Key extends string>({ noun, label, names, rows, se
           title={`Filter ${noun}`}
           onClose={() => setDraft(null)}
           action={keys.some((key) => draft[key]?.length) ? (
-            <button className="btn ghost small" onClick={() => setDraft({})}>Clear all</button>
+            <button className="btn ghost small" onClick={() => setDraft({})}>Clear</button>
           ) : undefined}
           footer={
             <button className="btn block" onClick={() => {

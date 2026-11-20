@@ -275,8 +275,8 @@ function PersonPicker({
       onClose={onClose}
       footer={
         member && (
-          <button className="btn block" disabled={!role.length} onClick={() => onPick(member, shiftRole(role))}>
-            {role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"}
+          <button className="btn block" aria-label={role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"} disabled={!role.length} onClick={() => onPick(member, shiftRole(role))}>
+            Add
           </button>
         )
       }
@@ -536,11 +536,11 @@ function BookingSheet({
               </div>
             ))}
             {me.owner && !open && (
-              <button type="button" className="list-row" disabled={!online || busy} onClick={() => setPicking({})}>
+              <button type="button" className="list-row" aria-label="Add someone" disabled={!online || busy} onClick={() => setPicking({})}>
                 <span className="avatar seat" aria-hidden="true">
                   <Plus size={16} />
                 </span>
-                <span className="grow">Add someone</span>
+                <span className="grow">Add</span>
               </button>
             )}
           </div>
@@ -644,7 +644,7 @@ function BookingSheet({
         )}
         {me.owner && (
           <button className="btn ghost danger compact" disabled={!online || busy} onClick={() => setConfirmDelete(true)}>
-            <Trash2 size={16} /> Delete shift
+            <Trash2 size={16} /> Delete
           </button>
         )}
       </Sheet>
@@ -652,7 +652,7 @@ function BookingSheet({
         <ConfirmSheet
           title="Delete shift?"
           detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule. You can undo the deletion from the toast.`}
-          confirmLabel="Delete shift"
+          confirmLabel="Delete"
           onClose={() => setConfirmDelete(false)}
           onConfirm={async () => {
             const done = await withPin((pin) => props.onAction({ action: "deleteBooking", bookingId: b.id, pin }));
@@ -700,7 +700,7 @@ function BookingSheet({
                 className="btn ghost danger compact block"
                 onClick={() => setLeaving(managing)}
               >
-                Take {managing.memberId === me.memberId ? "yourself" : managing.name.split(" ")[0]} off
+                {managing.memberId === me.memberId ? "Leave" : "Remove"}
               </button>
             </>
           }
@@ -743,7 +743,7 @@ function BookingSheet({
           detail={leaving.memberId === me.memberId
             ? "Your seat will open up for someone else."
             : `${leaving.name}'s seat will open up for someone else.`}
-          confirmLabel={leaving.memberId === me.memberId ? "Leave shift" : "Remove"}
+          confirmLabel={leaving.memberId === me.memberId ? "Leave" : "Remove"}
           onClose={() => setLeaving(null)}
           onConfirm={async () => {
             const mine = leaving.memberId === me.memberId;
@@ -993,16 +993,13 @@ function BookingEditor({
         onClose={onClose}
         busy={busy}
         footer={
-          <button className="btn block" disabled={busy || !props.online || !days.length} onClick={(e) => void save(e.detail > 0 ? e.currentTarget : undefined)}>
-            {busy
-              ? "Saving…"
-              : bulk
-                ? days.length
-                  ? `Add ${days.length} ${days.length === 1 ? "shift" : "shifts"}`
-                  : "No days picked"
-                : booking
-                  ? "Save shift"
-                  : "Add shift"}
+          <button
+            className="btn block"
+            aria-label={bulk ? `Add ${days.length} ${days.length === 1 ? "shift" : "shifts"}` : booking ? "Save shift" : "Add shift"}
+            disabled={busy || !props.online || !days.length}
+            onClick={(e) => void save(e.detail > 0 ? e.currentTarget : undefined)}
+          >
+            {busy ? "Saving…" : booking ? "Save" : "Add"}
           </button>
         }
       >
@@ -1250,7 +1247,7 @@ function BookingEditor({
                   set({ staff: d.staff.filter((x) => x.memberId !== staffed.memberId) });
                 }}
               >
-                <X size={16} /> Take off this shift
+                <X size={16} /> Remove
               </button>
             </>
           }
@@ -1336,7 +1333,7 @@ function ShareSchedule({
         <>
           <p className="sr-only" role="status">{shown.length && copied === text ? "Schedule copied" : ""}</p>
           <button type="button" className="btn block" disabled={copying || !shown.length} onClick={() => void copy()}>
-            <Copy size={17} /> {copying ? "Copying…" : shown.length && copied === text ? "Copied" : "Copy schedule"}
+            <Copy size={17} /> {copying ? "Copying…" : shown.length && copied === text ? "Copied" : "Copy"}
           </button>
         </>
       }
@@ -1594,7 +1591,7 @@ export function ScheduleScreen(props: ScheduleProps) {
             </p>
             {me?.owner && filter === "day" && (
               <button className="btn secondary" disabled={!props.online} onClick={() => setEditing("new")}>
-                <Plus size={16} /> Add a shift
+                <Plus size={16} /> Add
               </button>
             )}
           </div>

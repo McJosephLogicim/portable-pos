@@ -29,13 +29,13 @@ In both modes, the seller can pick a scheduled shift to open the till, starting 
 
 Opening asks for the cash float, counted by coin and bill (for example ₱5 × 15) or typed as a total, a count of every stock item, and the opening checklist. During the shift, anyone on the till logs expenses from the Till page: paid with cash from the till, which lowers the cash expected in the drawer, or out of their own pocket, which the report lists as owed back to them. Closing asks for the cash on hand, again by coin and bill or as a total, and what is left of each stock item. The server checks that coin counts add up to the amount sent.
 
-After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Share image** shares a PNG made on the phone. If file sharing is unavailable, use **Save image**. **Copy text** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
+After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Share** shares a PNG made on the phone. If file sharing is unavailable, use **Save**. **Copy** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
 
-The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use Copy schedule to paste the preview into a chat. Teammates need an invite to join.
+The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. Teammates need an invite to join.
 
 ## Menu and stock
 
-The owner adds items from the **Add item** tile at the end of the Sell grid, or in Recipes › Menu items. New items and edits to names, prices and options appear on the open till and on other phones when they sync. Finish or clear a current order before changing its prices or selections on the same phone. Receipts made before the update sync with the menu version they used. Item removals and stock use changes take effect from the next shift.
+The owner adds items from the **Add** tile at the end of the Sell grid, or in Recipes › Menu items. New items and edits to names, prices and options appear on the open till and on other phones when they sync. Finish or clear a current order before changing its prices or selections on the same phone. Receipts made before the update sync with the menu version they used. Item removals and stock use changes take effect from the next shift.
 
 Recipes › Stock items lists what is counted at opening and closing, like a strawberry pack, a kilo of ice or a litre of milk, each with a unit (piece, pack, box, bottle, cup, tray, kg, g, L or mL). A menu item's **Uses stock** section picks the stock items one sale uses and how much, like 1 pack and 0.2 kg. Each sale takes that off what is left, a reversal puts it back, the Sell tile shows how many more can be made, and an item sells out when any stock it uses runs out, offline too. Menu items set up before stock items existed with **Count this item itself** still work as a stock item of their own.
 
@@ -78,6 +78,8 @@ A shift's sheet on the Shifts tab shows its best sellers. Tapping a seller, or *
 Location search uses OpenStreetMap's Photon geocoder, and the map preview uses OpenStreetMap tiles, so no API key is needed. **My location** opens the map at the phone's location. Drag the map or tap a spot to adjust the pin, then choose **Use this location**. Search and map tiles need a connection. Without one, the typed name can still be saved as the location.
 
 ## Verification
+
+For toast interactions and shared action labels, start the app locally, then run `POS_TEST_APP_URL=http://localhost:3000 npx playwright test tests/toast.spec.ts`. This uses an isolated browser demo and checks tap, downward touch swipe, keyboard dismissal, drag direction, and Undo.
 
 `npm test` exercises local persistence, retry behavior, and the API authentication boundary. For the integration suite, migrate a disposable PostgreSQL database and set `POS_TEST_DATABASE_URL` before running the same command. Optional `POS_TEST_AUTH_URL` and `POS_TEST_AUTH_KEY` enable the real Supabase Auth tests against an isolated instance configured to confirm test accounts automatically.
 

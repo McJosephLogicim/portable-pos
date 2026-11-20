@@ -140,8 +140,8 @@ function OptionRows({
           </button>
         </div>
       ))}
-      <button type="button" className="btn secondary compact" onClick={() => onChange([...options, blankOption()])}>
-        <Plus size={16} /> Option
+      <button type="button" className="btn secondary compact" aria-label="Add option" onClick={() => onChange([...options, blankOption()])}>
+        <Plus size={16} /> Add
       </button>
     </div>
   );

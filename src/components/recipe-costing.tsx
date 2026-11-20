@@ -119,7 +119,7 @@ export function PricingRulesPage(props: RecipesProps) {
         </div>
         {error && <p className="alert" role="alert">{error}</p>}
         <button type="submit" className="btn block" disabled={busy || !props.online || !dirty}>
-          {busy ? "Saving…" : props.online ? "Save pricing rules" : "Connect to save"}
+          {busy ? "Saving…" : props.online ? "Save" : "Connect to save"}
         </button>
       </form>
     </SubPage>

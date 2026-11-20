@@ -781,10 +781,11 @@ export function UsesEditor({
       <button
         type="button"
         className="btn secondary compact"
+        aria-label={batch ? "Add ingredient" : "Add stock item"}
         disabled={uses.length >= 20}
         onClick={() => onChange([...uses, blankUseDraft()])}
       >
-        <Plus size={16} /> {batch ? "Ingredient" : "Stock item"}
+        <Plus size={16} /> Add
       </button>
       {note && notedUse && (
         <Sheet
@@ -799,7 +800,7 @@ export function UsesEditor({
                 setNote(undefined);
               }}
             >
-              Save note
+              Save
             </button>
           }
         >

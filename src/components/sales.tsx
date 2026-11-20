@@ -248,7 +248,7 @@ export function SalesScreen({
           </p>
           {!q && active > 0 && !onlyThisShift ? (
             <button className="btn compact" style={{ marginTop: 8 }} onClick={() => setFilter({})}>
-              Clear filters
+              Clear
             </button>
           ) : !q && mine && (
             <button className="btn compact" style={{ marginTop: 8 }} onClick={onSell}>
@@ -347,7 +347,7 @@ function FilterSheet({
       action={
         activeCount(draft) > 0 ? (
           <button className="btn ghost small" onClick={() => setDraft({})}>
-            Clear all
+            Clear
           </button>
         ) : undefined
       }

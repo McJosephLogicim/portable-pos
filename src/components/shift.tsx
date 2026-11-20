@@ -119,7 +119,7 @@ function LinkSheet({
             }
           }}
         >
-          {busy ? "Adding…" : "Add shift"}
+          {busy ? "Adding…" : "Add"}
         </button>
       }
     >
@@ -257,7 +257,7 @@ function NoShift({
         />
       ) : null}
       <button className={"btn" + (list.length ? " ghost compact" : "")} onClick={onSchedule}>
-        {list.length ? "See all shifts" : "Add a shift"}
+        {list.length ? "See all shifts" : "Add"}
       </button>
     </div>
   );
@@ -1013,7 +1013,7 @@ export function ShiftScreen({
         <ConfirmSheet
           title="Remove expense?"
           detail={`${removing.label} (${formatMoney(removing.amount, currency)}) will come out of the shift’s expense total.`}
-          confirmLabel="Remove expense"
+          confirmLabel="Remove"
           onClose={() => setRemoving(null)}
           onConfirm={() => onUnexpense(removing.id)}
         />
