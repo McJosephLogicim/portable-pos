@@ -10,7 +10,7 @@ import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
-import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
+import { buzz, CategoryTabs, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
   namesText,
   PickChips,
@@ -158,6 +158,7 @@ type StockMode = "off" | "count" | "uses";
 
 export function ItemSheet({
   product,
+  category: startCategory = "",
   currency,
   menu,
   simple = false,
@@ -171,6 +172,8 @@ export function ItemSheet({
   onClose,
 }: {
   product?: Product;
+  /** A new item's category, when it is added from a category tab. */
+  category?: string;
   simple?: boolean;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
@@ -234,7 +237,7 @@ export function ItemSheet({
       // Wait for a complete selling price before previewing margins.
     }
   }
-  const [category, setCategory] = useState(product?.category ?? "");
+  const [category, setCategory] = useState(product?.category ?? startCategory);
   const [image, setImage] = useState(product?.image);
   const reuse = useMemo(() => reusable(menu, product?.id, currency), [menu, product?.id, currency]);
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
@@ -556,8 +559,13 @@ export function MenuPage(props: RecipesProps) {
   const menu = props.state.menu;
   const commit = useCommit(props);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [newCategory, setNewCategory] = useState(false);
+  const [picked, setTab] = useState<string | null>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
-  const grouped = [...categories, ""].map((c) => ({ name: c, items: menu.filter((m) => (m.category || "") === c) }));
+  const tab = picked && categories.includes(picked) ? picked : null;
+  const grouped = [...categories, ""]
+    .filter((c) => tab === null || c === tab)
+    .map((c) => ({ name: c, items: menu.filter((m) => (m.category || "") === c) }));
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   return (
     <SubPage
@@ -584,10 +592,19 @@ export function MenuPage(props: RecipesProps) {
           text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
         />
       )}
+      {menu.length > 0 && (
+        <CategoryTabs
+          categories={categories}
+          value={tab}
+          onChange={setTab}
+          onNew={() => setNewCategory(true)}
+          newDisabled={!props.online}
+        />
+      )}
       {grouped
         .filter((g) => g.items.length)
         .map((g) => (
-          <RecordGroup key={g.name || "none"} title={g.name || (categories.length ? "No category" : undefined)}>
+          <RecordGroup key={g.name || "none"} title={tab ? undefined : g.name || (categories.length ? "No category" : undefined)}>
             {g.items.map((p) => (
               <RecordRow
                 key={p.id}
@@ -622,6 +639,7 @@ export function MenuPage(props: RecipesProps) {
           key={simple ? "simple" : "advanced"}
           simple={simple}
           product={editing === "new" ? undefined : editing}
+          category={tab ?? undefined}
           currency={business.currency}
           menu={menu}
           liveShift={live}
@@ -645,11 +663,35 @@ export function MenuPage(props: RecipesProps) {
           }
         />
       )}
+      {newCategory && (
+        <CategorySheet
+          menu={menu}
+          onClose={() => setNewCategory(false)}
+          onSave={async (name, ids) => {
+            const saved = await commit.menu(withCategory(menu, "", name, ids), "Added " + name);
+            if (saved) setTab(name);
+            return saved;
+          }}
+        />
+      )}
     </SubPage>
   );
 }
 
 /* ---------- categories ---------- */
+
+/** The menu with these items in the category, and any others that were in it (under its old name) taken out. */
+function withCategory(menu: Product[], before: string, name: string, ids: string[]) {
+  return menu.map((p) =>
+    ids.includes(p.id)
+      ? p.category === name
+        ? p
+        : { ...p, category: name }
+      : before && p.category.trim() === before
+        ? { ...p, category: "" }
+        : p,
+  );
+}
 
 export function categoriesOf(menu: Product[]) {
   const map = new Map<string, Product[]>();
@@ -778,16 +820,7 @@ export function CategoriesPage(props: RecipesProps) {
           onClose={() => setEditing(null)}
           onSave={(name, ids) => {
             const before = editing === "new" ? "" : editing.name;
-            const next = menu.map((p) =>
-              ids.includes(p.id)
-                ? p.category === name
-                  ? p
-                  : { ...p, category: name }
-                : before && p.category.trim() === before
-                  ? { ...p, category: "" }
-                  : p,
-            );
-            return commit.menu(next, (editing === "new" ? "Added " : "Saved ") + name);
+            return commit.menu(withCategory(menu, before, name, ids), (editing === "new" ? "Added " : "Saved ") + name);
           }}
           onRemove={
             editing === "new"

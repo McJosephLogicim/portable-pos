@@ -19,6 +19,7 @@ import {
   CreditCard,
   Delete,
   Info,
+  Plus,
   Smartphone,
   Wallet,
   X,
@@ -766,3 +767,40 @@ export function EmptyRow({ title, detail }: { title: string; detail?: string }) 
   );
 }
 
+
+/**
+ * Category tabs, as on Sell: "All" then each category. Tapping the open tab goes back to All.
+ * onNew adds a dashed "New category" tab at the end.
+ */
+export function CategoryTabs({
+  categories,
+  value,
+  onChange,
+  onNew,
+  newDisabled,
+}: {
+  categories: string[];
+  value: string | null;
+  onChange: (category: string | null) => void;
+  onNew?: () => void;
+  newDisabled?: boolean;
+}) {
+  return (
+    <div className="chips" role="group" aria-label="Categories">
+      <button type="button" aria-pressed={value === null} onClick={() => onChange(null)}>
+        All
+      </button>
+      {categories.map((c) => (
+        <button key={c} type="button" aria-pressed={value === c} onClick={() => onChange(value === c ? null : c)}>
+          {c}
+        </button>
+      ))}
+      {onNew && (
+        <button type="button" className="chip-new" disabled={newDisabled} onClick={onNew}>
+          <Plus size={16} strokeWidth={2} aria-hidden />
+          New category
+        </button>
+      )}
+    </div>
+  );
+}
