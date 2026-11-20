@@ -353,6 +353,7 @@ export function Sheet({
   footer,
   busy = false,
   action,
+  help,
 }: {
   title: string;
   onClose: () => void;
@@ -360,6 +361,8 @@ export function Sheet({
   footer?: ReactNode;
   busy?: boolean;
   action?: ReactNode;
+  /** How this sheet works, behind an (i) beside the title. */
+  help?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -409,7 +412,16 @@ export function Sheet({
       }}
     >
       <div className="sheet-head">
-        <h2 id={id}>{title}</h2>
+        {help ? (
+          <div className="sheet-title">
+            <h2 id={id}>{title}</h2>
+            <Explain title={title} label={"About " + title.toLowerCase()}>
+              {help}
+            </Explain>
+          </div>
+        ) : (
+          <h2 id={id}>{title}</h2>
+        )}
         {action}
         <button
           type="button"
@@ -431,14 +443,14 @@ export function Sheet({
  * A word that needs explaining, like "usable yield": a small (i) next to it opens a short,
  * plain answer. Keeps labels short without leaving anyone guessing.
  */
-export function Explain({ title, children }: { title: string; children: ReactNode }) {
+export function Explain({ title, label, children }: { title: string; label?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
         className="explain"
-        aria-label={"What is " + title.toLowerCase() + "?"}
+        aria-label={label ?? "What is " + title.toLowerCase() + "?"}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();

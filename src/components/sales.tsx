@@ -318,6 +318,7 @@ function FilterSheet({
     <Sheet
       title="Filter sales"
       onClose={onClose}
+      help="Pick as many as you like. Sales must match every group you use."
       action={
         activeCount(draft) > 0 ? (
           <button className="btn ghost small" onClick={() => setDraft({})}>
@@ -331,7 +332,6 @@ function FilterSheet({
         </button>
       }
     >
-      <p className="label">Pick as many as you like. Sales must match every group you use.</p>
       {filterKeys.map((key) => {
         const list = options[key];
         if (!list.length) return null;

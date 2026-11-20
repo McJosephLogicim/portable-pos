@@ -203,6 +203,7 @@ export function RecordSheet({
   removeLabel,
   onRemove,
   onClose,
+  help,
   children,
 }: {
   /** "item", "category", "stock item"… */
@@ -216,12 +217,15 @@ export function RecordSheet({
   removeLabel?: string;
   onRemove?: () => void;
   onClose: () => void;
+  /** How this record works, behind an (i) beside the sheet title. */
+  help?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Sheet
       title={(editing ? "Edit " : "New ") + noun}
       onClose={onClose}
+      help={help}
       busy={busy}
       footer={
         <>

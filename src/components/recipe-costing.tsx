@@ -8,7 +8,7 @@ import type { Business, Product } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
 import { Row, SubPage, useCommit } from "./settings";
 import { RecordEmpty, useRecordSave } from "./records";
-import { formatMoney, MoneyField } from "./ui";
+import { Explain, formatMoney, MoneyField } from "./ui";
 
 const percent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 });
 const asPercent = (value: number | undefined) => value === undefined ? "—" : percent.format(value);
@@ -102,11 +102,13 @@ export function PricingRulesPage(props: RecipesProps) {
       }}>
         <div className="card card-pad stack gap-14">
           <label className="field">
-            <span>Default target margin (%)</span>
+            <span className="field-head">
+              Default target margin (%)
+              <Explain title="Default target margin">Menu items can override the target margin.</Explain>
+            </span>
             <input className="input" inputMode="decimal" maxLength={12} value={target} onChange={(e) => setTarget(e.target.value)} />
           </label>
           <MoneyField label="Round suggested prices up to" value={increment} onChange={setIncrement} currency={currency} />
-          <p className="label">Menu items can override the target margin.</p>
         </div>
         {error && <p className="alert" role="alert">{error}</p>}
         <button className="btn block" disabled={busy || !props.online || !dirty}>

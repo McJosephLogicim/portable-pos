@@ -6,7 +6,7 @@ import { bestSellers, leaderboard, salesByHour, type Board } from "@/lib/insight
 import { dayOf, zonedInstant } from "@/lib/team";
 import type { Booking, Product, RegisterState } from "@/lib/types";
 import { Avatar } from "./team";
-import { buzz, formatMoney, Money, progressStyle, Sheet } from "./ui";
+import { buzz, Explain, formatMoney, Money, progressStyle, Sheet } from "./ui";
 
 const hourName = (h: number) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
 
@@ -232,7 +232,10 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
   return (
     <div className="stack gap-10">
       <div className="between section-head">
-        <p className="group-title">{empty ? "Ranked by " + (owner ? "sales" : "quotas hit") : "Leaderboard"}</p>
+        <p className="group-title title-help">
+          {empty ? "Ranked by " + (owner ? "sales" : "quotas hit") : "Leaderboard"}
+          {!owner && !empty && <Explain title="Leaderboard">Ranked by quotas hit, then shifts worked.</Explain>}
+        </p>
         <button
           className="link small-link"
           onClick={() => {
@@ -296,7 +299,6 @@ export function Leaderboards({ state, demo, empty = false }: { state: RegisterSt
           </p>
         )}
       </div>
-      {!owner && <p className="label">Ranked by quotas hit, then shifts worked.</p>}
     </div>
   );
 }

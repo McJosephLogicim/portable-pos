@@ -140,6 +140,16 @@ export function StockSheet({
   return (
     <RecordSheet
       noun={prepOnly || item?.prep ? "prep item" : "stock item"}
+      help={
+        <>
+          <p>
+            {prepared
+              ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
+              : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
+          </p>
+          <p>New names under {prepared ? "Recipe details" : "Purchasing details"} are added to Stock lists when you save.</p>
+        </>
+      }
       editing={Boolean(item)}
       busy={busy}
       error={error}
@@ -319,22 +329,19 @@ export function StockSheet({
               </label>
             </>
           )}
-          <p className="label">New names are added to Stock lists when you save.</p>
           <label className="field">
             <span>Notes</span>
             <textarea className="input" aria-label="Notes" rows={2} maxLength={400} value={details.notes ?? ""} onChange={(e) => setDetails({ ...details, notes: e.target.value })} />
           </label>
         </div>
       </details>
-      <p className="label">
-        {item
-          ? users.length
+      {item && (
+        <p className="label">
+          {users.length
             ? "Used by " + namesText(users, 3) + "." + (onRemove ? " Removing it stops those items using it." : "")
-            : "No menu item uses it yet. Open a menu item and set Stock to Uses stock."
-          : prepared
-            ? "It's counted when a shift opens and closes, like other stock. Menu items that use it pick up its cost."
-            : "It's counted when a shift opens and closes. Then pick it on the menu items that use it."}
-      </p>
+            : "No menu item uses it yet. Open a menu item and set Stock to Uses stock."}
+        </p>
+      )}
       {recipeUsers.length > 0 && <p className="label">Used in {namesText(recipeUsers, 3)}. Remove it from those recipes before deleting it.</p>}
     </RecordSheet>
   );

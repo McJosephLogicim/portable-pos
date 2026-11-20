@@ -81,6 +81,13 @@ export function BusinessSwitcher({
     <Sheet
       title="Your businesses"
       onClose={onClose}
+      help={
+        <>
+          {demo && <p>Sign in to run more than one business.</p>}
+          <p>Each business has its own menu, team, shifts and till.</p>
+          <p>Sales waiting to sync stay with their business.</p>
+        </>
+      }
       footer={
         <button className="btn secondary block" disabled={demo || !online} onClick={onAdd}>
           <Plus size={18} /> Add a business
@@ -106,11 +113,6 @@ export function BusinessSwitcher({
           </button>
         ))}
       </div>
-      <p className="label">
-        {demo
-          ? "Sign in to run more than one business."
-          : "Each business has its own menu, team, shifts and till. Sales waiting to sync stay with their business."}
-      </p>
     </Sheet>
   );
 }

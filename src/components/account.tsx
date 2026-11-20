@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { accountsEnabled, authClient } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
 import { CurrencyOptions } from "./settings";
-import { errorText, Sheet } from "./ui";
+import { errorText, Explain, Sheet } from "./ui";
 
 export function Account({
   onDismiss,
@@ -195,7 +195,13 @@ export function Setup({
           </select>
         </label>
         <label className="field">
-          <span>Owner PIN, 4 to 8 digits</span>
+          <span className="field-head">
+            Owner PIN, 4 to 8 digits
+            <Explain title="Owner PIN">
+              <p>The PIN guards prices, settings, reversals and closing the drawer.</p>
+              <p>Staff can sell without it.</p>
+            </Explain>
+          </span>
           <input
             className="input"
             type="password"
@@ -208,10 +214,6 @@ export function Setup({
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
           />
         </label>
-        <p className="label">
-          The PIN guards prices, settings, reversals and closing the drawer. Staff
-          can sell without it.
-        </p>
         {err && (
           <p role="alert" className="alert">
             {err}

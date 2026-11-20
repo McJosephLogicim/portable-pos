@@ -260,9 +260,11 @@ function PersonPicker({
     >
       {member ? (
         <div className="field">
-          <span>Working as</span>
+          <span className="field-head">
+            Working as
+            <Explain title="Working as">Pick both if they run the till and serve.</Explain>
+          </span>
           <RolePicker value={role} onChange={setRole} />
-          <p className="label">Pick both if they run the till and serve.</p>
         </div>
       ) : people.length ? (
         <div className="card card-list">
@@ -551,7 +553,12 @@ function BookingSheet({
 
         {p && (
           <div className="stack gap-10">
-            <p className="group-title">{over ? "How it did" : started ? "So far" : "Break-even"}</p>
+            <p className="group-title title-help">
+              {over ? "How it did" : started ? "So far" : "Break-even"}
+              <Explain title="Profit for this shift">
+                Sales come from tills opened for this shift. Cost of goods isn't counted.
+              </Explain>
+            </p>
             <div className="card card-list">
               <div className="list-row">
                 <span className="grow">Sales</span>
@@ -585,9 +592,6 @@ function BookingSheet({
                 )}
               </div>
             </div>
-            <p className="label">
-              Sales come from tills opened for this shift. Cost of goods isn't counted.
-            </p>
           </div>
         )}
 
@@ -962,7 +966,12 @@ function BookingEditor({
             />
           </div>
           <div className="field">
-            <span>Event</span>
+            <span className="field-head">
+              Event
+              <Explain title="Organizers and events">
+                New names are added to your list when you save. Rename or remove them in Settings.
+              </Explain>
+            </span>
             <SuggestInput
               label="Event"
               placeholder="e.g. Christmas Bazaar"
@@ -972,7 +981,6 @@ function BookingEditor({
               suggestions={(organizer?.events ?? []).map((e) => ({ key: e.id, name: e.name }))}
               onChange={(event) => set({ event })}
             />
-            <p className="label">New names are added to your list when you save. Rename or remove them in Settings.</p>
           </div>
           <div className="field">
             <span>Location</span>

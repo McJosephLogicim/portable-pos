@@ -351,6 +351,7 @@ export function LocationPicker({
         <Sheet
           title="Map preview"
           onClose={() => setPreview(null)}
+          help="Not quite right? Drag the map or tap the exact spot to move the pin."
           footer={
             <button className="btn block" onClick={() => onPick(preview)}>
               Use this location
@@ -368,9 +369,11 @@ export function LocationPicker({
             height={280}
             onMove={(point) => setPreview({ ...preview, ...point })}
           />
-          <p className="label" style={{ textAlign: "center" }}>
-            {moved ? "Pin moved. Drag again or tap to fine-tune." : "Not quite right? Drag the map or tap the exact spot."}
-          </p>
+          {moved && (
+            <p className="label" style={{ textAlign: "center" }}>
+              Pin moved. Drag again or tap to fine-tune.
+            </p>
+          )}
         </Sheet>
       )}
     </>

@@ -3273,3 +3273,23 @@ html {
   gap: 2px;
   min-width: 0;
 }
+
+/* (i) beside a sheet title */
+.sheet-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-top: 14px;
+}
+.sheet-title > h2 {
+  flex: 0 1 auto;
+  padding-top: 0;
+}
+/* (i) beside a section title, keeping the title's own type */
+.title-help {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
