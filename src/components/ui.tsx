@@ -591,21 +591,18 @@ export function MoneyField({
   autoFocus?: boolean;
   placeholder?: string;
 }) {
+  const id = useId();
   return (
-    <label className="field">
-      {help ? (
-        <span className="field-head">
-          {label}
-          <Explain title={help.title}>{help.body}</Explain>
-        </span>
-      ) : (
-        <span>{label}</span>
-      )}
+    <div className="field">
+      <span className={help ? "field-head" : undefined}>
+        <label htmlFor={id}>{label}</label>
+        {help && <Explain title={help.title}>{help.body}</Explain>}
+      </span>
       <span className="money-input">
         <input
+          id={id}
           className={"input" + (big ? " big" : "")}
           inputMode="decimal"
-          aria-label={help ? label : undefined}
           autoComplete="off"
           enterKeyHint="done"
           value={value}
@@ -619,7 +616,7 @@ export function MoneyField({
           {currencySymbol(currency)}
         </span>
       </span>
-    </label>
+    </div>
   );
 }
 
