@@ -1848,19 +1848,29 @@ button.notice {
   color: var(--ink-secondary);
   pointer-events: none;
 }
-/* The suggestion list floats over the content below (or above) its field. */
-.combo-float {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  z-index: 300;
-  border: 0;
-  background: var(--surface);
-  color: var(--ink);
+/* The suggestion list hangs right under its field and covers what follows, like a native
+   dropdown. It lives in the form's flow, so it scrolls with the field. */
+.suggest.open {
+  z-index: 20;
+}
+.combo-drop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  color: var(--ink);
   animation: combo-in var(--dur-fast, 120ms) var(--ease-out);
+}
+/* With the keyboard up, a sheet has little height left: while a list is open, its footer
+   steps aside so the list has room. It comes back as soon as the list or keyboard closes. */
+:root[data-keyboard] .sheet:has(.suggest.open) .sheet-foot {
+  display: none;
 }
 @keyframes combo-in {
   from {
@@ -1869,7 +1879,7 @@ button.notice {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .combo-float {
+  .combo-drop {
     animation: none;
   }
 }
