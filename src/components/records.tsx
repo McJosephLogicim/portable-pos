@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronRight, Plus, Search, Trash2, X } from "lucide-react";
 import { CategoryTabs, errorText, Sheet } from "./ui";
+import { collapseOnExit } from "@/lib/exit";
 
 /*
  * One way to keep a list of things in Settings: menu items, categories, choices, stock items
@@ -148,7 +149,7 @@ export function RecordRow({
   disabled?: boolean;
 }) {
   return (
-    <button className="list-row record-row" disabled={disabled} onClick={onClick}>
+    <button className="list-row record-row" disabled={disabled} onClick={onClick} ref={collapseOnExit}>
       {lead}
       <span className="grow stack">
         <span className="ellipsis">{title}</span>

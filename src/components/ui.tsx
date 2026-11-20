@@ -28,6 +28,7 @@ import {
 import { createPortal } from "react-dom";
 import { RequestFailure } from "@/lib/client";
 import { currencyDigits } from "@/lib/settings";
+import { collapseOnExit, exitSheet, fadeOnExit } from "@/lib/exit";
 import type { PaymentKind } from "@/lib/types";
 import { activeTextEntry } from "./input-experience";
 
@@ -370,6 +371,15 @@ export function Sheet({
   const id = useId();
   const close = useRef(onClose);
   close.current = onClose;
+  // However the sheet is closed (X, backdrop, Save, or the page moving on), it slides back down.
+  const setRef = useCallback((node: HTMLDialogElement | null) => {
+    ref.current = node;
+    const exit = exitSheet(node);
+    return () => {
+      ref.current = null;
+      exit?.();
+    };
+  }, []);
   useEffect(() => {
     const node = ref.current;
     const trigger = document.activeElement;
@@ -393,7 +403,7 @@ export function Sheet({
   }
   return (
     <dialog
-      ref={ref}
+      ref={setRef}
       className="sheet"
       tabIndex={-1}
       aria-labelledby={id}
@@ -512,7 +522,7 @@ export function Tip({ id, title, children }: { id: string; title: string; childr
   }, [key]);
   if (!shown) return null;
   return (
-    <div className="card card-pad tip" role="note">
+    <div className="card card-pad tip" role="note" ref={collapseOnExit}>
       <span className="row-text">
         <span className="strong">{title}</span>
         <span className="label">{children}</span>
@@ -843,7 +853,7 @@ export function Toast({ text, onDone }: { text: string; onDone: () => void }) {
     return () => clearTimeout(t);
   }, [text]);
   return (
-    <div className="toast" role="status">
+    <div className="toast" role="status" ref={fadeOnExit}>
       {text}
     </div>
   );
