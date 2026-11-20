@@ -11,6 +11,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import {
   Banknote,
@@ -24,6 +25,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { RequestFailure } from "@/lib/client";
 import { currencyDigits } from "@/lib/settings";
 import type { PaymentKind } from "@/lib/types";
@@ -440,38 +442,56 @@ export function Sheet({
 }
 
 /**
- * A word that needs explaining, like "usable yield": a small (i) next to it opens a short,
- * plain answer. Keeps labels short without leaving anyone guessing.
+ * The one (i) in the app. A word that needs explaining, like "usable yield", gets a small (i)
+ * next to it that opens a short, plain answer. Keeps labels short without leaving anyone guessing.
+ *
+ * It often sits inside a <label>, so two things keep it from fighting the field:
+ * - The trigger is a span, not a <button>. A button is "labelable", so tapping the label's text
+ *   would open this sheet instead of focusing the field.
+ * - The sheet renders into <body>. Inside the label, any tap in the sheet (its text, the
+ *   backdrop, and on iOS even X or Got it) re-clicked the (i) and reopened it straight away.
  */
 export function Explain({ title, label, children }: { title: string; label?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  function show(event: SyntheticEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setOpen(true);
+  }
   return (
     <>
-      <button
-        type="button"
+      <span
+        role="button"
+        tabIndex={0}
         className="explain"
         aria-label={label ?? "What is " + title.toLowerCase() + "?"}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen(true);
+        aria-haspopup="dialog"
+        onClick={show}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") show(event);
         }}
       >
         <Info size={15} strokeWidth={1.9} />
-      </button>
-      {open && (
-        <Sheet
-          title={title}
-          onClose={() => setOpen(false)}
-          footer={
-            <button type="button" className="btn block" onClick={() => setOpen(false)}>
-              Got it
-            </button>
-          }
-        >
-          <div className="explain-text stack gap-10">{children}</div>
-        </Sheet>
-      )}
+      </span>
+      {open &&
+        createPortal(
+          // React still bubbles events up its own tree through a portal; stop them here so a tap
+          // in the sheet never reaches a row, card or label the (i) sits in.
+          <div className="explain-layer" onClick={(event) => event.stopPropagation()}>
+            <Sheet
+              title={title}
+              onClose={() => setOpen(false)}
+              footer={
+                <button type="button" className="btn block" onClick={() => setOpen(false)}>
+                  Got it
+                </button>
+              }
+            >
+              <div className="explain-text stack gap-10">{children}</div>
+            </Sheet>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
