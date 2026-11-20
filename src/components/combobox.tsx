@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 export interface Suggestion {
@@ -47,6 +47,9 @@ export function SuggestInput({
     .filter((s) => !q || s.name.toLocaleLowerCase().includes(q))
     .slice(0, 8);
   const visible = open && shown.length > 0;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const place = useFloatingList(inputRef, listRef, visible);
 
   function pick(s: Suggestion) {
     if (onPick) onPick(s);
@@ -59,6 +62,7 @@ export function SuggestInput({
     <div className={"suggest " + className}>
       <input
         id={id}
+        ref={inputRef}
         className="input"
         role="combobox"
         aria-label={label}
@@ -99,7 +103,14 @@ export function SuggestInput({
         }}
       />
       {visible && (
-        <div className="combo-list card" id={id + "-list"} role="listbox" aria-label={label}>
+        <div
+          ref={listRef}
+          className={"combo-list combo-float card " + place}
+          id={id + "-list"}
+          role="listbox"
+          aria-label={label}
+          popover="manual"
+        >
           <p className="combo-head">{q ? "Matches" : "Used before"}</p>
           {shown.map((s, i) => (
             <button
@@ -127,4 +138,96 @@ export function SuggestInput({
       )}
     </div>
   );
+}
+
+const GAP = 6;
+const EDGE = 8;
+const MAX = 280;
+/** Below this much room under the field, the list opens upward if there is more room above. */
+const MIN_BELOW = 168;
+
+/**
+ * Keeps the list pinned to its field as an overlay: it sits in the top layer (above open
+ * sheets) when the browser supports popovers, follows the field while anything scrolls, and
+ * measures against the visual viewport so the on-screen keyboard counts as no room.
+ */
+function useFloatingList(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  listRef: React.RefObject<HTMLDivElement | null>,
+  visible: boolean,
+): "below" | "above" {
+  const [place, setPlace] = useState<"below" | "above">("below");
+
+  const update = useCallback(() => {
+    const input = inputRef.current;
+    const list = listRef.current;
+    if (!input || !list) return;
+    const r = input.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    const below = bottom - r.bottom - GAP - EDGE;
+    const above = r.top - top - GAP - EDGE;
+    const up = below < MIN_BELOW && above > below;
+    list.style.visibility = clipped(input, r) ? "hidden" : "";
+    const room = Math.max(96, Math.min(MAX, up ? above : below));
+    list.style.left = `${r.left}px`;
+    list.style.width = `${r.width}px`;
+    list.style.maxHeight = `${room}px`;
+    if (up) {
+      list.style.top = "auto";
+      list.style.bottom = `${window.innerHeight - r.top + GAP}px`;
+    } else {
+      list.style.bottom = "auto";
+      list.style.top = `${r.bottom + GAP}px`;
+    }
+    setPlace(up ? "above" : "below");
+  }, [inputRef, listRef]);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!visible || !list) return;
+    if (typeof list.showPopover === "function" && !list.matches(":popover-open")) {
+      try {
+        list.showPopover();
+      } catch {
+        // Not connected yet or already shown; the fixed position still works.
+      }
+    }
+    update();
+  });
+
+  useEffect(() => {
+    if (!visible) return;
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    const vv = window.visualViewport;
+    window.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    vv?.addEventListener("resize", schedule);
+    vv?.addEventListener("scroll", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+      vv?.removeEventListener("resize", schedule);
+      vv?.removeEventListener("scroll", schedule);
+    };
+  }, [visible, update]);
+
+  return place;
+}
+
+/** True once the field has scrolled out of a box that clips it, like a sheet's body. */
+function clipped(input: HTMLElement, r: DOMRect): boolean {
+  for (let el = input.parentElement; el && el !== document.body; el = el.parentElement) {
+    const { overflowY } = getComputedStyle(el);
+    if (overflowY === "visible") continue;
+    const box = el.getBoundingClientRect();
+    if (r.bottom <= box.top || r.top >= box.bottom) return true;
+  }
+  return false;
 }
