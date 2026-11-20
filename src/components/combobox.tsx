@@ -49,7 +49,7 @@ export function SuggestInput({
   const visible = open && shown.length > 0;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  useFloatingList(inputRef, listRef, visible);
+  useFloatingList(inputRef, listRef, visible, shown.length);
 
   function pick(s: Suggestion) {
     if (onPick) onPick(s);
@@ -156,6 +156,8 @@ function useFloatingList(
   inputRef: React.RefObject<HTMLInputElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
+  /** How many rows show; the list grows as typing changes it, so room is made again. */
+  rows: number,
 ) {
   const update = useCallback(() => {
     const input = inputRef.current;
@@ -218,7 +220,6 @@ function useFloatingList(
       makeRoom();
       schedule();
     };
-    makeRoom();
     const vv = window.visualViewport;
     window.addEventListener("scroll", schedule, true);
     window.addEventListener("resize", resized);
@@ -232,6 +233,10 @@ function useFloatingList(
       vv?.removeEventListener("scroll", schedule);
     };
   }, [visible, update, makeRoom]);
+
+  useEffect(() => {
+    if (visible) makeRoom();
+  }, [visible, rows, makeRoom]);
 }
 
 function scrollBox(el: HTMLElement): HTMLElement | null {
