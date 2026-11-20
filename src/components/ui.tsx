@@ -695,42 +695,36 @@ export function Explain({ title, label, children }: { title: string; label?: str
 }
 
 /**
- * A one-time pointer to something that's easy to miss, like where a button lives. It stays
- * until it's dismissed on this phone, then never comes back.
+ * The one live notice in the app: something true right now that needs attention, like a failed
+ * sync or a sold-out item in the order. A small dot says how serious it is; the text says what
+ * happened and what to do. How-it-works text never goes here; it goes behind an (i).
  */
-export function Tip({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  const key = "portable-pos-tip:" + id;
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    try {
-      setShown(!localStorage.getItem(key));
-    } catch {
-      setShown(false);
-    }
-  }, [key]);
-  if (!shown) return null;
+export function Notice({
+  tone = "info",
+  action,
+  onDismiss,
+  live = "polite",
+  children,
+}: {
+  /** danger: something failed or blocks the next step. warn: needs doing soon. info: just so you know. */
+  tone?: "danger" | "warn" | "info";
+  /** One small button, like Retry. */
+  action?: ReactNode;
+  onDismiss?: () => void;
+  /** assertive only when it blocks what the person is doing right now. */
+  live?: "polite" | "assertive";
+  children: ReactNode;
+}) {
   return (
-    <div className="card card-pad tip" role="note" ref={collapseOnExit}>
-      <span className="row-text">
-        <span className="strong">{title}</span>
-        <span className="label">{children}</span>
-      </span>
-      <button
-        type="button"
-        className="round flat small"
-        aria-label="Dismiss tip"
-        onClick={() => {
-          buzz.tap();
-          setShown(false);
-          try {
-            localStorage.setItem(key, "1");
-          } catch {
-            // Hidden for now; it may show again on a phone that can't store it.
-          }
-        }}
-      >
-        <X size={16} />
-      </button>
+    <div className={"notice " + tone} role={live === "assertive" ? "alert" : "status"} ref={collapseOnExit}>
+      <span className="dot" aria-hidden="true" />
+      <span className="notice-text">{children}</span>
+      {action && <span className="notice-actions">{action}</span>}
+      {onDismiss && (
+        <button type="button" className="round flat small" aria-label="Dismiss" onClick={onDismiss}>
+          <X size={16} />
+        </button>
+      )}
     </div>
   );
 }

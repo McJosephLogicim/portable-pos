@@ -44,6 +44,7 @@ import {
   MethodIcon,
   Money,
   MoneyField,
+  Notice,
   PhotoPicker,
   Sheet,
   Explain,
@@ -224,9 +225,9 @@ export function useDraft(
     dirty || error ? (
       <div className="save-bar stack gap-8">
         {error && (
-          <p className="notice alert" role="alert">
+          <Notice tone="danger" live="assertive">
             {error}
-          </p>
+          </Notice>
         )}
         <button
           type="button"

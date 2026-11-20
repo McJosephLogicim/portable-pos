@@ -41,8 +41,9 @@ import {
   MethodIcon,
   Money,
   MoneyField,
+  Notice,
   Sheet,
-  Tip,
+  Explain,
 } from "./ui";
 import styles from "./sell.module.css";
 
@@ -636,8 +637,8 @@ function Checkout({
             </p>
           )}
         </div>
-        {blocked && <p className="notice" role="alert">An item sold out. Go back and remove it to charge.</p>}
-        {review < total && <p className="notice" role="alert">The total changed. Go back to review the new total.</p>}
+        {blocked && <Notice tone="danger" live="assertive">An item sold out. Go back and remove it to charge.</Notice>}
+        {review < total && <Notice tone="warn" live="assertive">The total changed. Go back to review the new total.</Notice>}
         {error && (
           <p className="alert" role="alert">
             {error}
@@ -699,7 +700,7 @@ function Checkout({
           }}
         />
       </div>
-      {blocked && <p className="notice" role="alert">Remove the sold-out item to charge.</p>}
+      {blocked && <Notice tone="danger" live="assertive">Remove the sold-out item to charge.</Notice>}
       <div className={`due ${styles.stageFocus}`} ref={stageTarget} tabIndex={-1}>
         <span className="stack">
           <span className="strong">Total</span>
@@ -872,8 +873,8 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   if (!booking)
     return (
-      <button type="button" className="shift-strip warn" onClick={onTill}>
-        <CalendarDays size={16} strokeWidth={1.9} />
+      <button type="button" className="shift-strip" onClick={onTill}>
+        <span className="dot" aria-hidden="true" />
         <span className="grow ellipsis">{onTillPage ? "Not on a shift yet. Tap to add it." : "Not on a shift yet. Add it on the Till."}</span>
         <ChevronRight size={16} className="chev" />
       </button>
@@ -1030,7 +1031,16 @@ export function SellScreen({
       <div className="sell-head">
         <div className="page-top">
           <div className="grow stack" style={{ minWidth: 0 }}>
-            <h1 className="sell-title">Sell</h1>
+            <div className="page-title">
+              <h1 className="sell-title">Sell</h1>
+              <Explain title="Selling" label="How selling works">
+                <p>Tap an item to add it to the order, then Charge.</p>
+                <p>
+                  Something ran out? Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the
+                  top, then the item. It shows Sold out until you tap it again.
+                </p>
+              </Explain>
+            </div>
             <span className="label row gap-6">
               {status !== "Online" && (
                 <span className={"dot" + (online ? "" : " danger")} />
@@ -1065,11 +1075,6 @@ export function SellScreen({
           </button>
         </div>
         <ShiftStrip state={state} onTill={onTill} />
-        {menu.length > 0 && !marking && (
-          <Tip id="sold-out" title="Something ran out?">
-            Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the top, then the item. It shows Sold out until you tap it again.
-          </Tip>
-        )}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1092,26 +1097,30 @@ export function SellScreen({
         {categories.length > 1 && <CategoryTabs categories={categories} value={category} onChange={setCategory} />}
       </div>
       {error && (
-        <p className="notice alert" role="alert">
+        <Notice tone="danger" live="assertive">
           {error}
-        </p>
+        </Notice>
       )}
       <span className="sr-only" role="status" aria-atomic="true">
         {cartMenuError ? "" : count ? `Order: ${count} ${count === 1 ? "item" : "items"}. Total ${formatMoney(total, currency)}.` : "Order empty."}
       </span>
       {cartMenuError && (
-        <div className="notice between" role="alert">
-          <span>The menu changed. Clear the order and add its items again.</span>
-          <button className="btn ghost compact" disabled={busy} onClick={() => setConfirmClear(true)}>
-            Clear
-          </button>
-        </div>
+        <Notice
+          tone="warn"
+          live="assertive"
+          action={
+            <button type="button" className="btn" disabled={busy} onClick={() => setConfirmClear(true)}>
+              Clear
+            </button>
+          }
+        >
+          The menu changed. Clear the order and add its items again.
+        </Notice>
       )}
       {blocked && (
-        <p className="notice" role="alert">
-          <span className="dot danger" />
+        <Notice tone="danger" live="assertive">
           Something in this order just sold out. Remove it to charge.
-        </p>
+        </Notice>
       )}
       <div>
         {items.length ? (

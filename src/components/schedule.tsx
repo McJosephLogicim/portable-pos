@@ -63,7 +63,7 @@ import { shiftCurrency } from "./receipt";
 import { ReportSheet } from "./report";
 import { CopyButton } from "./share";
 import { Avatar, RolePicker } from "./team";
-import { buzz, centerOf, ConfirmSheet, EmptyState, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, Tip, useCelebrate, usePin } from "./ui";
+import { buzz, centerOf, ConfirmSheet, EmptyState, errorText, Explain, formatMoney, Money, MoneyField, progressStyle, Sheet, useCelebrate, usePin } from "./ui";
 import styles from "./operations.module.css";
 
 type Act = (input: OwnerAction) => Promise<void>;
@@ -1596,7 +1596,16 @@ export function ScheduleScreen(props: ScheduleProps) {
   return (
     <div className="page">
       <div className={`page-top tight ${styles.scheduleHeader}`}>
-        <h1 className="headline grow">Shifts</h1>
+        <div className="grow page-title">
+          <h1 className="headline">Shifts</h1>
+          <Explain title="Shifts" label="How shifts work">
+            {me?.owner ? (
+              <p>Use Add to schedule a shift or a series. The trophy opens the leaderboard.</p>
+            ) : (
+              <p>Your shifts and who works with you. The trophy opens the leaderboard.</p>
+            )}
+          </Explain>
+        </div>
         <button
           className="round"
           aria-label="Share the schedule"
@@ -1622,12 +1631,6 @@ export function ScheduleScreen(props: ScheduleProps) {
         </button>
         {me?.owner && <AddShiftMenu disabled={!props.online} onAdd={setEditing} />}
       </div>
-
-      {me?.owner && (
-        <Tip id="shifts" title="Plan who works where">
-          Use Add to schedule a shift or a series. The trophy opens the leaderboard.
-        </Tip>
-      )}
 
       {me?.owner && monthDone.length > 0 ? (
         <div className="hero stack gap-8">
