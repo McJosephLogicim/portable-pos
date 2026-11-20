@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { joinLink } from "../src/lib/join-link";
 import { checkOpening, makeSale, stockLeft, updateShiftMenu } from "../src/lib/domain";
 import {
   rolesOf,
@@ -340,7 +341,7 @@ test(
     assert.equal(resent.inviteDelivery, "sent");
     assert.equal(resent.team!.length, failed.team!.length);
     assert.deepEqual(mail.at(-1)?.to, [beaEmail]);
-    assert.ok(mail.at(-1)?.text.includes(`https://pos.example.com/?shifts=${second}`));
+    assert.ok(mail.at(-1)?.text.includes(joinLink("https://pos.example.com", second)));
     assert.equal(mail.length, 4);
     // The same confirmed account can open the new team and still owns its business.
     const beaBoth = await bea({ action: "bootstrap" });

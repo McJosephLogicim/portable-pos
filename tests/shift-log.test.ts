@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { checkCount, countTotal, denominations } from "../src/lib/cash";
 import { checkClosing, checkOpening, makeSale, shiftTotals, stockLeft } from "../src/lib/domain";
+import { joinLink, matchCode, readJoinCode, shortCode, SHIFT_CODE, TEAM_CODE } from "../src/lib/join-link";
 import { reportText, scheduleText, shiftReport } from "../src/lib/report";
 import { canMake, shiftStock } from "../src/lib/stock";
 import type { Booking, Business, Expense, Product, Shift } from "../src/lib/types";
@@ -118,32 +119,54 @@ test("menu items use stock items, sales draw them down, and closing reports the 
 });
 
 test("the schedule copies grouped by place and event with a distinct link for each shift", () => {
+  const team = "3f2b8c1e-9d4a-4c7b-8e21-5a6f0d9c4b17";
+  const ids = {
+    nov20: "a1c3e5f7-1111-4abc-9def-000000000001",
+    am: "b2d4f6a8-2222-4abc-9def-000000000002",
+    pm: "c3e5a7b9-3333-4abc-9def-000000000003",
+    market: "d4f6b8ca-4444-4abc-9def-000000000004",
+  };
   const booking = (id: string, day: string, hour: string, names: string[]): Booking => ({
     id, startsAt: `${day}T${hour}:00:00.000Z`, endsAt: `${day}T12:00:00.000Z`,
     place: { name: "SM City Grand Central" }, organizer: null,
     event: { id: "ube", name: "Ube Matcha takeover" }, seats: 2, quota: 0, incentive: 0,
     staff: names.map((name) => ({ memberId: name, name, role: "cashier" as const })),
   });
-  const market = booking("market", "2026-11-28", "02", ["Brian Santos", "Aye"]);
+  const market = booking(ids.market, "2026-11-28", "02", ["Brian Santos", "Aye"]);
   const text = scheduleText(
     [
-      booking("nov21-pm", "2026-11-21", "07", ["Aye"]),
-      booking("nov20", "2026-11-20", "02", ["Bettercup"]),
-      booking("nov21-am", "2026-11-21", "02", []),
+      booking(ids.pm, "2026-11-21", "07", ["Aye"]),
+      booking(ids.nov20, "2026-11-20", "02", ["Bettercup"]),
+      booking(ids.am, "2026-11-21", "02", []),
       { ...market, place: { name: "SM Manila" }, event: null },
     ],
     "Asia/Manila",
-    { origin: "https://pos.example.com", businessId: "team" },
+    { origin: "https://pos.example.com", businessId: team },
   );
+  const link = (id: string) => "https://pos.example.com/j/" + shortCode(team, TEAM_CODE) + shortCode(id, SHIFT_CODE);
   assert.equal(text, [
     "SM City Grand Central - Ube Matcha takeover",
-    "Nov 20 Bettercup - https://pos.example.com/?shifts=team&shift=nov20",
-    "Nov 21 10:00 AM - https://pos.example.com/?shifts=team&shift=nov21-am",
-    "Nov 21 3:00 PM Aye - https://pos.example.com/?shifts=team&shift=nov21-pm",
+    "Nov 20 Bettercup - " + link(ids.nov20),
+    "Nov 21 10:00 AM - " + link(ids.am),
+    "Nov 21 3:00 PM Aye - " + link(ids.pm),
     "",
     "SM Manila",
-    "Nov 28 Brian, Aye - https://pos.example.com/?shifts=team&shift=market",
+    "Nov 28 Brian, Aye - " + link(ids.market),
   ].join("\n"));
+});
+
+test("short join links stay short and find their team and shift again", () => {
+  const team = crypto.randomUUID(), other = crypto.randomUUID();
+  const shifts = Array.from({ length: 50 }, () => ({ id: crypto.randomUUID() }));
+  const url = joinLink("https://pos.example.com", team, shifts[7].id);
+  assert.ok(url.length <= "https://pos.example.com/j/".length + 9, url);
+  const code = readJoinCode(url.split("/j/")[1])!;
+  assert.equal(matchCode([{ id: other }, { id: team }], code.team, TEAM_CODE)?.id, team);
+  assert.equal(matchCode(shifts, code.shift!, SHIFT_CODE)?.id, shifts[7].id);
+  const open = readJoinCode(joinLink("https://pos.example.com", team).split("/j/")[1]);
+  assert.deepEqual(open, { team: code.team, shift: null });
+  assert.equal(readJoinCode("../x"), null);
+  assert.equal(readJoinCode("abcd"), null);
 });
 
 test(

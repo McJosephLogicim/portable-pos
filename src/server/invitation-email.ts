@@ -1,3 +1,4 @@
+import { joinLink } from "../lib/join-link";
 import type { Business, RegisterResponse } from "../lib/types";
 
 export async function sendInvitationEmail(
@@ -10,9 +11,8 @@ export async function sendInvitationEmail(
   if (!key || !from || !origin) return "unavailable";
 
   try {
-    const link = new URL("/", origin);
-    if (link.protocol !== "https:") return "unavailable";
-    link.searchParams.set("shifts", business.id);
+    if (new URL(origin).protocol !== "https:") return "unavailable";
+    const link = joinLink(origin, business.id);
     const businessName = business.name.replace(/\s+/g, " ").trim();
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -27,7 +27,7 @@ export async function sendInvitationEmail(
         text: [
           `You've been invited to join ${businessName} on Portable POS.`,
           "Open the link and sign in with this email address. If you're new to Portable POS, create an account with this address and confirm it first.",
-          link.href,
+          link,
         ].join("\n\n"),
       }),
       signal: AbortSignal.timeout(5000),
