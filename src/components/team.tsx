@@ -11,6 +11,7 @@ import { SubPage, useDraft } from "./settings";
 import { matches, RecordNoMatch, RecordSearch } from "./records";
 import { CopyButton } from "./share";
 import { ConfirmSheet, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 export function initials(name: string) {
   return (
@@ -304,7 +305,7 @@ export function TeamPage(props: SettingsProps) {
       }
       onBack={() => props.onPage(null)}
     >
-      <button className="btn" disabled={!props.online} onClick={() => setEditing("new")}>
+      <button className="btn" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
         <UserPlus size={18} /> Invite
       </button>
       <RecordSearch
@@ -330,7 +331,7 @@ export function TeamPage(props: SettingsProps) {
       {shown.length > 0 && (
         <div className="card card-list">
           {shown.map((m) => (
-            <button key={m.id} className="list-row" disabled={!props.online} onClick={() => setEditing(m)}>
+            <button key={m.id} className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing(m)}>
               <Avatar id={m.id} name={m.name} dim={!m.joined} />
               <span className="grow stack">
                 <span className="ellipsis">
@@ -477,7 +478,7 @@ export function ChecklistPage(props: SettingsProps) {
             add();
           }}
         />
-        <button type="button" className="btn secondary compact" onClick={add} disabled={!text.trim() || full}>
+        <button type="button" className="btn secondary compact" onClick={add} {...blocked(full ? "The checklist can hold up to 30 steps." : !text.trim() && "Type the step first.")}>
           Add
         </button>
       </div>

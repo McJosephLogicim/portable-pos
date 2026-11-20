@@ -52,6 +52,7 @@ import {
   usePin,
 } from "./ui";
 import styles from "./settings.module.css";
+import { blocked } from "@/lib/reject";
 
 export type SettingsInput = {
   name: string;
@@ -627,7 +628,7 @@ function MethodSheet({
           {method && onRemove && (
             <button
               className="btn ghost danger compact block"
-              disabled={!canRemove}
+              {...blocked(!canRemove && "Keep at least one payment method on at checkout.")}
               onClick={() => setRemoving(true)}
             >
               <Trash2 size={16} /> Remove

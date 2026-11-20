@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Receipt, Trash2 } from "lucide-react";
 import { parseMoney } from "@/lib/domain";
+import { blocked } from "@/lib/reject";
 import type { Expense, ExpenseInput } from "@/lib/types";
 import { SuggestInput } from "./combobox";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
@@ -28,7 +29,6 @@ function ExpenseSheet({
   try {
     value = amount.trim() ? parseMoney(amount, currency) : undefined;
   } catch {}
-  const ready = label.trim() && value;
   return (
     <Sheet
       title="Log an expense"
@@ -37,7 +37,8 @@ function ExpenseSheet({
       footer={
         <button
           className="btn block"
-          disabled={!ready || busy}
+          disabled={busy}
+          {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
           onClick={async () => {
             setBusy(true);
             setError("");

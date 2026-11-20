@@ -1,7 +1,7 @@
 "use client";
 
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
@@ -13,6 +13,7 @@ import { Account, AccountLinkError, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountsEnabled, api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
 import { priceLines, updateShiftMenu } from "@/lib/domain";
@@ -145,6 +146,7 @@ export function Workspace() {
     [sharedSchedule, setSharedSchedule] = useState<{ bookingId: string | null } | null>(null),
     [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
     [toast, setToast] = useState(""),
+    [toastStamp, setToastStamp] = useState(0),
     [undoNotices, setUndoNotices] = useState<UndoNotice[]>([]),
     [confirmSignOut, setConfirmSignOut] = useState(false),
     [adding, setAdding] = useState(false),
@@ -156,6 +158,28 @@ export function Workspace() {
     syncBusy = useRef(false),
     joinTarget = useRef<JoinTarget | null>(null),
     inviteTarget = useRef<string | null>(null);
+  // Toasts sit in the top layer, above any open sheet, so a refused tap inside a sheet still
+  // shows its reason. Re-raised on each new toast, in case a sheet opened since the last one.
+  const toastLayer = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = toastLayer.current;
+    if (!node || typeof node.showPopover !== "function") return;
+    node.popover = "manual";
+    if (node.matches(":popover-open")) node.hidePopover();
+    node.showPopover();
+  }, [toast, toastStamp, undoNotices.length]);
+  // A tap on something blocked (a future shift, a sold-out item) says why in the toast.
+  useEffect(() => {
+    const uninstall = installRejects();
+    const unlisten = onReject((reason) => {
+      setToast(reason);
+      setToastStamp((n) => n + 1);
+    });
+    return () => {
+      uninstall();
+      unlisten();
+    };
+  }, []);
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
   }, []);
@@ -905,8 +929,8 @@ export function Workspace() {
         {toast || undoNotices.at(-1)?.text}
       </div>
       {(toast || undoNotices.length > 0) && (
-        <div className="toast-viewport">
-          {toast && <Toast text={toast} onDone={() => setToast("")} />}
+        <div className="toast-viewport" ref={toastLayer}>
+          {toast && <Toast text={toast} stamp={toastStamp} onDone={() => setToast("")} />}
           {undoNotices.map((entry) => (
             <Toast
               key={entry.id}

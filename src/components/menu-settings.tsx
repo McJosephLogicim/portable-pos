@@ -30,6 +30,7 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 /* ---------- shared pieces ---------- */
 
@@ -749,7 +750,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
           {!selecting && (
             <div className="row gap-8">
               <RecordAdd label="Add item" disabled={!props.online} onClick={() => setEditing("new")} />
-              <button type="button" className="btn ghost" disabled={!props.online} onClick={() => setAdding(true)}>
+              <button type="button" className="btn ghost" {...blocked(!props.online && OFFLINE)} onClick={() => setAdding(true)}>
                 <Rows3 size={16} /> Add several
               </button>
             </div>
@@ -1311,7 +1312,7 @@ export function CategoriesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       {!select.on && (
-        <RecordAdd label="Add category" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+        <RecordAdd label="Add category" disabled={!props.online || (!menu.length && "Add a menu item first.")} onClick={() => setEditing("new")} />
       )}
       <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
@@ -1559,7 +1560,7 @@ export function ChoicesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       {!select.on && (
-        <RecordAdd label="Add choice" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+        <RecordAdd label="Add choice" disabled={!props.online || (!menu.length && "Add a menu item first.")} onClick={() => setEditing("new")} />
       )}
       <RecordSearch count={list.length} noun="choices" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length && <RecordNoMatch query={query} onClear={() => setQuery("")} />}

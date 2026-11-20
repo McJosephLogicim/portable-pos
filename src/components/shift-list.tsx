@@ -6,6 +6,7 @@ import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
 import { EmptyState, formatMoney, Money } from "./ui";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -154,7 +155,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
                 : "Every upcoming shift is full."}
           >
             {onAdd && (
-              <button type="button" className="btn secondary compact" disabled={!online} onClick={onAdd}>
+              <button type="button" className="btn secondary compact" {...blocked(!online && OFFLINE)} onClick={onAdd}>
                 <Plus size={16} /> Add
               </button>
             )}

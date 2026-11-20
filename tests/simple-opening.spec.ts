@@ -70,9 +70,12 @@ for (const mode of ["simple", "advanced"] as const) {
     await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
     await page.getByRole("textbox", { name: "Starting cash", exact: true }).fill("500");
     const open = page.getByRole("button", { name: "Open till", exact: true });
-    await expect(open).toBeDisabled();
-    // Counting stock is optional: the saved starting amount shows, and the checklist is what's left.
-    await expect(page.getByText("6 L", { exact: true })).toBeVisible();
+    await expect(open).toHaveAttribute("data-blocked", "Tick the last checklist item first.");
+    await open.click({ force: true });
+    await expect(page.locator(".toast:not(.exit-ghost)")).toContainText("Tick the last checklist item first.");
+    const stock = page.getByRole("region", { name: "Opening stock" });
+    await stock.locator("summary").filter({ hasText: /^Stock and prep$/ }).click();
+    await expect(stock.getByText("6 L", { exact: true })).toBeVisible();
     await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
     await expect(open).toBeEnabled();
     await page.getByRole("switch", { name: "Count stock and prep", exact: true }).click();

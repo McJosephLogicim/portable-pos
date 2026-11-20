@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { buzz, CategoryTabs, ConfirmSheet, EmptyState, errorText, Sheet } from "./ui";
 import { collapseOnExit, fadeOnExit } from "@/lib/exit";
+import { blocked, refusal, type Reason } from "@/lib/reject";
 
 /*
  * One way to keep a list of things in Settings: menu items, categories, choices, stock items
@@ -18,10 +19,11 @@ export function RecordAdd({
 }: {
   label: string;
   onClick: () => void;
-  disabled?: boolean;
+  /** Why it can't add right now; true means offline. */
+  disabled?: boolean | Reason;
 }) {
   return (
-    <button className="btn" aria-label={label} disabled={disabled} onClick={onClick}>
+    <button className="btn" aria-label={label} {...blocked(refusal(disabled))} onClick={onClick}>
       <Plus size={18} /> Add
     </button>
   );
@@ -158,7 +160,7 @@ export function RecordRow({
   detail?: ReactNode;
   end?: ReactNode;
   onClick: () => void;
-  disabled?: boolean;
+  disabled?: boolean | Reason;
   select?: RowSelect;
 }) {
   const hold = useRef<{ timer: number; x: number; y: number; fired: boolean } | null>(null);
@@ -175,7 +177,7 @@ export function RecordRow({
   return (
     <button
       className={"list-row record-row" + (selecting ? " selecting" : "")}
-      disabled={disabled}
+      {...blocked(refusal(disabled))}
       aria-pressed={selecting ? select!.picked : undefined}
       ref={collapseOnExit}
       onPointerDown={(e) => {
@@ -267,12 +269,12 @@ export function useRecordSelect(keys: string[]) {
 export type RecordSelection = ReturnType<typeof useRecordSelect>;
 
 /** "Select" beside the page title, "Done" while selecting. */
-export function RecordSelectToggle({ select, disabled }: { select: RecordSelection; disabled?: boolean }) {
+export function RecordSelectToggle({ select, disabled }: { select: RecordSelection; disabled?: boolean | Reason }) {
   return (
     <button
       type="button"
       className="btn ghost small select-toggle"
-      disabled={!select.on && disabled}
+      {...blocked(!select.on && refusal(disabled))}
       onClick={() => (select.on ? select.done() : select.start())}
     >
       {select.on ? "Done" : "Select"}
@@ -325,7 +327,7 @@ export function RecordSelectBar({
         </div>
         <div className={onEdit ? "grid-2" : "stack"}>
           {onEdit && (
-            <button type="button" className="btn" aria-label={"Edit " + what} disabled={!count} onClick={onEdit}>
+            <button type="button" className="btn" aria-label={"Edit " + what} {...blocked(!count && `Tap ${nouns} to select them first.`)} onClick={onEdit}>
               <Pencil size={16} /> Edit
             </button>
           )}
@@ -333,7 +335,7 @@ export function RecordSelectBar({
             type="button"
             className={"btn secondary danger-text" + (onEdit ? "" : " block")}
             aria-label={"Remove " + what}
-            disabled={!count}
+            {...blocked(!count && `Tap ${nouns} to select them first.`)}
             onClick={() => setConfirming(true)}
           >
             <Trash2 size={16} /> Remove

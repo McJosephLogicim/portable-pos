@@ -274,7 +274,7 @@
   color: var(--ink-secondary);
 }
 
-.visibility:active:not(:disabled) {
+.visibility:active:not(:disabled):not([aria-disabled="true"]) {
   color: var(--ink);
 }
 
@@ -327,7 +327,7 @@
   font-size: 13.5px;
 }
 
-.demo:active:not(:disabled) {
+.demo:active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--surface-muted);
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CloudOff } from "lucide-react";
 import type { Business, Sale, Shift } from "@/lib/types";
 import { errorText, Money, Sheet, useProof, usePin } from "./ui";
+import { blocked } from "@/lib/reject";
 
 /** Proof photos kept with a sale. Only people on the business can load them. */
 function Proofs({ urls }: { urls: string[] }) {
@@ -289,7 +290,7 @@ export function ReceiptSheet({
           <>
             <button
               className="btn secondary block"
-              disabled={!canReverse}
+              {...blocked(!canReverse && (reverseBlocked || "This sale can't be reversed."))}
               onClick={() => setReversing(true)}
             >
               Reverse sale

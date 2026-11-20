@@ -24,11 +24,11 @@
   white-space: normal;
 }
 
-.control > button:disabled {
+.control > button:disabled, .control > button[aria-disabled="true"] {
   cursor: default;
 }
 
-.control:global(.segmented) > button[aria-pressed="false"]:active:not(:disabled) {
+.control:global(.segmented) > button[aria-pressed="false"]:active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--surface-muted);
 }
 
