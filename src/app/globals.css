@@ -1682,6 +1682,15 @@ button.notice {
   padding-left: 44px;
   background: var(--surface);
 }
+.record-search .input {
+  padding-right: 44px;
+}
+.record-search .input::-webkit-search-cancel-button {
+  display: none;
+}
+.search-field .combo-clear svg {
+  position: static;
+}
 .place-list {
   display: flex;
   flex-direction: column;

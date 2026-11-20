@@ -10,15 +10,18 @@ import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { blankUseDraft, costGap, CostPreview, countOf, resolveUses, StockCount, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { SuggestInput, type Suggestion } from "./combobox";
-import { buzz, CategoryTabs, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
+import { buzz, formatMoney, Money, MoneyField, PhotoPicker, Switch } from "./ui";
 import {
+  matches,
   namesText,
   PickChips,
   plural,
   RecordAdd,
   RecordEmpty,
   RecordGroup,
+  RecordNoMatch,
   RecordRow,
+  RecordSearch,
   RecordSheet,
   useRecordSave,
 } from "./records";
@@ -562,10 +565,19 @@ export function MenuPage(props: RecipesProps) {
   const [newCategory, setNewCategory] = useState(false);
   const [picked, setTab] = useState<string | null>(null);
   const categories = Array.from(new Set(menu.map((m) => m.category).filter(Boolean)));
+  const [query, setQuery] = useState("");
   const tab = picked && categories.includes(picked) ? picked : null;
+  const detailOf = (p: Product) =>
+    [
+      !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
+      ...p.groups.map((x) => x.name),
+    ]
+      .filter(Boolean)
+      .join(" · ") || undefined;
+  const shown = menu.filter((p) => matches(query, p.name, p.category, detailOf(p)));
   const grouped = [...categories, ""]
     .filter((c) => tab === null || c === tab)
-    .map((c) => ({ name: c, items: menu.filter((m) => (m.category || "") === c) }));
+    .map((c) => ({ name: c, items: shown.filter((m) => (m.category || "") === c) }));
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   return (
     <SubPage
@@ -593,12 +605,28 @@ export function MenuPage(props: RecipesProps) {
         />
       )}
       {menu.length > 0 && (
-        <CategoryTabs
-          categories={categories}
-          value={tab}
-          onChange={setTab}
-          onNew={() => setNewCategory(true)}
-          newDisabled={!props.online}
+        <RecordSearch
+          count={menu.length}
+          noun="items"
+          query={query}
+          onQuery={setQuery}
+          filters={{
+            label: "Categories",
+            options: categories,
+            value: tab,
+            onChange: setTab,
+            onNew: () => setNewCategory(true),
+            newDisabled: !props.online,
+          }}
+        />
+      )}
+      {menu.length > 0 && !grouped.some((g) => g.items.length) && (
+        <RecordNoMatch
+          query={query}
+          onClear={() => {
+            setQuery("");
+            setTab(null);
+          }}
         />
       )}
       {grouped
@@ -612,14 +640,7 @@ export function MenuPage(props: RecipesProps) {
                 onClick={() => setEditing(p)}
                 lead={<Thumb src={p.image} />}
                 title={p.name}
-                detail={
-                  [
-                    !simple && p.uses?.length ? "Uses " + usesText(p, business.settings.stockItems) : p.stock ? "Counted each shift" : "",
-                    ...p.groups.map((x) => x.name),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || undefined
-                }
+                detail={detailOf(p)}
                 end={<Money value={p.price} currency={business.currency} />}
               />
             ))}
@@ -762,6 +783,8 @@ export function CategoriesPage(props: RecipesProps) {
   const commit = useCommit(props);
   const list = categoriesOf(menu);
   const [editing, setEditing] = useState<(typeof list)[number] | "new" | null>(null);
+  const [query, setQuery] = useState("");
+  const shown = list.filter((c) => matches(query, c.name, ...c.items.map((p) => p.name)));
   const loose = menu.filter((p) => !p.category.trim()).length;
   return (
     <SubPage
@@ -782,9 +805,12 @@ export function CategoriesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label="Add category" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
-      {list.length > 0 ? (
+      <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
+      {list.length > 0 && !shown.length ? (
+        <RecordNoMatch query={query} onClear={() => setQuery("")} />
+      ) : list.length > 0 ? (
         <RecordGroup>
-          {list.map((c) => (
+          {shown.map((c) => (
             <RecordRow
               key={c.name}
               disabled={!props.online}
@@ -947,9 +973,13 @@ export function ChoicesPage(props: RecipesProps) {
   const commit = useCommit(props);
   const list = choicesOf(menu);
   const [editing, setEditing] = useState<Choice | "new" | null>(null);
+  const [query, setQuery] = useState("");
+  const optionsText = (c: Choice) =>
+    c.options.map((o) => o.name + (o.price ? " +" + formatMoney(o.price, business.currency) : "")).join(", ");
+  const shown = list.filter((c) => matches(query, c.name, optionsText(c), ...c.items.map((p) => p.name)));
   const kinds = [
-    { title: "Pick one", items: list.filter((c) => c.required) },
-    { title: "Add-ons", items: list.filter((c) => !c.required) },
+    { title: "Pick one", items: shown.filter((c) => c.required) },
+    { title: "Add-ons", items: shown.filter((c) => !c.required) },
   ].filter((k) => k.items.length);
 
   function apply(group: Omit<OptionGroup, "id">, ids: string[]) {
@@ -996,6 +1026,8 @@ export function ChoicesPage(props: RecipesProps) {
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label="Add choice" disabled={!props.online || !menu.length} onClick={() => setEditing("new")} />
+      <RecordSearch count={list.length} noun="choices" query={query} onQuery={setQuery} />
+      {list.length > 0 && !shown.length && <RecordNoMatch query={query} onClear={() => setQuery("")} />}
       {kinds.map((k) => (
         <RecordGroup key={k.title} title={k.title}>
           {k.items.map((c) => (
@@ -1009,7 +1041,7 @@ export function ChoicesPage(props: RecipesProps) {
                 </span>
               }
               title={c.name}
-              detail={c.options.map((o) => o.name + (o.price ? " +" + formatMoney(o.price, business.currency) : "")).join(", ")}
+              detail={optionsText(c)}
               end={plural(c.items.length, "item")}
             />
           ))}

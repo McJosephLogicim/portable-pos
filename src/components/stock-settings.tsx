@@ -10,7 +10,7 @@ import type { Product, StockItem, StockPrep, StockPurchase, StockUse } from "@/l
 import { SubPage, useCommit } from "./settings";
 import type { RecipesProps } from "./recipes";
 import { buzz, Explain, formatMoney, MoneyField } from "./ui";
-import { namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordRow, RecordSheet, useRecordSave } from "./records";
+import { matches, namesText, plural, RecordAdd, RecordEmpty, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
 
 /** A stock item's details: its name and the unit it's counted in. */
 /** Units already used, then the usual ones, so a unit is picked once and reused. */
@@ -310,6 +310,24 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const rates = stockCostRates(list);
   const legacy = prepOnly ? [] : stockModel([], menu).items;
   const count = rows.length + legacy.length;
+  const [query, setQuery] = useState("");
+  const [picked, setFilter] = useState<string | null>(null);
+  const NOT_COSTED = "Not costed yet";
+  const OFF_MENU = "Not on the menu";
+  const filterOf = (item: StockItem) => [
+    ...(rates?.get(item.id) === undefined ? [NOT_COSTED] : []),
+    ...(usedBy(menu, item.id).length ? [] : [OFF_MENU]),
+  ];
+  // Only offer a filter that narrows the list.
+  const options = [NOT_COSTED, OFF_MENU].filter((f) => {
+    const n = rows.filter((item) => filterOf(item).includes(f)).length;
+    return n > 0 && n < count;
+  });
+  const filter = picked && options.includes(picked) ? picked : null;
+  const shownRows = rows.filter(
+    (item) => (!filter || filterOf(item).includes(filter)) && matches(query, item.name, item.unit, ...usedBy(menu, item.id)),
+  );
+  const shownLegacy = filter ? [] : legacy.filter((i) => matches(query, i.name));
   const sentence = prepOnly
     ? count
       ? <>{plural(count, "thing")} <span className="g">you make ahead, counted like stock.</span></>
@@ -336,9 +354,27 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       onBack={() => props.onPage(null)}
     >
       <RecordAdd label={prepOnly ? "Add prep item" : "Add stock item"} disabled={!props.online || list.length >= 100} onClick={() => setEditing("new")} />
-      {rows.length > 0 && (
-        <RecordGroup title={legacy.length ? "Stock items" : undefined}>
-          {rows.map((item) => {
+      {count > 0 && (
+        <RecordSearch
+          count={count}
+          noun={prepOnly ? "prep" : "stock items"}
+          query={query}
+          onQuery={setQuery}
+          filters={options.length ? { label: "Filter", options, value: filter, onChange: setFilter } : undefined}
+        />
+      )}
+      {count > 0 && !shownRows.length && !shownLegacy.length && (
+        <RecordNoMatch
+          query={query}
+          onClear={() => {
+            setQuery("");
+            setFilter(null);
+          }}
+        />
+      )}
+      {shownRows.length > 0 && (
+        <RecordGroup title={shownLegacy.length ? "Stock items" : undefined}>
+          {shownRows.map((item) => {
             const users = usedBy(menu, item.id);
             const rate = rates?.get(item.id);
             return (
@@ -368,9 +404,9 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             : "Add one here, or right from a menu item while you set it up."}
         />
       )}
-      {legacy.length > 0 && (
+      {shownLegacy.length > 0 && (
         <RecordGroup title="Menu items counted themselves">
-          {legacy.map((i) => {
+          {shownLegacy.map((i) => {
             const product = menu.find((p) => p.id === i.id);
             return (
               <RecordRow
