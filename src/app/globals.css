@@ -802,8 +802,9 @@ button.list-row:not(.sell-option):active {
   width: 100%;
   max-width: 600px;
   margin: 0 auto;
-  padding: calc(14px + env(safe-area-inset-top)) var(--gutter)
-    calc(var(--tabbar-space) + var(--keyboard-bottom, 0px));
+  /* No keyboard term here: --keyboard-bottom moves as iOS pans the page, so feeding it back
+     into the page height made the page bounce up and down while typing. */
+  padding: calc(14px + env(safe-area-inset-top)) var(--gutter) var(--tabbar-space);
   display: flex;
   flex-direction: column;
   gap: 18px;
