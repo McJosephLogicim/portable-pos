@@ -78,7 +78,7 @@ test("Victory Hop plays on the completed sale", async ({ page }) => {
   const checkout = page.getByRole("dialog", { name: "Charge", exact: true });
   await checkout.getByRole("button", { name: "Cash", exact: true }).click();
   await checkout.getByRole("button", { name: "Exact", exact: true }).click();
-  await page.getByRole("button", { name: "Confirm sale", exact: true }).click();
+  await page.getByRole("button", { name: "Slide to confirm sale", exact: true }).press("Enter");
   const success = page.getByRole("dialog", { name: "Sale complete" });
   await expect(success.locator(hop)).toHaveAttribute("data-animating", "");
   await expect(success.getByRole("button", { name: "View receipt" })).toBeVisible();

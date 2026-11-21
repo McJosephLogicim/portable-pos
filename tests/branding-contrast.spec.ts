@@ -129,7 +129,7 @@ for (const [brand, currency, sign] of [
     await expect(prefix).toHaveText(sign);
     await expectTextContrast(prefix, ".money-input .input", ".money-input .input");
     await checkout.getByRole("button", { name: "Exact", exact: true }).click();
-    await page.getByRole("button", { name: "Confirm sale", exact: true }).click();
+    await page.getByRole("button", { name: "Slide to confirm sale", exact: true }).press("Enter");
 
     const hero = page.getByRole("dialog", { name: "Sale complete" }).locator(".sale-hero");
     await expect(hero.locator(".unit")).toHaveText(sign);

@@ -3,7 +3,7 @@
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { Activity, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { BookOpen, CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
-import { SellScreen } from "./sell";
+import { ClosedSellScreen, SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage, type EditorProps } from "./settings";
@@ -15,7 +15,7 @@ import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } 
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { Onboarding } from "./onboarding";
-import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, EmptyState, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountsEnabled, api, authClient, authForUser, forgetAccount, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
@@ -935,9 +935,7 @@ export function Workspace() {
                   onMenu={onMenu} onSaved={setToast} onTill={() => go("shift")}
                 />
               ) : (
-                <EmptyState heading="h1" pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
-                  <button type="button" className="btn compact" onClick={() => go("shift")}>Open till</button>
-                </EmptyState>
+                <ClosedSellScreen onTill={() => go("shift")} />
               )}
             </div>
           );

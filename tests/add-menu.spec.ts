@@ -313,7 +313,7 @@ test("menu preview uses the Sell checkout and leaves the live order and sales al
   await page.getByRole("button", { name: /^Add Butter Croissant,/ }).click();
   await testOrder.click();
   await page.getByRole("dialog", { name: "Test checkout" }).getByRole("button", { name: "Exact", exact: true }).click();
-  await page.getByRole("button", { name: "Simulate sale" }).click();
+  await page.getByRole("button", { name: "Slide to simulate sale", exact: true }).press("Space");
   const done = page.getByRole("dialog", { name: "Test sale complete" });
   await done.getByRole("button", { name: "View receipt" }).click();
   await page.getByRole("dialog", { name: "Test receipt" }).getByRole("button", { name: "Close", exact: true }).click();
@@ -406,4 +406,41 @@ test("checkout Back restores the payment step at the same scroll offset", async 
   await next.click();
   await review.getByRole("button", { name: "Close", exact: true }).click();
   await expect(charge).toBeVisible();
+});
+
+test("the sale slider springs back after a short drag and saves on a full release", async ({ page }) => {
+  await startDemo(page);
+  await page.getByRole("button", { name: "Sell", exact: true }).click();
+  await page.getByRole("button", { name: /^Add Butter Croissant,/ }).click();
+  await page.getByRole("button", { name: /^Charge .* for 1 item/ }).click();
+  await page.getByRole("dialog", { name: "Charge", exact: true }).getByRole("button", { name: "Exact", exact: true }).click();
+  const review = page.getByRole("dialog", { name: "Confirm sale", exact: true });
+  const thumb = review.getByRole("button", { name: "Slide to confirm sale", exact: true });
+  await review.getByRole("button", { name: "Checkout sounds" }).click();
+  await thumb.click();
+  await expect(review).toBeVisible();
+
+  const lane = thumb.locator("..");
+  const bounds = (await thumb.boundingBox())!;
+  const track = (await lane.boundingBox())!;
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  const travel = track.width - bounds.width;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + travel * 0.55, y, { steps: 8 });
+  await expect.poll(async () => (await thumb.boundingBox())!.x).toBeGreaterThan(bounds.x + travel / 2);
+  await page.mouse.up();
+  await expect.poll(async () => (await thumb.boundingBox())!.x).toBeCloseTo(bounds.x);
+  await expect(review).toBeVisible();
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + travel, y, { steps: 10 });
+  await expect(review.getByRole("status")).toBeEmpty();
+  await page.mouse.up();
+  const done = page.getByRole("dialog", { name: "Sale complete", exact: true });
+  await expect(done).toBeVisible();
+  await done.getByRole("button", { name: "New sale" }).click();
+  await expect(page.getByText(/Shift .* · 1 sale$/)).toBeVisible();
 });

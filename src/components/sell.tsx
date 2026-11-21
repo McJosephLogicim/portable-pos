@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
+import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, ShoppingBag, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -29,6 +29,7 @@ import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
 import { Popo } from "./popo";
+import { ConfirmSaleSlider, saleSlideSound } from "./confirm-sale-slider";
 import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 import {
   buzz,
@@ -468,7 +469,20 @@ function Checkout({
   const [cash, setCash] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState<Done | null>(null);
-  /** Cash received, once a payment is picked. The sale is saved only after Confirm. */
+  const [saved, setSaved] = useState<Done | null>(null);
+  const [slideSound, setSlideSound] = useState(() => {
+    try {
+      return localStorage.getItem("pop-pos-sale-sound") !== "off";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setDone(saved), 320);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
+  /** Cash received, once a payment is picked. The sale is saved only after confirmation. */
   const [review, setReview] = useState<number | null>(null);
   const chosen = methods.find((m) => m.id === method);
   const stage = done ? "done" : review !== null && chosen ? "review" : "charge";
@@ -491,7 +505,8 @@ function Checkout({
     }
     target?.focus({ preventScroll: true });
   }, [stage]);
-  const order = lines.length ? priceOrder(shift, lines, discountId) : null;
+  const reviewedLines = saved?.sale.lines ?? lines;
+  const order = saved?.sale ?? (lines.length ? priceOrder(shift, lines, discountId) : null);
   const total = order?.total ?? 0;
   const [payPhoto, setPayPhoto] = useState<string>();
   const [idPhoto, setIdPhoto] = useState<string>();
@@ -535,13 +550,16 @@ function Checkout({
   }
 
   async function pay(received: number) {
-    if (!chosen || !canPay || received < total) return;
+    if (!chosen || !canPay || saved || received < total) return;
     setError("");
     try {
       const sale = await onPay(chosen.id, received, discountId, proofs);
       if (sale) {
         buzz.success();
-        setDone({ sale, shiftNumber: shift.number });
+        if (slideSound) saleSlideSound("saved");
+        const result = { sale, shiftNumber: shift.number };
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) setDone(result);
+        else setSaved(result);
       }
     } catch (e) {
       setError(errorText(e));
@@ -619,24 +637,44 @@ function Checkout({
   if (review !== null && chosen) {
     const isCash = chosen.kind === "cash";
     const change = review - total;
+    const finishing = busy || Boolean(saved);
     return (
       <Sheet
         title={preview ? "Confirm test sale" : "Confirm sale"}
         onClose={backToCharge}
-        busy={busy}
+        busy={finishing}
+        action={
+          <button
+            type="button"
+            className="round flat"
+            aria-label="Checkout sounds"
+            aria-pressed={slideSound}
+            disabled={finishing}
+            onClick={() => {
+              setSlideSound(!slideSound);
+              try {
+                localStorage.setItem("pop-pos-sale-sound", slideSound ? "off" : "on");
+              } catch {
+                // The toggle still applies to the current checkout.
+              }
+              if (!slideSound) saleSlideSound("grab");
+            }}
+          >
+            {slideSound ? <Volume2 size={19} aria-hidden /> : <VolumeX size={19} aria-hidden />}
+          </button>
+        }
         footer={
           <>
-            <button
-              className="btn block"
-              disabled={busy}
-              {...blockedBy(payRefusal || (review < total && "That's less than the total."))}
-              onClick={() => void pay(review)}
-            >
-              {busy ? "Saving…" : preview ? "Simulate sale" : "Confirm sale"}
-            </button>
+            <ConfirmSaleSlider
+              preview={Boolean(preview)}
+              phase={saved ? "saved" : busy ? "saving" : "idle"}
+              refusal={!finishing && (payRefusal || (review < total && "That's less than the total."))}
+              sound={slideSound}
+              onConfirm={() => void pay(review)}
+            />
             <button
               className="btn ghost block compact"
-              disabled={busy}
+              disabled={finishing}
               onClick={backToCharge}
             >
               Back
@@ -656,7 +694,7 @@ function Checkout({
           <div className="card card-list">
             <div className="list-row">
               <span className="grow">Items</span>
-              <ItemFaces items={faces(lines)} />
+              <ItemFaces items={faces(reviewedLines)} />
             </div>
             <div className="list-row">
               <span className="grow">
@@ -938,6 +976,21 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
       </span>
       <ChevronRight size={16} className="chev" />
     </button>
+  );
+}
+
+export function ClosedSellScreen({ onTill }: { onTill: () => void }) {
+  return (
+    <>
+      <div className="sell-head">
+        <div className="page-top">
+          <h1 className="sell-title">Sell</h1>
+        </div>
+      </div>
+      <EmptyState pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
+        <button type="button" className="btn compact" onClick={onTill}>Open till</button>
+      </EmptyState>
+    </>
   );
 }
 

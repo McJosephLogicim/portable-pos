@@ -55,6 +55,7 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
 for (const mode of ["simple", "advanced"] as const) {
   test(`${mode} requires a scheduled shift before opening the till`, async ({ page }) => {
     await closedTill(page, mode);
+    await expect(page.getByRole("heading", { name: "Sell", exact: true, level: 1 })).toBeVisible();
     const closed = page.locator(".empty-popo").filter({ hasText: "Till closed" });
     await expect(closed.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
     await expect(closed.locator('img[src$="/close.webp"]')).toBeAttached();

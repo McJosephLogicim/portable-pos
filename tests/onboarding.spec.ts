@@ -40,7 +40,7 @@ test("onboarding saves the real setup, keeps till practice local, and completes 
   await page.getByRole("button", { name: /^Add Live iced latte/ }).click();
   await page.getByRole("button", { name: /^Charge .* for 1 item/ }).click();
   await page.getByRole("button", { name: "Exact" }).click();
-  await page.getByRole("button", { name: "Confirm sale", exact: true }).click();
+  await page.getByRole("button", { name: "Slide to confirm sale", exact: true }).press("Enter");
   await page.getByRole("dialog", { name: "Sale complete" }).getByRole("button", { name: "Continue" }).click();
 
   await page.getByRole("button", { name: "Add a shift" }).click();
