@@ -1,7 +1,8 @@
 "use client";
 import { Check, ChevronRight, Eye, EyeOff, UserRound, UserRoundPlus } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
-import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
 import { onColor } from "@/lib/theme";
@@ -197,6 +198,9 @@ const MODES = [
   { value: "signin", label: "Sign in" },
   { value: "create", label: "Create account" },
 ] as const;
+// Supabase projects can configure email codes from six to ten digits.
+const MIN_EMAIL_CODE_LENGTH = 6;
+const MAX_EMAIL_CODE_LENGTH = 10;
 
 export function Account(props: AccountProps) {
   const page = "entry" in props;
@@ -215,58 +219,116 @@ export function Account(props: AccountProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [signInSlot] = useState(() => crypto.randomUUID());
+  const [code, setCode] = useState("");
+  const [resendNotice, setResendNotice] = useState("");
+  const [request, setRequest] = useState<"credentials" | "verify" | "resend" | null>(null);
+  const [slot] = useState(() => crypto.randomUUID());
+  const passwordId = useId();
+  const codeInput = useRef<HTMLInputElement>(null);
+  const busy = request !== null;
+  const canVerify = code.length >= MIN_EMAIL_CODE_LENGTH;
+  const requiredUser = page ? undefined : props.requiredUser;
+  const emailOptions = { emailRedirectTo: entry?.returnTo };
+
+  useEffect(() => {
+    if (sentTo) codeInput.current?.focus();
+  }, [sentTo]);
 
   function switchMode(next: Mode) {
     setMode(next);
     setShowPassword(false);
     setPassword("");
     setSentTo("");
+    setCode("");
     setError("");
+    setResendNotice("");
+  }
+
+  function openVerification(address: string) {
+    setPassword("");
+    setShowPassword(false);
+    setSentTo(address);
+  }
+
+  async function finishSignIn(session: Session | null) {
+    if (!session || session.user.is_anonymous) throw Error("Couldn't sign in. Try again.");
+    const { id, email } = session.user;
+    if (requiredUser && requiredUser !== id) {
+      await authClient(slot).auth.signOut({ scope: "local" });
+      throw Error("Sign in with the email for this saved account.");
+    }
+    const previous = savedAccounts().find((account) => account.id === id);
+    rememberAccount({ id, email, slot });
+    if (previous && previous.slot !== slot)
+      void authClient(previous.slot).auth.signOut({ scope: "local" }).catch(() => {});
+    await props.onSignedIn(id);
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setRequest("credentials");
     setError("");
+    const address = email.trim();
     try {
-      // Each sign-in gets its own session. Cancelling or typing another account
-      // while reconnecting never replaces the register already on the device.
-      const slot = create ? undefined : signInSlot;
+      // Use a separate session for both signup and sign-in so the current register can still sync.
       const auth = authClient(slot).auth;
       const { data, error } = create
-        ? await auth.signUp({
-            email,
-            password,
-            options: { emailRedirectTo: entry?.returnTo ?? location.origin },
-          })
-        : await auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      if (data.session && !data.session.user.is_anonymous) {
-        const { id, email } = data.session.user;
-        if (!page && props.requiredUser && props.requiredUser !== id) {
-          await auth.signOut({ scope: "local" });
-          throw Error("Sign in with the email for this saved account.");
-        }
-        const previous = savedAccounts().find((account) => account.id === id);
-        rememberAccount({ id, email, slot });
-        if (previous && previous.slot !== slot)
-          void authClient(previous.slot).auth.signOut({ scope: "local" }).catch(() => {});
-        await props.onSignedIn(id);
-      } else {
-        setPassword("");
-        setShowPassword(false);
-        setSentTo(email);
+        ? await auth.signUp({ email: address, password, options: emailOptions })
+        : await auth.signInWithPassword({ email: address, password });
+      if (!create && !requiredUser && error?.code === "email_not_confirmed") {
+        openVerification(address);
+        return;
       }
+      if (error) throw error;
+      if (create && !data.session) {
+        openVerification(address);
+        return;
+      }
+      await finishSignIn(data.session);
     } catch (e) {
       setError(errorText(e));
     } finally {
-      setBusy(false);
+      setRequest(null);
     }
   }
 
-  const business = data?.business.name;
+  async function verifyEmail(e: FormEvent) {
+    e.preventDefault();
+    if (!canVerify) return;
+    setRequest("verify");
+    setError("");
+    setResendNotice("");
+    try {
+      const { data, error } = await authClient(slot).auth.verifyOtp({ email: sentTo, token: code, type: "email" });
+      if (error?.code === "otp_expired") {
+        setError("That code is incorrect or expired. Try again or request a new code.");
+        return;
+      }
+      if (error) throw error;
+      await finishSignIn(data.session);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setRequest(null);
+    }
+  }
+
+  async function resendCode() {
+    setRequest("resend");
+    setError("");
+    setResendNotice("");
+    try {
+      const { error } = await authClient(slot).auth.resend({ email: sentTo, type: "signup", options: emailOptions });
+      if (error) throw error;
+      setCode("");
+      setResendNotice("New code sent. Use the most recent email.");
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setRequest(null);
+    }
+  }
+
   const submitLabel = busy
     ? create ? "Creating account…" : "Signing in…"
     : create ? "Create account"
@@ -293,7 +355,7 @@ export function Account(props: AccountProps) {
         </label>
         <div className={styles.field}>
           <span className={styles.label}>
-            <label htmlFor="account-password">Password</label>
+            <label htmlFor={passwordId}>Password</label>
             {create && (
               <Explain title="Password">
                 <p>Use at least 8 characters. You’ll use this email and password on every phone you sell from.</p>
@@ -302,7 +364,7 @@ export function Account(props: AccountProps) {
           </span>
           <div className={styles.password}>
             <input
-              id="account-password"
+              id={passwordId}
               className="input"
               name="password"
               type={showPassword ? "text" : "password"}
@@ -324,14 +386,58 @@ export function Account(props: AccountProps) {
     </form>
   );
 
-  // Signing in again from inside the register.
+  const modes = accountsEnabled && !requiredUser && (
+    <div className={styles.modes}>
+      <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
+    </div>
+  );
+
+  const verification = (
+    <>
+      <p className={styles.lede}>Enter the verification code sent to <strong>{sentTo}</strong>.</p>
+      <form onSubmit={verifyEmail} className={styles.form}>
+        <fieldset disabled={busy}>
+          <label className={styles.field}>
+            <span>Verification code</span>
+            <input
+              ref={codeInput}
+              className={`input ${styles.code}`}
+              name="code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              spellCheck={false}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, MAX_EMAIL_CODE_LENGTH))}
+              required
+            />
+          </label>
+          {error && <p role="alert" className="alert">{error}</p>}
+          <button type="submit" className="btn block" disabled={!canVerify}>
+            {request === "verify" ? "Verifying…" : "Verify email"}
+          </button>
+        </fieldset>
+      </form>
+      {resendNotice && <p role="status" className={styles.lede}>{resendNotice}</p>}
+      <div className={styles.codeActions}>
+        <button type="button" className={styles.plain} disabled={busy} onClick={resendCode}>
+          {request === "resend" ? "Sending…" : "Resend code"}
+        </button>
+        <button type="button" className={styles.plain} disabled={busy} onClick={() => switchMode(mode)}>
+          Use a different email
+        </button>
+      </div>
+    </>
+  );
+
   if (!page) return (
-    <Sheet title={props.requiredUser ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
+    <Sheet title={sentTo ? "Check your email" : requiredUser ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
       <div className="stack gap-14">
-        <p className="muted">
-          {props.requiredUser ? "Sign in again to reconnect this register." : "Sign in to keep another account on this device."}
-        </p>
-        {fields}
+        {sentTo ? verification : <>
+          {requiredUser && <p className="muted">Sign in again to reconnect this register.</p>}
+          {modes}
+          {fields}
+        </>}
       </div>
     </Sheet>
   );
@@ -348,19 +454,6 @@ export function Account(props: AccountProps) {
       : kind === "business" ? "Sign in to see open shifts"
       : create ? "Create your account" : "Sign in to your register";
 
-  const sent = (
-    <section className={styles.card} aria-labelledby="sent-title">
-      <div className={styles.head}>
-        <h2 id="sent-title" className={styles.title}>Check your email</h2>
-        <p className={styles.lede} role="status">
-          We sent a link to <strong>{sentTo}</strong>. Open it on this phone
-          {business ? <> to {kind === "invite" ? "join" : "open"} {business}</> : linked ? " to continue" : " to finish"}.
-        </p>
-      </div>
-      <button type="button" className={styles.plain} onClick={() => switchMode("create")}>Use a different email</button>
-    </section>
-  );
-
   const form = (
     <section className={styles.card} aria-labelledby={linked && preview.state !== "none" ? "form-title" : "account-title"}>
       {linked && preview.state !== "none" ? (
@@ -368,11 +461,7 @@ export function Account(props: AccountProps) {
       ) : (
         <h1 id="account-title" className={styles.title}>{linked ? plainTitle : formTitle}</h1>
       )}
-      {accountsEnabled && (
-        <div className={styles.modes}>
-          <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
-        </div>
-      )}
+      {modes}
       {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
       {props.notice && <p role="alert" className="alert">{props.notice}</p>}
       {fields}
@@ -392,7 +481,14 @@ export function Account(props: AccountProps) {
           </div>
         </section>
       )}
-      {sentTo ? sent : form}
+      {sentTo ? (
+        <section className={styles.card} aria-labelledby="sent-title">
+          {data || preview.state === "gone"
+            ? <h2 id="sent-title" className={styles.title}>Check your email</h2>
+            : <h1 id="sent-title" className={styles.title}>Check your email</h1>}
+          {verification}
+        </section>
+      ) : form}
       {props.onChooseAccount && !sentTo && (
         <button type="button" className={styles.plain} onClick={props.onChooseAccount}>Switch account</button>
       )}

@@ -252,6 +252,18 @@
   margin-block-start: 6px;
 }
 
+.form .code {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.25em;
+}
+
+.codeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
 .password {
   position: relative;
 }

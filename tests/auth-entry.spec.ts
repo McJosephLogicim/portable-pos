@@ -9,10 +9,13 @@ const inviteCode = "invite42";
 const teamId = "bfb566c0-718f-476e-b560-1c848e91d055";
 const shiftId = "aabcaac3-b2c0-4617-b2b8-154a4a702098";
 const email = "crew@example.test";
+const verificationCode = "01234567";
 const authHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Expose-Headers": "X-Supabase-Api-Version",
+  "X-Supabase-Api-Version": "2024-01-01",
 };
 
 function teamSnapshot(): Bootstrap {
@@ -28,30 +31,39 @@ function teamSnapshot(): Bootstrap {
   return { ...demo, business, bookings: [booking], shift: null, shifts: [] };
 }
 
-async function mockAuth(page: Page) {
+async function mockAuth(page: Page, { unconfirmed = false } = {}) {
   const user = { id: accountId, email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {} };
   const token = {
     access_token: "test-access-token", refresh_token: "test-refresh-token",
     expires_in: 3600, token_type: "bearer", user,
   };
-  let redirect: string | null = null;
   await page.route("**/auth/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const headers = authHeaders;
     if (request.method() === "OPTIONS" || url.pathname.endsWith("/logout"))
       return route.fulfill({ status: 204, headers });
-    if (url.pathname.endsWith("/signup")) {
-      redirect = url.searchParams.get("redirect_to");
+    if (url.pathname.endsWith("/signup"))
       return route.fulfill({ json: user, headers });
+    if (url.pathname.endsWith("/verify")) {
+      const { token: code, ...body } = request.postDataJSON();
+      expect(body).toMatchObject({ email, type: "email" });
+      return code === verificationCode
+        ? route.fulfill({ json: token, headers })
+        : route.fulfill({ status: 403, json: { code: "otp_expired", msg: "Token has expired or is invalid" }, headers });
+    }
+    if (url.pathname.endsWith("/resend")) {
+      expect(request.postDataJSON()).toMatchObject({ email, type: "signup" });
+      return route.fulfill({ json: {}, headers });
     }
     if (url.pathname.endsWith("/user"))
       return route.fulfill({ json: user, headers });
     if (url.pathname.endsWith("/token"))
-      return route.fulfill({ json: token, headers });
+      return unconfirmed
+        ? route.fulfill({ status: 400, json: { code: "email_not_confirmed", msg: "Email not confirmed" }, headers })
+        : route.fulfill({ json: token, headers });
     throw new Error("Unexpected request to Auth");
   });
-  return () => redirect;
 }
 
 async function enterCredentials(page: Page) {
@@ -137,43 +149,60 @@ test.describe("account-enabled link entry", () => {
   });
 
   const shiftLink = new URL(joinLink(appUrl, teamId, shiftId));
-  for (const { label, link, query } of [
-    { label: "business invite", link: new URL("/i/" + inviteCode, appUrl).href, query: "?invite=" + inviteCode },
-    { label: "shared shift", link: shiftLink.href, query: "?j=" + shiftLink.pathname.split("/").at(-1) },
+  for (const { label, link } of [
+    { label: "business invite", link: new URL("/i/" + inviteCode, appUrl).href },
+    { label: "shared shift", link: shiftLink.href },
   ]) {
-    test(`opens the ${label} after email confirmation in a fresh browser`, async ({ page, browser }) => {
-      const redirect = await mockAuth(page);
+    test(`opens the ${label} after verifying the email code in the app`, async ({ page }) => {
+      await mockAuth(page);
+      const commands: Record<string, unknown>[] = [];
+      await page.route("**/api/pos", async (route) => {
+        commands.push(route.request().postDataJSON());
+        await route.fulfill({ json: teamSnapshot() });
+      });
       await page.goto(link);
       await page.getByRole("group", { name: "Account" }).getByRole("button", { name: "Create account" }).click();
       await enterCredentials(page);
       await page.locator("button[type=submit]").click();
       await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
-      expect(redirect()).toBe(new URL("/" + query, appUrl).href);
-
-      const confirmation = await browser.newPage({ serviceWorkers: "block" });
-      try {
-        await mockAuth(confirmation);
-        const commands: Record<string, unknown>[] = [];
-        await confirmation.route("**/api/pos", async (route) => {
-          commands.push(route.request().postDataJSON());
-          await route.fulfill({ json: teamSnapshot() });
-        });
-        await confirmation.goto(redirect() + "#access_token=test-access-token&refresh_token=test-refresh-token&expires_in=3600&token_type=bearer&type=signup");
-        await expect(confirmation.getByRole("button", { name: "Shifts", exact: true })).toHaveAttribute("aria-current", "page");
-        await expect(confirmation.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
-        const invitations = commands.filter((cmd) => cmd.action === "acceptInvite");
-        if (label === "business invite")
-          expect(invitations).toEqual([{ action: "acceptInvite", code: inviteCode }]);
-        else {
-          expect(invitations).toEqual([]);
-          await expect(confirmation.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
-        }
-        expect(new URL(confirmation.url()).search).toBe("");
-      } finally {
-        await confirmation.close();
+      await page.getByRole("textbox", { name: "Verification code" }).fill(verificationCode);
+      await page.getByRole("button", { name: "Verify email" }).click();
+      await expect(page.getByRole("button", { name: "Shifts", exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
+      const invitations = commands.filter((cmd) => cmd.action === "acceptInvite");
+      if (label === "business invite")
+        expect(invitations).toEqual([{ action: "acceptInvite", code: inviteCode }]);
+      else {
+        expect(invitations).toEqual([]);
+        await expect(page.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
       }
+      expect(new URL(page.url()).search).toBe("");
     });
   }
+
+  test("an unconfirmed sign-in can retry the code, resend it, or change email", async ({ page }) => {
+    await mockAuth(page, { unconfirmed: true });
+    await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+
+    const code = page.getByRole("textbox", { name: "Verification code" });
+    const verify = page.getByRole("button", { name: "Verify email" });
+    await expect(code).toBeFocused();
+    await expect(code).toHaveAttribute("autocomplete", "one-time-code");
+    await expect(verify).toBeDisabled();
+    await code.fill("123456");
+    await verify.click();
+    await expect(page.getByRole("region", { name: "Check your email" }).getByRole("alert"))
+      .toContainText("incorrect or expired");
+    await page.getByRole("button", { name: "Resend code" }).click();
+    await expect(page.getByRole("status")).toHaveText("New code sent. Use the most recent email.");
+    await expect(code).toBeEmpty();
+    await page.getByRole("button", { name: "Use a different email" }).click();
+    await expect(page.getByLabel("Email", { exact: true })).toHaveValue(email);
+    await expect(page.getByLabel("Password", { exact: true })).toBeEmpty();
+  });
 
   test("sign-in opens the requested shift in a secondary business", async ({ page }) => {
     await mockAuth(page);
@@ -208,24 +237,28 @@ test.describe("account-enabled link entry", () => {
   });
 });
 
-test("switches saved accounts without signing in again or mixing their registers", async ({ page }) => {
+test("creates an account from Settings and switches without mixing saved registers", async ({ page }) => {
   test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app started with test Supabase settings.");
   const otherId = "d4ffdb18-fd04-4e87-b627-97460ceb7436";
   const emails = { [email]: accountId, "secondary@example.test": otherId };
-  let signIns = 0;
+  const authRequests: string[] = [];
   await page.route("**/auth/v1/**", async (route) => {
     const req = route.request();
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: authHeaders });
-    expect(new URL(req.url()).pathname.endsWith("/token")).toBe(true);
+    const path = new URL(req.url()).pathname.split("/").at(-1);
     const address = req.postDataJSON().email as keyof typeof emails;
     const id = emails[address];
     expect(id).toBeTruthy();
-    signIns++;
+    authRequests.push(path!);
+    const user = { id, email: address, aud: "authenticated", role: "authenticated" };
+    if (path === "signup") return route.fulfill({ json: user, headers: authHeaders });
+    if (path === "verify") expect(req.postDataJSON()).toMatchObject({ type: "email", token: verificationCode });
+    else expect(path).toBe("token");
     return route.fulfill({
       headers: authHeaders,
       json: {
         access_token: "token-" + id, refresh_token: "refresh-" + id, expires_in: 3600,
-        token_type: "bearer", user: { id, email: address, aud: "authenticated", role: "authenticated" },
+        token_type: "bearer", user,
       },
     });
   });
@@ -251,9 +284,14 @@ test("switches saved accounts without signing in again or mixing their registers
   }
   await (await picker()).getByRole("button", { name: "Add account", exact: true }).click();
   const add = page.getByRole("dialog", { name: "Add account" });
+  await add.getByRole("group", { name: "Account" }).getByRole("button", { name: "Create account" }).click();
   await add.getByLabel("Email", { exact: true }).fill("secondary@example.test");
   await add.getByLabel("Password", { exact: true }).fill("fixture-password");
-  await add.getByRole("button", { name: "Sign in", exact: true }).click();
+  await add.locator("button[type=submit]").click();
+  const confirmation = page.getByRole("dialog", { name: "Check your email" });
+  await expect(confirmation.getByText("secondary@example.test")).toBeVisible();
+  await confirmation.getByRole("textbox", { name: "Verification code" }).fill(verificationCode);
+  await confirmation.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
@@ -261,5 +299,5 @@ test("switches saved accounts without signing in again or mixing their registers
   await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
   await (await picker()).getByRole("button", { name: /Bakery Owner/ }).click();
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
-  expect(signIns).toBe(2);
+  expect(authRequests).toEqual(["token", "signup", "verify"]);
 });

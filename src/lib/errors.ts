@@ -12,7 +12,7 @@ function authText(error: Error & { status?: number; code?: string }) {
     return "Too many tries. Wait a minute, then try again.";
   if (text.includes("invalid login") || text.includes("invalid_credentials"))
     return "That email or password isn't right.";
-  if (text.includes("not confirmed")) return "Confirm your email first. The link is in your inbox.";
+  if (text.includes("not confirmed")) return "Confirm your email first using the code in your inbox.";
   if (text.includes("already registered") || text.includes("already exists"))
     return "That email already has an account. Sign in instead.";
   if (text.includes("password")) return "Use a longer password, at least 8 characters.";
