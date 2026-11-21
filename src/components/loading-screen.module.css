@@ -5,7 +5,7 @@
   min-height: 100dvh;
   padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
     max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-  background: #161616;
+  background: radial-gradient(ellipse at 50% 44%, #172949, #101722 58%, #101318);
   color: #fff;
   text-align: center;
 }
@@ -17,24 +17,17 @@
   gap: 16px;
 }
 
-.mark {
-  --icon-size: clamp(144px, 20dvh, 184px);
-  position: relative;
-  width: calc(0.46 * var(--icon-size));
+.mascot {
+  display: block;
+  width: clamp(136px, 24dvh, 176px);
   aspect-ratio: 1;
 }
 
-/* Use the finished app artwork for all three pieces. The clips meet in its gaps. */
-.mark span {
-  position: absolute;
-  inset: 0;
-  background: url("/icon-192.png") center / var(--icon-size) no-repeat;
-  mix-blend-mode: lighten;
+.mascot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
-
-.bottom { clip-path: inset(50% 50% 0 0); }
-.upperLeft { clip-path: inset(0 50% 50% 0); }
-.upperRight { clip-path: inset(0 0 50% 50%); }
 
 .name {
   font-size: 23px;
@@ -46,53 +39,5 @@
 .message {
   grid-row: 3;
   align-self: end;
-  color: #b2b2b2;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .mark {
-    --fold-duration: 320ms;
-    perspective: 220px;
-  }
-
-  .bottom { animation: fade-in var(--dur-fast) var(--ease-out) both; }
-
-  .upperLeft, .upperRight { backface-visibility: hidden; }
-
-  .upperLeft {
-    transform-origin: 25% 54%;
-    animation: unfold-up var(--fold-duration) var(--ease-move) var(--dur-fast) both;
-  }
-
-  .upperRight {
-    transform-origin: 46% 25%;
-    animation: unfold-right var(--fold-duration) var(--ease-move)
-      calc(var(--dur-fast) + var(--fold-duration) + 35ms) both;
-  }
-
-  .message { animation: fade-in var(--dur-base) var(--ease-out) 1.5s both; }
-}
-
-@keyframes unfold-up {
-  from { opacity: 0; transform: rotateX(180deg); }
-  38% {
-    opacity: 0;
-    transform: rotateX(90deg);
-    animation-timing-function: var(--ease-out);
-  }
-  to { opacity: 1; transform: rotateX(0deg); }
-}
-
-@keyframes unfold-right {
-  from { opacity: 0; transform: rotateY(180deg); }
-  38% {
-    opacity: 0;
-    transform: rotateY(90deg);
-    animation-timing-function: var(--ease-out);
-  }
-  to { opacity: 1; transform: rotateY(0deg); }
-}
-
-@keyframes fade-in {
-  from { opacity: 0; }
+  color: #bfc8d9;
 }

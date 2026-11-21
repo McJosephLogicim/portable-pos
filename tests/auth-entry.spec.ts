@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { popoLoading } from "../src/lib/app-brand";
 import { demoBootstrap } from "../src/lib/demo";
 import { joinLink } from "../src/lib/join-link";
 import type { Bootstrap } from "../src/lib/types";
@@ -119,28 +120,15 @@ test.describe("account-enabled link entry", () => {
       const main = page.getByRole("main");
       const status = main.getByRole("status");
       await expect(status).toHaveText("Getting your register ready…");
-      await expect(main.getByText("Portable POS", { exact: true })).toBeVisible();
-      const mark = main.locator('[aria-hidden="true"]');
-      const { openingOpacities, timings } = await mark.evaluate((element) => {
-        const animations = element.getAnimations({ subtree: true });
-        const timings = animations.map(({ effect }) => ({
-          start: Number(effect?.getTiming().delay),
-          end: Number(effect?.getComputedTiming().endTime),
-        }));
-        for (const animation of animations) {
-          animation.pause();
-          animation.currentTime = 0;
-        }
-        const openingOpacities = Array.from(element.children, (tile) => getComputedStyle(tile).opacity);
-        return { openingOpacities, timings };
-      });
-      expect(openingOpacities).toEqual(["0", "0", "0"]);
-      expect(timings).toHaveLength(3);
-      expect(timings[1].start).toBeGreaterThanOrEqual(timings[0].end);
-      expect(timings[2].start).toBeGreaterThanOrEqual(timings[1].end);
+      await expect(main.getByText("POP POS", { exact: true })).toBeVisible();
+      const mascot = main.locator("picture img");
+      const loadedMascot = () => mascot.evaluate((image: HTMLImageElement) =>
+        image.complete && image.naturalWidth > 0 ? new URL(image.currentSrc).pathname : "",
+      );
+      await expect.poll(loadedMascot).toBe(popoLoading.wave);
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await expect.poll(() => main.evaluate((element) => element.getAnimations({ subtree: true }).length)).toBe(0);
-      await expect(status).toHaveCSS("opacity", "1");
+      await expect.poll(loadedMascot).toBe(popoLoading.poster);
+      await expect(status).toBeVisible();
     } finally {
       bootstrap.resolve();
     }

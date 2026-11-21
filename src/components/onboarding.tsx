@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { APP_NAME, appIcons } from "@/lib/app-brand";
 import { ArrowRight, ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PRACTICE, type OwnerAction } from "@/lib/demo";
@@ -222,8 +223,8 @@ export function Onboarding({
       <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.brand}>
-            <Image src="/icon-192.png" width={28} height={28} alt="" unoptimized />
-            POP POS
+            <Image src={appIcons.small} width={28} height={28} alt="" unoptimized />
+            {APP_NAME}
           </div>
           <button type="button" className={styles.exit} onClick={onLater}>Finish later</button>
         </header>

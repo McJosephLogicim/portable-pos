@@ -1,4 +1,4 @@
-# PORTABLE POS
+# POP POS
 
 A mobile-first, installable register for small food and beverage businesses. Sign in to open your register or create a business. **Try the demo** opens a sample coffee counter priced in pesos. Its PIN is **1234** and its records stay in that browser.
 
@@ -8,7 +8,7 @@ Use Node 22.12 or later and install packages with `npm ci`. Run `npm run dev` fo
 
 ## Configure live registers
 
-1. Create a Supabase project. Enable email/password sign-in and **Confirm email**, set **Email OTP length** to `6`, set the Auth Site URL and allowed redirect URLs to the app origin, and configure SMTP for public signups. Under **Authentication → Email Templates → Confirm sign up**, set the subject to `Your Portable POS verification code` and use [the signup email template](supabase/templates/confirmation.html). [Supabase email template settings](https://supabase.com/docs/guides/auth/auth-email-templates)
+1. Create a Supabase project. Enable email/password sign-in and **Confirm email**, set **Email OTP length** to `6`, set the Auth Site URL and allowed redirect URLs to the app origin, and configure SMTP for public signups. Under **Authentication → Email Templates → Confirm sign up**, set the subject to `Your POP POS verification code` and use [the signup email template](supabase/templates/confirmation.html). [Supabase email template settings](https://supabase.com/docs/guides/auth/auth-email-templates)
 2. Set the variables in `.env.example` in the shell or deployment environment. Use a server-only `DATABASE_URL` for the register API and a separate, server-only `DATABASE_MIGRATION_URL` for schema changes. The migration role needs ownership of the application's schema objects and the Drizzle migration journal. Keep the `portable_pos` schema outside the Supabase Data API.
 3. For a local database, run `npm run db:migrate`. For live registers, set the migration URL in the Vercel production environment. Vercel builds the app, applies pending Drizzle migrations, and releases the deployment only if both succeed. Git pushes to `main` trigger production deployments. Preview deployments without a database use the demo. If you configure live data in Preview, give it its own database and migration URL.
 4. For team invitation emails, set the server-only `RESEND_API_KEY`, `POS_INVITE_FROM` to an address on a verified [Resend sending domain](https://resend.com/docs/dashboard/domains/introduction), and `POS_APP_URL` to the public HTTPS app origin. Owners can share a pending invitation link in Settings › Team if email delivery is unavailable.
@@ -65,7 +65,7 @@ Checkout can ask for a photo before a sale completes. For a discount, switch on 
 
 ## Team and schedule
 
-Owners invite people in Settings › Team. Portable POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. Before sign-in, an invite link shows the business's name, logo and brand color, the primary owner's name, and the name the invitee joins as (from `/api/links/invite/<code>`), and defaults to creating an account. A person joins a shift as cashier or server and can switch until the shift ends. Owners can change anyone's shift role. Anyone on the team can run the till.
+Owners invite people in Settings › Team. POP POS emails the invitation link to the address the owner enters. The invitee signs in with that confirmed address and can switch between this team and any businesses they already own or work for. Owners can open a pending invite to resend the email or share the link. Before sign-in, an invite link shows the business's name, logo and brand color, the primary owner's name, and the name the invitee joins as (from `/api/links/invite/<code>`), and defaults to creating an account. A person joins a shift as cashier or server and can switch until the shift ends. Owners can change anyone's shift role. Anyone on the team can run the till.
 
 To give someone owner access, open **Settings › Team**, select someone who has accepted their invitation, set **Business access** to **Owner**, and save with the business's owner PIN. Owners can manage the register, settings and team, and see pay and profit. Select **Team member** to revoke access for an additional owner. The original owner keeps owner access.
 

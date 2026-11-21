@@ -1,4 +1,5 @@
 import { cashPhotos } from "./cash";
+import { appIcons, popoLoading } from "./app-brand";
 
 let preparing: Promise<boolean> | undefined;
 
@@ -14,9 +15,9 @@ async function prepare(): Promise<boolean> {
   const worker = registration.active;
   if (!worker) return false;
   const resources = [
-    "/icon-192.png",
-    "/icon-512.png",
-    "/apple-touch-icon.png",
+    ...Object.values(appIcons),
+    popoLoading.poster,
+    ...(!matchMedia("(prefers-reduced-motion: reduce)").matches ? [popoLoading.wave] : []),
     "/manifest.webmanifest",
     ...cashPhotos,
     ...performance.getEntriesByType("resource").map((entry) => entry.name),

@@ -28,6 +28,8 @@ function assetURL(input, base = ROOT) {
       "/icon-512.png",
       "/apple-touch-icon.png",
       "/favicon.ico",
+      "/mascots/popo/poster.png",
+      "/mascots/popo/wave.webp",
     ].includes(url.pathname)
   )
     return url.href;

@@ -1,3 +1,4 @@
+import { APP_NAME } from "../lib/app-brand";
 import { inviteLink, joinLink } from "../lib/join-link";
 import type { Business, RegisterResponse } from "../lib/types";
 
@@ -25,12 +26,12 @@ export async function sendInvitationEmail(
       body: JSON.stringify({
         from,
         to: [email],
-        subject: "You're invited to a team on Portable POS",
+        subject: `You're invited to a team on ${APP_NAME}`,
         text: [
-          `You've been invited to join ${businessName} on Portable POS.`,
+          `You've been invited to join ${businessName} on ${APP_NAME}.`,
           code
-            ? "Open the link and sign in. If you're new to Portable POS, create an account first."
-            : "Open the link and sign in with this email address. If you're new to Portable POS, create an account with this address and confirm it first.",
+            ? `Open the link and sign in. If you're new to ${APP_NAME}, create an account first.`
+            : `Open the link and sign in with this email address. If you're new to ${APP_NAME}, create an account with this address and confirm it first.`,
           link,
         ].join("\n\n"),
       }),

@@ -1,15 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import { InputExperience } from "@/components/input-experience";
+import { APP_NAME, appIcons } from "@/lib/app-brand";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "PORTABLE POS",
+  title: APP_NAME,
   description: "A mobile register for food, drinks, and pop-up counters.",
   appleWebApp: {
     capable: true,
-    title: "Portable POS",
+    title: APP_NAME,
     statusBarStyle: "default",
   },
-  icons: { apple: "/apple-touch-icon.png", icon: "/icon-192.png" },
+  icons: { apple: appIcons.apple, icon: appIcons.small },
 };
 export const viewport: Viewport = {
   themeColor: "#f6f6f4",

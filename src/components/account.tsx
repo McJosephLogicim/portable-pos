@@ -2,6 +2,7 @@
 import { Check, ChevronRight, Eye, EyeOff, UserRound, UserRoundPlus } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
+import { APP_NAME, appIcons } from "@/lib/app-brand";
 import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
@@ -61,8 +62,8 @@ function brandStyle(brand?: string): CSSProperties | undefined {
 function AppMark() {
   return (
     <div className={styles.app}>
-      <Image src="/icon-192.png" alt="" width={28} height={28} loading="eager" unoptimized />
-      <span>Portable POS</span>
+      <Image src={appIcons.small} alt="" width={28} height={28} loading="eager" unoptimized />
+      <span>{APP_NAME}</span>
     </div>
   );
 }

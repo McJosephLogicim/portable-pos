@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { APP_NAME } from "@/lib/app-brand";
 import { inviteLink } from "@/lib/join-link";
 import { Banknote, ChevronRight, HandPlatter, Trash2, UserPlus } from "lucide-react";
 import type { Member, Role } from "@/lib/types";
@@ -196,7 +197,7 @@ function MemberSheet({
               <span className="field-head">
                 Email (optional)
                 <Explain title="Their email">
-                  Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own.
+                  Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing {APP_NAME} account and keep any businesses they already own.
                 </Explain>
               </span>
             )}

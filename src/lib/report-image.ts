@@ -1,7 +1,7 @@
 import { countRows } from "./cash";
+import { APP_NAME, appIcons } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
-import { SHARE_BRAND_NAME } from "./share-brand";
 import { round, unitText } from "./stock";
 import { leaderboardPalette } from "./theme";
 
@@ -15,7 +15,7 @@ const CARD = W - G * 2;
 const P = 20; // card padding
 const L = G + P;
 const R = W - G - P;
-const BRAND_ICON = "/icon-192.png";
+const BRAND_ICON = appIcons.small;
 const BRAND_SIZE = 24;
 
 function loadImage(src: string) {
@@ -51,8 +51,8 @@ function drawShareBrand(ctx: Ctx, icon: Img, top: number, family: string, color:
   ctx.textBaseline = "middle";
   ctx.fillStyle = color;
   const iconSpace = icon ? BRAND_SIZE + 10 : 0;
-  const x = (W - ctx.measureText(SHARE_BRAND_NAME).width - iconSpace) / 2;
-  ctx.fillText(SHARE_BRAND_NAME, x + iconSpace, top + BRAND_SIZE / 2);
+  const x = (W - ctx.measureText(APP_NAME).width - iconSpace) / 2;
+  ctx.fillText(APP_NAME, x + iconSpace, top + BRAND_SIZE / 2);
   if (icon) {
     ctx.globalAlpha = 0.55;
     cover(ctx, icon, x, top, BRAND_SIZE, BRAND_SIZE, 7);
