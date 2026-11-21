@@ -12,6 +12,7 @@ import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
 import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
+import { PracticeWalkthrough } from "./practice";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
@@ -56,6 +57,7 @@ type JoinTarget =
   | { code: NonNullable<ReturnType<typeof readJoinCode>> };
 const ACTIVE = "portable-pos-account";
 const DEMO_SESSION = "portable-pos-demo";
+const PRACTICE_SESSION = "pop-pos-practice";
 const LEGACY_INVITE = "portable-pos-invite";
 const REGISTER_ENTRY: AccountEntry = { kind: "register" };
 
@@ -152,6 +154,7 @@ export function Workspace() {
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
   const [pickingAccount, setPickingAccount] = useState(false);
+  const [practicing, setPracticing] = useState(false);
   const [signingInto, setSigningInto] = useState<SavedAccount | "new" | null>(null);
   const [entry, setEntry] = useState<AccountEntry | null>(null);
   const [resolvingLink, setResolvingLink] = useState(false);
@@ -344,6 +347,7 @@ export function Workspace() {
       if (!alive) return;
       if (!id && kind === "register" && sessionStorage.getItem(DEMO_SESSION)) id = DEMO;
       if (id) void connect(id);
+      else if (kind === "register" && sessionStorage.getItem(PRACTICE_SESSION)) setPracticing(true);
       setEntry(loginEntry);
     }
     void start().catch((e) => {
@@ -593,6 +597,16 @@ export function Workspace() {
     setLinkProblem(null);
     window.scrollTo(0, 0);
   }
+  function startPractice() {
+    sessionStorage.setItem(PRACTICE_SESSION, "1");
+    setPracticing(true);
+    window.scrollTo(0, 0);
+  }
+  function exitPractice() {
+    sessionStorage.removeItem(PRACTICE_SESSION);
+    setPracticing(false);
+    window.scrollTo(0, 0);
+  }
   async function signOut() {
     if (!key || key === DEMO) return;
     await locked("write-" + key, async () => {
@@ -725,6 +739,8 @@ export function Workspace() {
         <LoadingScreen message={resolvingLink ? "Opening your link…" : "Getting things ready…"} />
       </main>
     );
+  if (!key && entry.kind === "register" && practicing)
+    return <PracticeWalkthrough onExit={exitPractice} />;
   if (!key)
     return (
       <>
@@ -733,6 +749,7 @@ export function Workspace() {
           notice={notice}
           onChooseAccount={entry.kind === "register" && savedAccounts().length ? () => setPickingAccount(true) : undefined}
           onSignedIn={openAccount}
+          onPractice={startPractice}
           onDemo={() => {
             sessionStorage.setItem(DEMO_SESSION, "1");
             setNotice("");

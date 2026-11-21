@@ -1,6 +1,7 @@
 import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domain";
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
 import { demoPlan } from "./demo-plan";
+import { demoAction, PRACTICE, practiceBootstrap, type OwnerAction } from "./demo";
 import type {
   Bootstrap,
   CartLine,
@@ -204,6 +205,23 @@ async function updateRegister(
   });
 }
 
+/** This key is dedicated to the walkthrough and never enters the account sync path. */
+export function openPracticeRegister(): Promise<RegisterState> {
+  return updateRegister(PRACTICE, (current) => current.business ? current : {
+    ...current,
+    ...practiceBootstrap(current.deviceId),
+  });
+}
+
+export function savePracticeAction(input: OwnerAction): Promise<RegisterState> {
+  return updateRegister(PRACTICE, (current) => {
+    if (!current.business) throw Error("Open the practice register first.");
+    if (input.action === "close" && current.cart.length) throw Error("Finish or clear the current order before closing.");
+    const { deletedRecord: _deletedRecord, inviteDelivery: _inviteDelivery, ...snapshot } = demoAction(current, input);
+    return { ...current, ...snapshot, cart: input.action === "close" ? [] : current.cart };
+  });
+}
+
 function withAvailability(
   values: string[],
   target: string,
@@ -367,7 +385,7 @@ export function setAvailability(
     return {
       ...current,
       soldOut: withAvailability(current.soldOut, targetId, soldOut),
-      pending: [
+      pending: key === PRACTICE ? current.pending : [
         ...current.pending,
         {
           type: "availability",
@@ -422,7 +440,7 @@ export async function checkout(
       ...current,
       cart: [],
       sales: [sale, ...current.sales],
-      pending: [
+      pending: key === PRACTICE ? current.pending : [
         ...current.pending,
         { id: sale.id, shiftId: shift.id, type: "sale", sale, menuVersion },
       ],
@@ -486,7 +504,7 @@ export function logExpense(
     return {
       ...current,
       expenses: [expense, ...(current.expenses ?? [])],
-      pending: [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
+      pending: key === PRACTICE ? current.pending : [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
     };
   });
 }
@@ -503,7 +521,7 @@ export function removeExpense(key: string, expenseId: string) {
       expenses: (current.expenses ?? []).map((e) =>
         e.id === expenseId ? { ...e, voidedAt: new Date().toISOString() } : e,
       ),
-      pending: [...current.pending, { id, shiftId: shift.id, type: "unexpense", targetId: expenseId }],
+      pending: key === PRACTICE ? current.pending : [...current.pending, { id, shiftId: shift.id, type: "unexpense", targetId: expenseId }],
     };
   });
 }

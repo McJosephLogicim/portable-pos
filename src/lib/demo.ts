@@ -19,6 +19,7 @@ import type {
 } from "./types";
 
 export const DEMO = "demo-register-v2";
+export const PRACTICE = "practice-register-v1";
 export const DEMO_PIN = "1234";
 export function newShift(
   deviceId: string,
@@ -72,6 +73,38 @@ export function demoBootstrap(deviceId: string): Bootstrap {
     ...plan,
     business,
     menu: demoMenu,
+    shift,
+    shifts: [shift],
+    sales: [],
+    soldOut: [],
+  };
+}
+
+/** A blank lesson starts with an unlinked till so an item can be sold before scheduling. */
+export function practiceBootstrap(deviceId: string): Bootstrap {
+  const currency = "PHP";
+  const settings = defaultSettings(currency);
+  settings.mode = "simple";
+  const business = {
+    id: PRACTICE,
+    name: "POP POS Practice",
+    currency,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    settings,
+  };
+  const me = { memberId: "practice-owner", name: "You", roles: [], owner: true };
+  const shift = newShift(deviceId, business.id, 1, 0, [], {
+    ...settings,
+    currency,
+    payments: settings.payments.filter((method) => method.kind === "cash"),
+  });
+  return {
+    business,
+    me,
+    team: [{ id: me.memberId, name: me.name, email: "", roles: [], rate: 0, owner: true, primaryOwner: true, joined: true }],
+    organizers: [],
+    bookings: [],
+    menu: [],
     shift,
     shifts: [shift],
     sales: [],
@@ -213,7 +246,8 @@ export function demoAction(
       if (!booking) throw new RequestFailure(404, "That scheduled shift was removed.");
       if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
         throw new RequestFailure(409, "This shift already closed. Choose another shift.");
-      const problem = linkBookingProblem(booking, state.business!.timeZone);
+      // Practice can link the shift immediately, including one scheduled for another day.
+      const problem = state.business?.id === PRACTICE ? null : linkBookingProblem(booking, state.business!.timeZone);
       if (problem) throw new RequestFailure(409, problem);
       const shift = { ...open, bookingId: booking.id };
       return { ...state, shift, shifts: state.shifts.map((s) => s.id === shift.id ? shift : s) };

@@ -1,0 +1,156 @@
+.page {
+  min-height: 100svh;
+  max-width: 480px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  padding: max(20px, env(safe-area-inset-top)) clamp(22px, 6vw, 34px) max(18px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent 26%, #faf9f6 68%), url("/onboarding/paper.webp") center top / 100% auto no-repeat, #faf9f6;
+}
+
+.header,
+.brand {
+  display: flex;
+  align-items: center;
+}
+
+.header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.brand img {
+  border-radius: 8px;
+}
+
+.exit {
+  border: 0;
+  background: none;
+  padding-inline: 10px;
+  min-height: 44px;
+  margin-inline-end: -10px;
+  color: #56594d;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.content {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  flex: 1;
+  text-align: center;
+  padding-bottom: 22px;
+}
+
+.preview {
+  width: 100%;
+  min-height: min(30svh, 215px);
+  height: clamp(210px, 45svh, 410px);
+  display: grid;
+  place-items: center;
+}
+
+.preview img {
+  width: min(100%, 370px);
+  height: 100%;
+  max-height: 410px;
+  object-fit: contain;
+}
+
+.doneMark {
+  display: grid;
+  place-items: center;
+  width: 86px;
+  aspect-ratio: 1;
+  border-radius: 26px;
+  color: white;
+  background: var(--glossy);
+  box-shadow: 0 14px 32px #28282025;
+}
+
+.content h1 {
+  max-width: 13ch;
+  margin: 0;
+  font-size: clamp(34px, 9vw, 46px);
+  font-weight: 570;
+  line-height: 1.03;
+  letter-spacing: -0.055em;
+  text-wrap: balance;
+}
+
+.content h1:focus {
+  outline: none;
+}
+
+.description {
+  max-width: 28ch;
+  padding-top: 14px;
+  color: #52554b;
+  line-height: 1.48;
+  font-size: 15px;
+  text-wrap: balance;
+}
+
+.footer {
+  display: grid;
+  gap: 13px;
+}
+
+.progress {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+.progress span {
+  height: 3px;
+  width: 12px;
+  border-radius: 999px;
+  background: #deded4;
+}
+
+.progress [data-status="complete"] {
+  background: #7a8071;
+}
+
+.progress [data-status="current"] {
+  background: #131411;
+}
+
+.cta {
+  position: relative;
+  min-height: 52px;
+  padding-inline: 40px;
+}
+
+.cta svg {
+  position: absolute;
+  right: 19px;
+}
+
+.storage {
+  text-align: center;
+  color: #626459;
+  font-size: 12px;
+}
+
+@media (min-width: 600px) {
+  .page {
+    box-shadow: 0 0 0 1px #dbdbd4, 0 10px 60px #3f3f3020;
+  }
+}
+
+@media (max-height: 650px) {
+  .preview {
+    height: 34svh;
+  }
+}

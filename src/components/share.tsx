@@ -67,6 +67,7 @@ export function ImageShareSheet({
   build,
   onClose,
   children,
+  continueLabel,
 }: {
   title: string;
   filename: string;
@@ -74,6 +75,7 @@ export function ImageShareSheet({
   build: () => Promise<Blob>;
   onClose: () => void;
   children?: ReactNode;
+  continueLabel?: string;
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [copyError, setCopyError] = useState("");
@@ -136,7 +138,9 @@ export function ImageShareSheet({
     <Sheet
       title={title}
       onClose={onClose}
-      footer={
+      footer={continueLabel ? (
+        <button type="button" className="btn block" onClick={onClose}>{continueLabel}</button>
+      ) : (
         <div className="stack gap-8">
           {imageError && <p className="alert" role="alert">{imageError}</p>}
           {copyError && <p className="alert" role="alert">{copyError}</p>}
@@ -163,7 +167,7 @@ export function ImageShareSheet({
             </button>
           </div>
         </div>
-      }
+      )}
     >
       {children}
       <div className="report-preview" aria-busy={!current}>
@@ -171,7 +175,7 @@ export function ImageShareSheet({
           <img src={image.url} alt={title} />
         ) : (
           <div className={`report-wait ${styles.reportWait}`} role={unavailable ? "alert" : "status"}>
-            {unavailable ? "The image couldn’t be prepared. You can still copy it as text." : "Preparing the image…"}
+            {unavailable ? "The image couldn’t be prepared. You can still view it as text." : "Preparing the image…"}
           </div>
         )}
       </div>

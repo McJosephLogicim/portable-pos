@@ -89,11 +89,12 @@ export function RolePicker({
   );
 }
 
-function MemberSheet({
+export function MemberSheet({
   member,
   canChangeAccess,
   link,
   currency,
+  practice = false,
   onSave,
   onResend,
   onRemove,
@@ -104,6 +105,7 @@ function MemberSheet({
   /** A pending invite's link. */
   link?: string;
   currency: string;
+  practice?: boolean;
   onSave: (input: { name: string; email: string; rate: number; owner?: boolean; photo?: string | null }) => Promise<boolean>;
   onResend?: () => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
@@ -138,7 +140,7 @@ function MemberSheet({
   return (
     <>
     <Sheet
-      title={member ? member.name : "Invite someone"}
+      title={member ? member.name : practice ? "Add someone" : "Invite someone"}
       onClose={onClose}
       busy={busy}
       footer={
@@ -158,7 +160,7 @@ function MemberSheet({
               )
             }
           >
-            {busy ? "Saving…" : member ? "Save" : email.trim() ? "Invite" : "Create"}
+            {busy ? "Saving…" : member ? "Save" : practice ? "Add person" : email.trim() ? "Invite" : "Create"}
           </button>
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
@@ -196,7 +198,9 @@ function MemberSheet({
               <span className="field-head">
                 Email (optional)
                 <Explain title="Their email">
-                  Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own.
+                  {practice
+                    ? "Use an example address. It stays in this practice register on this device."
+                    : "Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own."}
                 </Explain>
               </span>
             )}

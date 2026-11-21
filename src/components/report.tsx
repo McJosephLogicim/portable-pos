@@ -15,6 +15,7 @@ export function ReportSheet({
   business,
   title,
   justClosed = false,
+  continueLabel,
   onDismiss,
 }: {
   shift: Shift;
@@ -22,6 +23,7 @@ export function ReportSheet({
   business: Business;
   title?: string;
   justClosed?: boolean;
+  continueLabel?: string;
   onDismiss: () => void;
 }) {
   const currency = shiftCurrency(shift, business);
@@ -48,6 +50,7 @@ export function ReportSheet({
       text={text}
       build={build}
       onClose={onDismiss}
+      continueLabel={continueLabel}
     >
       {justClosed && (
         <div className="hero shift-complete">

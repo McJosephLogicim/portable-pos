@@ -443,12 +443,14 @@ function Checkout({
   onPay,
   onClose,
   onReceipt,
+  practice = false,
 }: {
   state: RegisterState;
   lines: ReceiptLine[];
   busy: boolean;
   blocked: boolean;
   preview?: boolean;
+  practice?: boolean;
   onQuantity: (index: number, value: number) => Promise<void>;
   onClear: () => void;
   onPay: (tender: Tender, received: number, discountId?: string, proofs?: string[]) => Promise<Sale | null>;
@@ -545,7 +547,7 @@ function Checkout({
         footer={
           <>
             <button className="btn block" onClick={onClose}>
-              New sale
+              {practice ? "Continue" : "New sale"}
             </button>
             <button className="btn ghost block compact" onClick={() => onReceipt(sale)}>
               View receipt
@@ -859,6 +861,7 @@ function Checkout({
 
 export interface SellProps {
   preview?: boolean;
+  onPracticeDone?: () => void;
   state: RegisterState;
   status: string;
   online: boolean;
@@ -914,6 +917,7 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
 
 export function SellScreen({
   preview = false,
+  onPracticeDone,
   state,
   status,
   online,
@@ -945,7 +949,8 @@ export function SellScreen({
   const shift = state.shift!;
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
-  const canEdit = !preview && (!state.me || state.me.owner);
+  const practice = Boolean(onPracticeDone);
+  const canEdit = !preview && !practice && (!state.me || state.me.owner);
   const addItemReason = !online ? "Connect to the internet to add items." : state.menu.length >= 1000 && "The menu can hold up to 1,000 items.";
   const currency = shift.settings.currency;
   const menu = shift.menu;
@@ -1054,7 +1059,7 @@ export function SellScreen({
               {preview ? <h2 className="sell-title">Menu preview</h2> : <h1 className="sell-title">Sell</h1>}
               <Explain title="Selling" label="How selling works">
                 <p>Tap an item to add it to the order, then {preview ? "Test checkout" : "Charge"}.</p>
-                {!preview && (
+                {!preview && !practice && (
                   <p>
                     Something ran out? Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the
                     top, then the item. It shows Sold out until you tap it again.
@@ -1090,7 +1095,7 @@ export function SellScreen({
               {searching ? <X size={19} /> : <Search size={19} />}
             </button>
           )}
-          {!preview && (
+          {!preview && !practice && (
             <button
               className="round"
               aria-label="Mark items sold out"
@@ -1101,7 +1106,7 @@ export function SellScreen({
             </button>
           )}
         </div>
-        {!preview && <ShiftStrip state={state} onTill={onTill} />}
+        {!preview && !practice && <ShiftStrip state={state} onTill={onTill} />}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1291,6 +1296,7 @@ export function SellScreen({
       {charging && (paid || (!cartMenuError && (count > 0 || busy))) && (
         <Checkout
           preview={preview}
+          practice={practice}
           key={shift.menuVersion ?? "opening"}
           state={state}
           lines={lines}
@@ -1314,6 +1320,7 @@ export function SellScreen({
           onClose={() => {
             setCharging(false);
             setPaid(false);
+            if (paid) onPracticeDone?.();
           }}
           onReceipt={(sale) => {
             setCharging(false);
@@ -1363,7 +1370,10 @@ export function SellScreen({
           pending={state.pending.some((e) => e.id === receipt.id)}
           canReverse={false}
           onReverse={(reason, pin) => onReverse(receipt.id, reason, pin)}
-          onClose={() => setReceipt(null)}
+          onClose={() => {
+            setReceipt(null);
+            onPracticeDone?.();
+          }}
         />
       )}
     </>

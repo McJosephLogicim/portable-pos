@@ -189,7 +189,7 @@ export function AccountLinkError({ title, detail, onContinue, onSwitch }: {
 type AccountProps = {
   onSignedIn: (id: string) => Promise<void>;
 } & (
-  | { entry: AccountEntry; onDemo: () => void; notice?: string; onChooseAccount?: () => void }
+  | { entry: AccountEntry; onDemo: () => void; onPractice?: () => void; notice?: string; onChooseAccount?: () => void }
   | { requiredUser?: string; initialEmail?: string; onDismiss: () => void }
 );
 
@@ -382,6 +382,15 @@ export function Account(props: AccountProps) {
   return (
     <AccountPage brand={data?.business.brand} credit={Boolean(data)}>
       {!data && <AppMark />}
+      {kind === "register" && props.onPractice && !sentTo && (
+        <button type="button" className={`${styles.demo} ${styles.practice}`} disabled={busy} onClick={props.onPractice}>
+          <span>
+            <strong>Practice with POP POS</strong>
+            <span>Try the register step by step. Everything stays on this device.</span>
+          </span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      )}
       {preview.state === "loading" && <Placeholder />}
       {data && (kind === "invite" ? <InviteCard data={data} /> : <ShiftCard data={data} />)}
       {preview.state === "gone" && (

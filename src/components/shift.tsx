@@ -387,7 +387,7 @@ function OpenShift({
   );
 }
 
-function CloseSheet({
+export function CloseSheet({
   shift,
   state,
   expected,

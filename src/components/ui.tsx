@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { RequestFailure } from "@/lib/client";
+import { DEMO_PIN } from "@/lib/demo";
 import { currencyDigits } from "@/lib/settings";
 import { clearSheetExit, collapseOnExit, exitSheet, fadeOnExit } from "@/lib/exit";
 import type { PaymentKind } from "@/lib/types";
@@ -883,6 +884,16 @@ const PinContext = createContext<PinRequest>(async () => false);
 /** Owner actions ask for the PIN once, then reuse it for five minutes on this screen. */
 export function usePin() {
   return useContext(PinContext);
+}
+
+const runPracticeAction: PinRequest = async (run) => {
+  await run(DEMO_PIN);
+  return true;
+};
+
+/** The local lesson reuses owner forms without asking for credentials. */
+export function PracticePinProvider({ children }: { children: ReactNode }) {
+  return <PinContext.Provider value={runPracticeAction}>{children}</PinContext.Provider>;
 }
 
 const PIN_TTL = 5 * 60 * 1000;

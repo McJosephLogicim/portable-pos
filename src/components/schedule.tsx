@@ -73,6 +73,7 @@ export interface ScheduleProps {
   state: RegisterState;
   online: boolean;
   demo: boolean;
+  practice?: boolean;
   sharedSchedule?: { bookingId: string | null } | null;
   onAction: Act;
   onSaved: (text: string) => void;
@@ -829,7 +830,7 @@ function resolveOrganizer(list: Organizer[], d: Pick<Draft, "organizer" | "event
   return { organizers, organizer, event: { id: event.id, name: event.name } };
 }
 
-function BookingEditor({
+export function BookingEditor({
   booking,
   bulk = false,
   props,
@@ -903,7 +904,7 @@ function BookingEditor({
       const incentive = parse(d.incentive);
       if (bulk && !days.length) throw Error("No days match. Check the dates and weekdays.");
       if (bulk && days.length > 120) throw Error("Add up to 120 shifts at a time.");
-      const tags = resolveOrganizer(organizers, d, booking);
+      const tags = resolveOrganizer(organizers, props.practice && d.event.trim() ? { ...d, organizer: "Practice" } : d, booking);
       const make = (day: string, id: string): BookingInput => ({
         id,
         ...shiftTimes(day, d.start, d.end, zone),
@@ -958,7 +959,7 @@ function BookingEditor({
         }
       >
         <div className="card card-pad stack gap-14">
-          <div className="field">
+          {!props.practice && <div className="field">
             <span>Organizer</span>
             <SuggestInput
               label="Organizer"
@@ -973,17 +974,17 @@ function BookingEditor({
               }))}
               onChange={(organizer) => set({ organizer })}
             />
-          </div>
+          </div>}
           <div className="field">
             <span className="field-head">
-              Event
-              <Explain title="Organizers and events">
+              {props.practice ? "Shift name (optional)" : "Event"}
+              {!props.practice && <Explain title="Organizers and events">
                 New names are added to your list when you save. Rename or remove them in Settings.
-              </Explain>
+              </Explain>}
             </span>
             <SuggestInput
-              label="Event"
-              placeholder="e.g. Christmas Bazaar"
+              label={props.practice ? "Shift name (optional)" : "Event"}
+              placeholder={props.practice ? "e.g. Weekend pop-up" : "e.g. Christmas Bazaar"}
               maxLength={80}
               value={d.event}
               newText="New event"
@@ -991,7 +992,7 @@ function BookingEditor({
               onChange={(event) => set({ event })}
             />
           </div>
-          <div className="field">
+          {!props.practice && <div className="field">
             <span>Location</span>
             <div className={styles.locationRow}>
               <button type="button" className="input place-button" aria-haspopup="dialog" onClick={() => setLocating(true)}>
@@ -1012,7 +1013,7 @@ function BookingEditor({
               )}
             </div>
             {d.place?.address && <p className="label">{d.place.address}</p>}
-          </div>
+          </div>}
         </div>
 
         <div className="card card-pad stack gap-14">
@@ -1085,7 +1086,7 @@ function BookingEditor({
           )}
         </div>
 
-        <div className="stack gap-10">
+        {!props.practice && <div className="stack gap-10">
           <p className="group-title">People</p>
           <div className="card card-list">
             <div className="list-row">
@@ -1127,7 +1128,7 @@ function BookingEditor({
               <span className="grow">{bulk ? "Put someone on every shift" : "Assign someone"}</span>
             </button>
           </div>
-        </div>
+        </div>}
 
         <div className="stack gap-10">
           <p className="group-title">Money</p>
@@ -1379,7 +1380,9 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, ...props }: Sche
   const zone = state.business!.timeZone;
   const now = Date.now();
   const today = dayOf(now, zone);
-  const openShifts = upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
+  const openShifts = props.practice
+    ? upcomingBookings(state, -Infinity)
+    : upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
   const [selection, setSelection] = useState<{ bookingId: string; confirming?: boolean } | null>(null);
   const [adding, setAdding] = useState<"new" | "bulk" | null>(null);
   const selected = openShifts.find((booking) => booking.id === selection?.bookingId);
@@ -1389,23 +1392,23 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, ...props }: Sche
       <Sheet
         title="Shifts"
         onClose={onClose}
-        action={
+        action={!props.practice && (
           <button type="button" className="btn secondary compact" onClick={() => {
             onClose();
             onSchedule();
           }}>
             Go to Shifts <ChevronRight size={16} aria-hidden="true" />
           </button>
-        }
+        )}
       >
         <ShiftList
           entries={openShifts}
           state={state}
-          onOpen={(bookingId) => setSelection({ bookingId })}
-          emptyAction={state.me?.owner ? <AddShiftMenu disabled={!online} onAdd={setAdding} /> : undefined}
+          onOpen={(bookingId) => setSelection({ bookingId, confirming: props.practice })}
+          emptyAction={!props.practice && state.me?.owner ? <AddShiftMenu disabled={!online} onAdd={setAdding} /> : undefined}
         />
       </Sheet>
-      {selected && (
+      {selected && !props.practice && (
         <ShiftDetailsSheet
           {...props}
           bookingId={selected.id}
@@ -1419,7 +1422,7 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, ...props }: Sche
           detail={<>This till and its sales will be linked to <strong>{bookingTitle(selected)}</strong>.</>}
           confirmLabel="Add till"
           destructive={false}
-          onClose={() => setSelection({ bookingId: selected.id })}
+          onClose={() => setSelection(props.practice ? null : { bookingId: selected.id })}
           onConfirm={async () => {
             await onAction({ action: "linkBooking", shiftId, bookingId: selected.id });
             buzz.success();
