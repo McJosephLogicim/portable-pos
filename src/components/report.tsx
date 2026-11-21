@@ -6,7 +6,9 @@ import { reportImage } from "@/lib/report-image";
 import type { Business, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { ImageShareSheet } from "./share";
+import { Popo } from "./popo";
 import { DoneCheck, facesOf, formatMoney, Money } from "./ui";
+import styles from "./operations.module.css";
 
 /** The end-of-shift report: a picture to send to the group chat, or the same as text. */
 export function ReportSheet({
@@ -68,6 +70,7 @@ export function ReportSheet({
               </span>
             )}
           </div>
+          <Popo pose="close" size={64} className={styles.reportMascot} />
         </div>
       )}
     </ImageShareSheet>

@@ -1,0 +1,29 @@
+.image {
+  display: block;
+  flex: none;
+  aspect-ratio: 1;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .greet {
+    animation: greet 2.3s 100ms cubic-bezier(.37, 0, .23, 1) both;
+  }
+
+  .settle {
+    animation: settle 1s 100ms cubic-bezier(.25, 0, .27, 1) both;
+  }
+}
+
+@keyframes greet {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  42% { transform: translateY(-10px) rotate(-5deg); }
+  72% { transform: translateY(-3px) rotate(2deg); }
+}
+
+@keyframes settle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-6px) scale(1.045); }
+  72% { transform: translateY(1px) scale(.99); }
+}

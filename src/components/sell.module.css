@@ -42,6 +42,18 @@
   outline-offset: 2px;
 }
 
+.resultHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.resultMascot {
+  width: clamp(46px, 17vw, 74px);
+  height: auto;
+}
+
 .stageFocus:focus {
   outline: none;
 }

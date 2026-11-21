@@ -5,7 +5,10 @@
   display: flex;
   flex-direction: column;
   padding: max(20px, env(safe-area-inset-top)) clamp(22px, 6vw, 34px) max(18px, env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, transparent 26%, #faf9f6 68%), url("/onboarding/paper.webp") center top / 100% auto no-repeat, #faf9f6;
+  background:
+    radial-gradient(ellipse 63% 34% at 46% 28%, #e0eaff, transparent 100%),
+    radial-gradient(ellipse 47% 34% at 96% 21%, #eee7f9, transparent 100%),
+    #faf9f6;
 }
 
 .header,
@@ -26,17 +29,13 @@
   letter-spacing: -0.035em;
 }
 
-.brand img {
-  border-radius: 8px;
-}
-
 .exit {
   border: 0;
   background: none;
   padding-inline: 10px;
   min-height: 44px;
   margin-inline-end: -10px;
-  color: #56594d;
+  color: #535c6a;
   font-size: 13px;
   font-weight: 550;
 }
@@ -51,6 +50,7 @@
 }
 
 .preview {
+  position: relative;
   width: 100%;
   min-height: min(30svh, 215px);
   height: clamp(210px, 45svh, 410px);
@@ -58,11 +58,20 @@
   place-items: center;
 }
 
-.preview img {
+.previewCard {
   width: min(100%, 370px);
   height: 100%;
   max-height: 410px;
   object-fit: contain;
+}
+
+.previewPopo {
+  position: absolute;
+  inset-block-start: 10%;
+  inset-inline-end: 4%;
+  width: clamp(75px, 27%, 112px);
+  height: auto;
+  filter: drop-shadow(0 6px 10px #526ba332);
 }
 
 .content h1 {
@@ -82,7 +91,7 @@
 .description {
   max-width: 28ch;
   padding-top: 14px;
-  color: #52554b;
+  color: #505968;
   line-height: 1.48;
   font-size: 15px;
   text-wrap: balance;
@@ -104,15 +113,15 @@
   height: 3px;
   width: 12px;
   border-radius: 999px;
-  background: #deded4;
+  background: #dde1e8;
 }
 
 .progress [data-status="complete"] {
-  background: #7a8071;
+  background: #828d9e;
 }
 
 .progress [data-status="current"] {
-  background: #131411;
+  background: #111827;
 }
 
 .cta {
@@ -128,7 +137,7 @@
 
 .storage {
   text-align: center;
-  color: #626459;
+  color: #535c6a;
   font-size: 12px;
 }
 

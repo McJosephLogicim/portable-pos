@@ -1,3 +1,22 @@
+.tillHeading,
+.tillDrawer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.tillMascot {
+  width: clamp(50px, 18vw, 74px);
+  height: auto;
+}
+
+.reportMascot {
+  margin-inline-start: auto;
+  width: clamp(40px, 14vw, 64px);
+  height: auto;
+}
+
 .scheduleHeader :global(.round) {
   flex: 0 0 44px;
   min-width: 44px;

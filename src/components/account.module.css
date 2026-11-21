@@ -1,5 +1,4 @@
-/* Sign-in and link entry. One narrow column on the grey canvas, on every screen size:
-   the register is a phone app, so the desktop shows the same thing, centered. */
+/* Shared team and shift links keep their business-first column. */
 
 .page {
   display: grid;
@@ -33,10 +32,6 @@
   letter-spacing: -0.02em;
 }
 
-.app img {
-  border-radius: 8px;
-}
-
 .credit {
   display: flex;
   justify-content: center;
@@ -54,9 +49,174 @@
 .credit .app img {
   width: 20px;
   height: 20px;
-  border-radius: 6px;
-  filter: grayscale(1);
-  opacity: 0.55;
+}
+
+/* The register entry carries the onboarding palette into the first form. */
+.entry {
+  min-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  background:
+    radial-gradient(ellipse 54% 38% at 49% 16%, #e0eaff, transparent 100%),
+    radial-gradient(ellipse 44% 34% at 96% 10%, #eee7f9, transparent 100%),
+    #faf9f6;
+  color: #111827;
+}
+
+.entryShell {
+  max-width: 430px;
+  margin-inline: auto;
+}
+
+.showcase {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.showcase .app {
+  z-index: 1;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.035em;
+}
+
+.scene {
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  min-height: clamp(148px, 24svh, 224px);
+}
+
+.scene::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: min(92%, 350px);
+  aspect-ratio: 1.86;
+  border: 1px solid #ffffffba;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, #fcfdff9c, transparent 67%);
+  box-shadow: 0 0 0 19px #ffffff25, 0 0 0 38px #ffffff17;
+  transform: rotate(-12deg);
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 81%;
+  width: 29%;
+  height: 9%;
+  border-radius: 50%;
+  background: #557dc83a;
+  filter: blur(13px);
+}
+
+.welcome {
+  width: clamp(126px, 21svh, 196px);
+  height: auto;
+  filter: drop-shadow(0 10px 15px #5a83c340);
+}
+
+.entryContent {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+  min-width: 0;
+}
+
+.entryContent .card {
+  gap: 17px;
+  padding: 24px clamp(16px, 5.2vw, 30px) 22px;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #e6e9f0, 0 14px 44px #2436580c;
+}
+
+.entryContent .title {
+  max-width: 14ch;
+  justify-self: center;
+  font-size: clamp(30px, 8vw, 40px);
+  text-align: center;
+  letter-spacing: -.055em;
+}
+
+.entryContent .form :global(.input) {
+  background: #f5f6fa;
+}
+
+.entryContent .form :global(.input:focus) {
+  background: #fff;
+}
+
+.entryContent button[type="submit"] {
+  min-height: 50px;
+}
+
+.entryContent .demo {
+  min-height: 60px;
+  box-shadow: inset 0 0 0 1px #e8e8eb;
+}
+
+@media (min-width: 790px) {
+  .entry {
+    display: grid;
+    align-items: center;
+    padding: 32px;
+  }
+
+  .entryShell {
+    display: grid;
+    grid-template-columns: 1.03fr 1fr;
+    width: min(100%, 950px);
+    max-width: none;
+    min-height: 580px;
+    border: 1px solid #e7e9ef;
+    border-radius: 34px;
+    overflow: hidden;
+    background: #fdfdfc;
+    box-shadow: 0 24px 80px #2e436615, 0 4px 12px #4659800a;
+  }
+
+  .showcase {
+    background:
+      radial-gradient(ellipse at 47% 58%, #e0ebff 0%, transparent 70%),
+      linear-gradient(140deg, #f7faff, #eeedf9 68%, #f8edfa);
+    padding: 28px 30px;
+  }
+
+  .scene {
+    min-height: 0;
+    margin-block: -26px 0;
+  }
+
+  .scene::before {
+    width: min(100%, 385px);
+  }
+
+  .scene::after {
+    top: 72%;
+    width: 45%;
+    height: 5%;
+  }
+
+  .welcome {
+    width: clamp(201px, 27vw, 285px);
+  }
+
+  .entryContent {
+    padding: 30px;
+  }
+
+  .entryContent .title {
+    justify-self: start;
+    text-align: start;
+  }
 }
 
 /* ---------- white objects ---------- */

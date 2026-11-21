@@ -15,6 +15,7 @@ import { dayOf } from "@/lib/team";
 import type { RegisterState } from "@/lib/types";
 import { ItemSheet } from "./menu-settings";
 import { LoadingScreen } from "./loading-screen";
+import { Popo } from "./popo";
 import { ReportSheet } from "./report";
 import { BookingEditor, TillShiftsSheet, type ScheduleProps } from "./schedule";
 import { SellScreen } from "./sell";
@@ -24,12 +25,12 @@ import { errorText, Notice, PracticePinProvider, usePin } from "./ui";
 import styles from "./onboarding.module.css";
 
 const steps = [
-  { id: "menu", title: "Add menu items", text: "Add a name and price for something you sell. It goes on your business menu.", button: "Add an item", image: "01-menu-items" },
-  { id: "sell", title: "Make your first sale", text: "Pick an item in Sell and run a practice checkout.", button: "Try Sell", image: "02-first-sale" },
-  { id: "schedule", title: "Add your first shift", text: "Choose a date and time for your business’s next shift.", button: "Add a shift", image: "03-add-a-shift" },
-  { id: "link", title: "Connect a shift in Till", text: "Use your scheduled shift to try linking the practice till.", button: "Open Till", image: "04-connect-till" },
-  { id: "close", title: "Close your shift", text: "Count the practice drawer and review its closing report.", button: "Count and close", image: "05-close-a-shift" },
-  { id: "team", title: "Add your team", text: "Add the people who’ll work your shifts. Invite them by email or share an invite link.", button: "Add someone", image: "06-add-your-team" },
+  { id: "menu", title: "Add menu items", text: "Add a name and price for something you sell. It goes on your business menu.", button: "Add an item", image: "01-menu-items", pose: "menu" },
+  { id: "sell", title: "Make your first sale", text: "Pick an item in Sell and run a practice checkout.", button: "Try Sell", image: "02-first-sale", pose: "sale" },
+  { id: "schedule", title: "Add your first shift", text: "Choose a date and time for your business’s next shift.", button: "Add a shift", image: "03-add-a-shift", pose: "plan" },
+  { id: "link", title: "Connect a shift in Till", text: "Use your scheduled shift to try linking the practice till.", button: "Open Till", image: "04-connect-till", pose: "connect" },
+  { id: "close", title: "Close your shift", text: "Count the practice drawer and review its closing report.", button: "Count and close", image: "05-close-a-shift", pose: "close" },
+  { id: "team", title: "Add your team", text: "Add the people who’ll work your shifts. Invite them by email or share an invite link.", button: "Add someone", image: "06-add-your-team", pose: "team" },
 ] as const;
 
 type Step = (typeof steps)[number]["id"];
@@ -230,7 +231,8 @@ export function Onboarding({
         </header>
         <div className={styles.content}>
           <div className={styles.preview} aria-hidden="true">
-            <Image src={`/onboarding/${step.image}.webp`} alt="" width={780} height={880} unoptimized />
+            <Image src={`/onboarding/${step.image}.webp`} className={styles.previewCard} alt="" width={780} height={880} unoptimized />
+            <Popo key={step.id} pose={step.pose} size={120} className={styles.previewPopo} />
           </div>
           <h1 ref={heading} tabIndex={-1}>{step.title}</h1>
           <p className={styles.description}>{step.text}</p>
@@ -247,7 +249,6 @@ export function Onboarding({
           {step.id === "team" && hasTeammate && (
             <button type="button" className="btn ghost block" disabled={!online || busy} onClick={() => void run(onFinish)}>Finish setup</button>
           )}
-          {practiceStep && <p className={styles.storage}>This exercise stays on this device.</p>}
           {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
         </footer>
       </main>

@@ -11,6 +11,7 @@ import { ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedu
 import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
+import { Popo } from "./popo";
 import { ExpensesSection } from "./expenses";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
@@ -99,9 +100,12 @@ function NoShift({
   if (!state.menu.length)
     return (
       <div className="stack gap-18">
-        <h1 className="headline">
-          Add what you sell <span className="g">before the first shift.</span>
-        </h1>
+        <div className={styles.tillHeading}>
+          <h1 className="headline">
+            Add what you sell <span className="g">before the first shift.</span>
+          </h1>
+          <Popo pose="menu" size={68} className={styles.tillMascot} />
+        </div>
         <div className="card card-pad stack gap-12">
           {onGoMenu ? (
             <>
@@ -126,7 +130,10 @@ function NoShift({
   const opensToday = next && weekday.format(opensAt) === weekday.format(Date.now()) && opensAt - Date.now() < 86_400_000;
   return (
     <div className="stack gap-18">
-      <h1 className="headline">Open till</h1>
+      <div className={styles.tillHeading}>
+        <h1 className="headline">Open till</h1>
+        <Popo pose="connect" size={68} className={styles.tillMascot} />
+      </div>
       {live.length > 0 && (
         <div className="stack gap-10">
           <p className="group-title">Open on another phone</p>
@@ -596,13 +603,16 @@ export function ShiftScreen({
               sold since {time.format(new Date(shift.openedAt))}.
             </span>
           </h1>
-          <div className="hero stack gap-10">
-            <span className="hero-label">Expected in the drawer</span>
-            <Money value={totals.expectedCash} currency={currency} className="big-num" />
-            <span className="hero-label">
-              {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
-              {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
-            </span>
+          <div className={`hero ${styles.tillDrawer}`}>
+            <div className="stack gap-10">
+              <span className="hero-label">Expected in the drawer</span>
+              <Money value={totals.expectedCash} currency={currency} className="big-num" />
+              <span className="hero-label">
+                {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
+                {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
+              </span>
+            </div>
+            {!compact && <Popo key={shift.id} size={74} className={styles.tillMascot} />}
           </div>
           {!compact && !state.closingShiftId && (
             <button className="btn block" onClick={onSell}>Back to selling</button>

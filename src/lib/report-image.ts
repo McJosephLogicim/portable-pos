@@ -53,10 +53,7 @@ function drawShareBrand(ctx: Ctx, icon: Img, top: number, family: string, color:
   const iconSpace = icon ? BRAND_SIZE + 10 : 0;
   const x = (W - ctx.measureText(APP_NAME).width - iconSpace) / 2;
   ctx.fillText(APP_NAME, x + iconSpace, top + BRAND_SIZE / 2);
-  if (icon) {
-    ctx.globalAlpha = 0.55;
-    cover(ctx, icon, x, top, BRAND_SIZE, BRAND_SIZE, 7);
-  }
+  if (icon) ctx.drawImage(icon, x, top, BRAND_SIZE, BRAND_SIZE);
   ctx.restore();
 }
 

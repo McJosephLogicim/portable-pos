@@ -28,6 +28,7 @@ import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
 import { currencyDigits, isSimpleMode } from "@/lib/settings";
 import { ReceiptSheet, receiptNumber } from "./receipt";
+import { Popo } from "./popo";
 import { collapseOnExit, fadeOnExit } from "@/lib/exit";
 import {
   buzz,
@@ -557,25 +558,28 @@ function Checkout({
       >
         <div className="confirm-sale">
           <div
-            className={`hero stack gap-8 sale-hero ${styles.stageFocus}`}
+            className={`hero sale-hero ${styles.stageFocus} ${styles.resultHero}`}
             ref={stageTarget}
             tabIndex={-1}
             role="group"
             aria-label={`Sale complete. Receipt ${number}. ${resultLabel}. ${formatMoney(showChange ? sale.change : sale.total, currency)}.`}
           >
-            <span className="row gap-8 hero-label">
-              <DoneCheck small />
-              {preview ? "Preview" : "Saved"} · {number}
-            </span>
-            <span className="hero-label sale-hero-what">
-              {resultLabel}
-            </span>
-            <Money value={showChange ? sale.change : sale.total} currency={currency} className="due-num" />
-            <span className="hero-label">
-              {showChange
-                ? `From ${formatMoney(sale.received, currency)} cash for ${formatMoney(sale.total, currency)}`
-                : new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(sale.createdAt))}
-            </span>
+            <div className="stack gap-8">
+              <span className="row gap-8 hero-label">
+                <DoneCheck small />
+                {preview ? "Preview" : "Saved"} · {number}
+              </span>
+              <span className="hero-label sale-hero-what">
+                {resultLabel}
+              </span>
+              <Money value={showChange ? sale.change : sale.total} currency={currency} className="due-num" />
+              <span className="hero-label">
+                {showChange
+                  ? `From ${formatMoney(sale.received, currency)} cash for ${formatMoney(sale.total, currency)}`
+                  : new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(sale.createdAt))}
+              </span>
+            </div>
+            <Popo pose="sale" size={74} className={styles.resultMascot} />
           </div>
           <div className={`row gap-10 sale-items ${styles.resultDetails}`}>
             <ItemFaces items={faces(sale.lines)} />

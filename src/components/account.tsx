@@ -10,6 +10,7 @@ import { onColor } from "@/lib/theme";
 import type { LinkPreview } from "@/lib/types";
 import { BusinessMark } from "./businesses";
 import { LiquidSegments } from "./liquid-segments";
+import { Popo } from "./popo";
 import { CurrencyOptions } from "./settings";
 import { errorText, Explain, Sheet } from "./ui";
 import styles from "./account.module.css";
@@ -68,7 +69,27 @@ function AppMark() {
   );
 }
 
-function AccountPage({ children, brand, credit }: { children: ReactNode; brand?: string; credit?: boolean }) {
+function AccountPage({ children, brand, credit, showcase }: {
+  children: ReactNode;
+  brand?: string;
+  credit?: boolean;
+  showcase?: boolean;
+}) {
+  if (showcase) {
+    return (
+      <main className={styles.entry}>
+        <div className={styles.entryShell}>
+          <div className={styles.showcase}>
+            <AppMark />
+            <div className={styles.scene} aria-hidden="true">
+              <Popo pose="welcome" motion="greet" size={228} className={styles.welcome} />
+            </div>
+          </div>
+          <div className={styles.entryContent}>{children}</div>
+        </div>
+      </main>
+    );
+  }
   return (
     <main className={styles.page} style={brandStyle(brand)}>
       <div className={styles.column}>
@@ -464,8 +485,8 @@ export function Account(props: AccountProps) {
   );
 
   return (
-    <AccountPage brand={data?.business.brand} credit={Boolean(data)}>
-      {!data && <AppMark />}
+    <AccountPage brand={data?.business.brand} credit={Boolean(data)} showcase={!linked}>
+      {linked && !data && <AppMark />}
       {preview.state === "loading" && <Placeholder />}
       {data && (kind === "invite" ? <InviteCard data={data} /> : <ShiftCard data={data} />)}
       {preview.state === "gone" && (
