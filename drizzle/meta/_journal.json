@@ -85,6 +85,13 @@
       "when": 1795245292203,
       "tag": "0011_account_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795247560901,
+      "tag": "0012_onboarding_runtime_access",
+      "breakpoints": true
     }
   ]
 }

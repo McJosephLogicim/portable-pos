@@ -9,7 +9,7 @@ const inviteCode = "invite42";
 const teamId = "bfb566c0-718f-476e-b560-1c848e91d055";
 const shiftId = "aabcaac3-b2c0-4617-b2b8-154a4a702098";
 const email = "crew@example.test";
-const verificationCode = "01234567";
+const verificationCode = "012345";
 const authHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "*",
@@ -166,7 +166,6 @@ test.describe("account-enabled link entry", () => {
       await page.locator("button[type=submit]").click();
       await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
       await page.getByRole("textbox", { name: "Verification code" }).fill(verificationCode);
-      await page.getByRole("button", { name: "Verify email" }).click();
       await expect(page.getByRole("button", { name: "Shifts", exact: true })).toHaveAttribute("aria-current", "page");
       await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
       const invitations = commands.filter((cmd) => cmd.action === "acceptInvite");
@@ -180,22 +179,29 @@ test.describe("account-enabled link entry", () => {
     });
   }
 
-  test("an unconfirmed sign-in can retry the code, resend it, or change email", async ({ page }) => {
+  test("the sixth digit submits a code once and an invalid code can be replaced", async ({ page }) => {
     await mockAuth(page, { unconfirmed: true });
+    const attempts: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && new URL(request.url()).pathname === "/auth/v1/verify")
+        attempts.push(request.postDataJSON().token);
+    });
     await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
     await page.goto(appUrl);
     await enterCredentials(page);
     await page.locator("button[type=submit]").click();
 
     const code = page.getByRole("textbox", { name: "Verification code" });
-    const verify = page.getByRole("button", { name: "Verify email" });
     await expect(code).toBeFocused();
     await expect(code).toHaveAttribute("autocomplete", "one-time-code");
-    await expect(verify).toBeDisabled();
-    await code.fill("123456");
-    await verify.click();
+    await code.pressSequentially("12345");
+    await expect(code).toBeEditable();
+    expect(attempts).toEqual([]);
+    await code.press("6");
     await expect(page.getByRole("region", { name: "Check your email" }).getByRole("alert"))
       .toContainText("incorrect or expired");
+    expect(attempts).toEqual(["123456"]);
+    await expect(code).toBeEmpty();
     await page.getByRole("button", { name: "Resend code" }).click();
     await expect(page.getByRole("status")).toHaveText("New code sent. Use the most recent email.");
     await expect(code).toBeEmpty();
@@ -220,6 +226,83 @@ test.describe("account-enabled link entry", () => {
     await page.locator("button[type=submit]").click();
     await expect(page.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
+  });
+
+  test("sign-in from saved accounts and sync recovery opens the authenticated register", async ({ page }) => {
+    const secondEmail = "bakery@example.test";
+    const secondId = "741cdfa2-abd0-4e39-9dfa-c222afe56ba0";
+    let rejectFirstRegister = false;
+    await page.route("**/auth/v1/**", (route) => {
+      const request = route.request();
+      if (request.method() === "OPTIONS" || request.url().includes("/logout"))
+        return route.fulfill({ status: 204, headers: authHeaders });
+      const address = request.postDataJSON().email;
+      expect([email, secondEmail]).toContain(address);
+      const id = address === email ? accountId : secondId;
+      return route.fulfill({ headers: authHeaders, json: {
+        access_token: "token-" + id, refresh_token: "refresh-" + id, expires_in: 3600,
+        token_type: "bearer", user: { id, email: address, aud: "authenticated", role: "authenticated" },
+      } });
+    });
+    await page.route("**/api/pos", (route) => {
+      const actor = route.request().headers().authorization;
+      expect(["Bearer token-" + accountId, "Bearer token-" + secondId]).toContain(actor);
+      const first = actor === "Bearer token-" + accountId;
+      if (first && rejectFirstRegister)
+        return route.fulfill({ status: 401, json: { error: "Please sign in again to sync your register." } });
+      const snapshot = teamSnapshot();
+      return route.fulfill({ json: {
+        ...snapshot,
+        business: { ...snapshot.business!, id: first ? teamId : secondId, name: first ? "Market Counter" : "Bakery Counter" },
+        me: { ...snapshot.me!, name: first ? "Market Owner" : "Bakery Owner" },
+      } });
+    });
+    const firstRegister = page.getByRole("button", { name: "Switch business, now Market Counter" });
+    const secondRegister = page.getByRole("button", { name: "Switch business, now Bakery Counter" });
+    async function picker() {
+      await page.getByRole("button", { name: "Account and settings" }).click();
+      await page.getByRole("button", { name: "Switch account", exact: true }).click();
+      return page.getByRole("dialog", { name: "Switch account" });
+    }
+    async function signInThroughDialog(title: string, address: string) {
+      const dialog = page.getByRole("dialog", { name: title, exact: true });
+      await dialog.getByLabel("Email", { exact: true }).fill(address);
+      await dialog.getByLabel("Password", { exact: true }).fill("test-password");
+      await dialog.locator("button[type=submit]").click();
+      await expect(dialog).toBeHidden();
+    }
+
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    await expect(firstRegister).toBeVisible();
+    await (await picker()).getByRole("button", { name: "Add account" }).click();
+    await signInThroughDialog("Add account", secondEmail);
+    await expect(secondRegister).toBeVisible();
+
+    await (await picker()).getByRole("button", { name: /Market Owner/ }).click();
+    await expect(firstRegister).toBeVisible();
+    rejectFirstRegister = true;
+    await page.reload();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await signInThroughDialog("Sign in", secondEmail);
+    await expect(secondRegister).toBeVisible();
+
+    rejectFirstRegister = false;
+    await page.evaluate((id) => {
+      const accounts = JSON.parse(localStorage.getItem("portable-pos-saved-accounts") ?? "[]");
+      const { slot } = accounts.find((account: { id: string }) => account.id === id);
+      localStorage.removeItem("portable-pos-auth-" + slot);
+    }, accountId);
+    await (await picker()).getByRole("button", { name: /Market Owner/ }).click();
+    await expect(page.getByRole("dialog", { name: "Sign in" }).getByLabel("Email", { exact: true })).toHaveValue(email);
+    await signInThroughDialog("Sign in", secondEmail);
+    await expect(secondRegister).toBeVisible();
+    await page.reload();
+    await expect(secondRegister).toBeVisible();
+    await (await picker()).getByRole("button", { name: /Market Owner/ }).click();
+    await signInThroughDialog("Sign in", email);
+    await expect(firstRegister).toBeVisible();
   });
 
   test("a shift link requires team access and survives switching accounts", async ({ page }) => {
@@ -290,8 +373,7 @@ test("creates an account from Settings and switches without mixing saved registe
   await add.locator("button[type=submit]").click();
   const confirmation = page.getByRole("dialog", { name: "Check your email" });
   await expect(confirmation.getByText("secondary@example.test")).toBeVisible();
-  await confirmation.getByRole("textbox", { name: "Verification code" }).fill(verificationCode);
-  await confirmation.getByRole("button", { name: "Verify email" }).click();
+  await confirmation.getByRole("textbox", { name: "Verification code" }).fill("012 345");
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();

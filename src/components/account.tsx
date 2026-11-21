@@ -198,9 +198,7 @@ const MODES = [
   { value: "signin", label: "Sign in" },
   { value: "create", label: "Create account" },
 ] as const;
-// Supabase projects can configure email codes from six to ten digits.
-const MIN_EMAIL_CODE_LENGTH = 6;
-const MAX_EMAIL_CODE_LENGTH = 10;
+const EMAIL_CODE_LENGTH = 6;
 
 export function Account(props: AccountProps) {
   const page = "entry" in props;
@@ -226,7 +224,6 @@ export function Account(props: AccountProps) {
   const passwordId = useId();
   const codeInput = useRef<HTMLInputElement>(null);
   const busy = request !== null;
-  const canVerify = code.length >= MIN_EMAIL_CODE_LENGTH;
   const requiredUser = page ? undefined : props.requiredUser;
   const emailOptions = { emailRedirectTo: entry?.returnTo };
 
@@ -292,21 +289,27 @@ export function Account(props: AccountProps) {
     }
   }
 
-  async function verifyEmail(e: FormEvent) {
-    e.preventDefault();
-    if (!canVerify) return;
+  function updateCode(value: string) {
+    if (busy) return;
+    const next = value.replace(/\D/g, "").slice(0, EMAIL_CODE_LENGTH);
+    setCode(next);
+    setError("");
+    if (next.length === EMAIL_CODE_LENGTH) void verifyEmail(next);
+  }
+
+  async function verifyEmail(token: string) {
     setRequest("verify");
     setError("");
     setResendNotice("");
     try {
-      const { data, error } = await authClient(slot).auth.verifyOtp({ email: sentTo, token: code, type: "email" });
+      const { data, error } = await authClient(slot).auth.verifyOtp({ email: sentTo, token, type: "email" });
       if (error?.code === "otp_expired") {
-        setError("That code is incorrect or expired. Try again or request a new code.");
-        return;
+        throw Error("That code is incorrect or expired. Try again or request a new code.");
       }
       if (error) throw error;
       await finishSignIn(data.session);
     } catch (e) {
+      setCode("");
       setError(errorText(e));
     } finally {
       setRequest(null);
@@ -394,30 +397,26 @@ export function Account(props: AccountProps) {
 
   const verification = (
     <>
-      <p className={styles.lede}>Enter the verification code sent to <strong>{sentTo}</strong>.</p>
-      <form onSubmit={verifyEmail} className={styles.form}>
-        <fieldset disabled={busy}>
-          <label className={styles.field}>
-            <span>Verification code</span>
-            <input
-              ref={codeInput}
-              className={`input ${styles.code}`}
-              name="code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              spellCheck={false}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, MAX_EMAIL_CODE_LENGTH))}
-              required
-            />
-          </label>
-          {error && <p role="alert" className="alert">{error}</p>}
-          <button type="submit" className="btn block" disabled={!canVerify}>
-            {request === "verify" ? "Verifying…" : "Verify email"}
-          </button>
-        </fieldset>
-      </form>
+      <p className={styles.lede}>Enter the six-digit code sent to <strong>{sentTo}</strong>.</p>
+      <div className={`${styles.form} stack gap-14`}>
+        <label className={styles.field}>
+          <span>Verification code</span>
+          <input
+            ref={codeInput}
+            className={`input ${styles.code}`}
+            name="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            spellCheck={false}
+            value={code}
+            onChange={(e) => updateCode(e.target.value)}
+            readOnly={busy}
+          />
+        </label>
+        {error && <p role="alert" className="alert">{error}</p>}
+      </div>
+      {request === "verify" && <p role="status" className={styles.lede}>Verifying email…</p>}
       {resendNotice && <p role="status" className={styles.lede}>{resendNotice}</p>}
       <div className={styles.codeActions}>
         <button type="button" className={styles.plain} disabled={busy} onClick={resendCode}>
