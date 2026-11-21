@@ -207,3 +207,59 @@ test.describe("account-enabled link entry", () => {
     await expect(page.getByRole("heading", { name: "Open the shift" })).toBeVisible();
   });
 });
+
+test("switches saved accounts without signing in again or mixing their registers", async ({ page }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app started with test Supabase settings.");
+  const otherId = "d4ffdb18-fd04-4e87-b627-97460ceb7436";
+  const emails = { [email]: accountId, "secondary@example.test": otherId };
+  let signIns = 0;
+  await page.route("**/auth/v1/**", async (route) => {
+    const req = route.request();
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: authHeaders });
+    expect(new URL(req.url()).pathname.endsWith("/token")).toBe(true);
+    const address = req.postDataJSON().email as keyof typeof emails;
+    const id = emails[address];
+    expect(id).toBeTruthy();
+    signIns++;
+    return route.fulfill({
+      headers: authHeaders,
+      json: {
+        access_token: "token-" + id, refresh_token: "refresh-" + id, expires_in: 3600,
+        token_type: "bearer", user: { id, email: address, aud: "authenticated", role: "authenticated" },
+      },
+    });
+  });
+  await page.route("**/api/pos", (route) => {
+    const actor = route.request().headers().authorization;
+    expect(["Bearer token-" + accountId, "Bearer token-" + otherId]).toContain(actor);
+    const first = actor === "Bearer token-" + accountId;
+    const snapshot = teamSnapshot();
+    return route.fulfill({ json: {
+      ...snapshot,
+      business: { ...snapshot.business!, id: first ? teamId : otherId, name: first ? "Market Counter" : "Bakery Counter" },
+      me: { ...snapshot.me!, name: first ? "Market Owner" : "Bakery Owner" },
+    } });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
+  async function picker() {
+    await page.getByRole("button", { name: "Account and settings" }).click();
+    await page.getByRole("button", { name: "Switch account", exact: true }).click();
+    return page.getByRole("dialog", { name: "Switch account" });
+  }
+  await (await picker()).getByRole("button", { name: "Add account", exact: true }).click();
+  const add = page.getByRole("dialog", { name: "Add account" });
+  await add.getByLabel("Email", { exact: true }).fill("secondary@example.test");
+  await add.getByLabel("Password", { exact: true }).fill("fixture-password");
+  await add.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
+  await (await picker()).getByRole("button", { name: /Market Owner/ }).click();
+  await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
+  await (await picker()).getByRole("button", { name: /Bakery Owner/ }).click();
+  await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
+  expect(signIns).toBe(2);
+});

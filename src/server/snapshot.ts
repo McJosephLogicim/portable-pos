@@ -1,4 +1,5 @@
 import { and, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
+import { legacyStockUses } from "../lib/domain";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
 import { stockModel, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
 import type { Transaction } from "./db";
@@ -27,6 +28,7 @@ export function presentShift(
     openingCash: row.openingCash,
     menu: row.menu,
     menuVersion: row.menuHistory.at(-1)?.id,
+    legacyStockUses: legacyStockUses(row.menu, row.menuHistory.map((revision) => revision.previousMenu)),
     settings: row.settings ?? legacyShiftSettings(currency),
     countedCash: row.countedCash ?? undefined,
     difference: row.difference ?? undefined,
@@ -59,10 +61,10 @@ export function presentExpense(row: typeof expenses.$inferSelect): Expense {
 
 /** A closed shift without its menu, but with the stock items its report names. */
 function closedShift(row: typeof shifts.$inferSelect, currency: string) {
-  const shift = presentShift(row, currency);
-  if (!row.stock) return { ...shift, menu: [] };
+  const shift = presentShift({ ...row, menuHistory: [] }, currency);
+  if (!row.stock && !row.stockSets?.length) return { ...shift, menu: [], legacyStockUses: undefined };
   const { items } = stockModel(shift.settings.stockItems, row.menu);
-  return { ...shift, menu: [], settings: { ...shift.settings, stockItems: items } };
+  return { ...shift, menu: [], legacyStockUses: undefined, settings: { ...shift.settings, stockItems: items } };
 }
 
 export function presentSale(row: typeof sales.$inferSelect): Sale {

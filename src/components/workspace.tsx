@@ -9,14 +9,13 @@ import { ShiftScreen } from "./shift";
 import { SettingsScreen, type SettingsPage } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
 import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
-import { Account, AccountLinkError, Setup, type AccountEntry } from "./account";
+import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
-import { accountsEnabled, api, authClient, parseKey, proofBlob, registerKey, RequestFailure, uploadImage } from "@/lib/client";
-import { priceLines, updateShiftMenu } from "@/lib/domain";
+import { accountsEnabled, api, authClient, authForUser, forgetAccount, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
 import {
   beginClose,
   cancelClose,
@@ -152,6 +151,8 @@ export function Workspace() {
     [confirmSignOut, setConfirmSignOut] = useState(false),
     [adding, setAdding] = useState(false),
     [switching, setSwitching] = useState(false);
+  const [pickingAccount, setPickingAccount] = useState(false);
+  const [signingInto, setSigningInto] = useState<SavedAccount | "new" | null>(null);
   const [entry, setEntry] = useState<AccountEntry | null>(null);
   const [resolvingLink, setResolvingLink] = useState(false);
   const [linkProblem, setLinkProblem] = useState<{ title: string; detail: string; switchAccount?: boolean } | null>(null);
@@ -325,11 +326,14 @@ export function Workspace() {
       if (accountsEnabled) {
         const previous = localStorage.getItem(ACTIVE);
         // Supabase finishes a confirmation URL before returning the session.
-        const { data: { session }, error } = await authClient().auth.getSession();
+        const auth = confirmation ? authClient() : authForUser(previous ? parseKey(previous).userId : undefined);
+        const { data: { session }, error } = await auth.auth.getSession();
         if (!alive) return;
-        if (session && !session.user.is_anonymous)
-          id = previous && parseKey(previous).userId === session.user.id ? previous : session.user.id;
-        else if (!navigator.onLine && previous && previous !== DEMO && isAuthRetryableFetchError(error))
+        if (session && !session.user.is_anonymous) {
+          const userId = session.user.id;
+          rememberAccount({ id: userId, email: session.user.email, ...(confirmation ? { slot: undefined } : {}) });
+          id = previous && parseKey(previous).userId === userId ? previous : userId;
+        } else if (!navigator.onLine && previous && previous !== DEMO && isAuthRetryableFetchError(error))
           id = previous; // A cached session can be unable to refresh offline.
         else if (authParams.has("error_code") || params.has("error_code"))
           setNotice("This confirmation link is no longer valid. Try signing in or creating an account again.");
@@ -361,6 +365,13 @@ export function Workspace() {
     };
     return subscribeRegister(key, refresh);
   }, [key, show]);
+  const accountName = state?.me?.name;
+  const accountBusiness = state?.business?.name;
+  useEffect(() => {
+    if (key && key !== DEMO && accountBusiness) {
+      rememberAccount({ id: parseKey(key).userId, register: key, name: accountName, business: accountBusiness });
+    }
+  }, [key, accountName, accountBusiness]);
   const flush = useCallback(
     async (force = false) => {
       const id = active.current;
@@ -449,20 +460,6 @@ export function Workspace() {
       await syncRegister(key);
       await locked("sync-" + key, async () => {
         const s = await loadRegister(key);
-        if (input.action === "menu" && s.shift && s.cart.length) {
-          const nextMenu = updateShiftMenu(s.shift, input.menu, input.stock).menu;
-          const cartError = "Finish or clear the current order before changing its prices or options.";
-          let current: ReturnType<typeof priceLines>;
-          let next: ReturnType<typeof priceLines>;
-          try {
-            current = priceLines(s.shift.menu, s.cart);
-            next = priceLines(nextMenu, s.cart);
-          } catch {
-            throw Error(cartError);
-          }
-          if (next.some((line, index) => line.unitPrice !== current[index].unitPrice))
-            throw Error(cartError);
-        }
         const closingId = input.action === "close" ? s.shift?.id : undefined;
         if (closingId) closingHere.current = true;
         if (closingId) show(key, await beginClose(key, closingId));
@@ -603,9 +600,11 @@ export function Workspace() {
       const s = await loadRegister(key);
       if (s.pending.length)
         throw Error("Sync this device before signing out.");
-      const { error } = await authClient().auth.signOut({ scope: "local" });
+      const userId = parseKey(key).userId;
+      const { error } = await authForUser(userId).auth.signOut({ scope: "local" });
       if (error) throw error;
       await clearRegister(key);
+      forgetAccount(userId);
     });
     localStorage.removeItem(ACTIVE);
     setSettingsPage(null);
@@ -670,6 +669,49 @@ export function Workspace() {
     openMenu();
     setToast("Added " + input.name);
   }
+  async function useSavedAccount(entry: SavedAccount) {
+    const { data: { session } } = await authForUser(entry.id).auth.getSession();
+    if (session?.user.id !== entry.id) {
+      if (!navigator.onLine) throw Error("Connect to sign in to this account again.");
+      setPickingAccount(false);
+      setSigningInto(entry);
+      return;
+    }
+    await openAccount(entry.id);
+  }
+
+  async function openAccount(id: string) {
+    if (navigator.onLine) await flush();
+    const destination = savedAccounts().find((entry) => entry.id === id)?.register;
+    setPickingAccount(false);
+    setSigningInto(null);
+    setNotice("");
+    sessionStorage.removeItem(DEMO_SESSION);
+    await connect(destination && parseKey(destination).userId === id ? destination : id);
+  }
+
+  const accountSheets = (
+    <>
+      {pickingAccount && (
+        <AccountSwitcher
+          accounts={savedAccounts()}
+          current={key ? parseKey(key).userId : undefined}
+          online={online}
+          onSelect={useSavedAccount}
+          onAdd={() => { setPickingAccount(false); setSigningInto("new"); }}
+          onClose={() => setPickingAccount(false)}
+        />
+      )}
+      {signingInto && (
+        <Account
+          requiredUser={signingInto === "new" ? undefined : signingInto.id}
+          initialEmail={signingInto === "new" ? undefined : signingInto.email}
+          onDismiss={() => { setSigningInto(null); setPickingAccount(true); }}
+          onSignedIn={openAccount}
+        />
+      )}
+    </>
+  );
   const loadProof = useCallback(
     (url: string) => (!key || key === DEMO || url.startsWith("data:") ? Promise.resolve(url) : proofBlob(key, url)),
     [key],
@@ -685,20 +727,20 @@ export function Workspace() {
     );
   if (!key)
     return (
-      <Account
-        entry={entry}
-        notice={notice}
-        onSignedIn={async (id) => {
-          sessionStorage.removeItem(DEMO_SESSION);
-          setNotice("");
-          await connect(id);
-        }}
-        onDemo={() => {
-          sessionStorage.setItem(DEMO_SESSION, "1");
-          setNotice("");
-          void connect(DEMO);
-        }}
-      />
+      <>
+        <Account
+          entry={entry}
+          notice={notice}
+          onChooseAccount={entry.kind === "register" && savedAccounts().length ? () => setPickingAccount(true) : undefined}
+          onSignedIn={openAccount}
+          onDemo={() => {
+            sessionStorage.setItem(DEMO_SESSION, "1");
+            setNotice("");
+            void connect(DEMO);
+          }}
+        />
+        {accountSheets}
+      </>
     );
   if (linkProblem && !bootError)
     return (
@@ -768,6 +810,7 @@ export function Workspace() {
         onSignIn={openLogin}
         onSignOut={() => setConfirmSignOut(true)}
         onBusinesses={() => setSwitching(true)}
+        onAccounts={!demo && accountsEnabled ? () => setPickingAccount(true) : undefined}
       />
     );
   else if (view === "recipes")
@@ -852,7 +895,7 @@ export function Workspace() {
     <PhotoProvider value={upload}>
       <FacesProvider value={faces}>
     <ProofProvider value={loadProof}>
-    <PinProvider hint={demo ? "The demo PIN is 1234." : undefined}>
+    <PinProvider key={key} hint={demo ? "The demo PIN is 1234." : undefined}>
       {business && (
         <header className="account-bar">
           <button type="button" className="grow sell-brand" onClick={() => setSwitching(true)} aria-label={"Switch business, now " + business.name}>
@@ -987,6 +1030,7 @@ export function Workspace() {
           }}
         />
       )}
+      {accountSheets}
       {account && !demo && (
         <Account
           onDismiss={() => setAccount(false)}

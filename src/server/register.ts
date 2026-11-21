@@ -154,24 +154,27 @@ export async function runCommand(
       // the others start new stock items from their saved amount.
       const till = await tillShift();
       for (const open of await openShifts()) {
+        const appliedAt = new Date().toISOString();
         const next = updateShiftMenu(
           presentShift(open, business.currency),
           menu,
           cmd.action === "menu" && open.id === till?.id ? cmd.stock : undefined,
           business.settings?.stockItems,
+          appliedAt,
         );
-        if (!isDeepStrictEqual(next.menu, open.menu)) {
+        const menuChanged = !isDeepStrictEqual(next.menu, open.menu);
+        if (menuChanged || !isDeepStrictEqual(next.stockSets ?? null, open.stockSets)) {
           await tx
             .update(shifts)
             .set({
               menu: next.menu,
-              stock: next.stock ?? null,
+              stockSets: next.stockSets ?? null,
               settings: next.settings,
-              menuHistory: [...open.menuHistory, {
+              ...(menuChanged ? { menuHistory: [...open.menuHistory, {
                 id: crypto.randomUUID(),
-                appliedAt: new Date().toISOString(),
+                appliedAt,
                 previousMenu: open.menu,
-              }],
+              }] } : {}),
             })
             .where(eq(shifts.id, open.id));
         }

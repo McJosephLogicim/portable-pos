@@ -181,6 +181,8 @@ export interface Shift {
   menu: Product[];
   /** Absent on shifts and device snapshots from before the first menu edit. */
   menuVersion?: string;
+  /** Original ingredient rules for sales made before receipts carried a stock snapshot. */
+  legacyStockUses?: Record<string, ReceiptStockUse[]>;
   settings: ShiftSettings;
   countedCash?: number;
   difference?: number;
@@ -212,10 +214,17 @@ export interface CartLine {
   optionIds: string[];
   quantity: number;
 }
+export interface ReceiptStockUse {
+  stockId: string;
+  amount: number;
+  counted?: true;
+}
 export interface ReceiptLine extends CartLine {
   name: string;
   options: string[];
   unitPrice: number;
+  /** Ingredient quantities per unit at the time of this sale. */
+  stockUses?: ReceiptStockUse[];
 }
 export interface Sale {
   id: string;

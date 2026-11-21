@@ -139,7 +139,7 @@ test("the menu keeps batch data for costing and selling still consumes a finishe
   assert.deepEqual(stockLeft(shift, [sale]), { flour: 2, cookie: 11 });
 });
 
-test("batch deductions let the till sell the full yield and preserve the open shift's recipe", () => {
+test("batch deductions use new amounts on an open till and preserve earlier receipts", () => {
   const stockItems = [{ id: "juice", name: "Juice", unit: "L" }, { id: "spice", name: "Spice", unit: "kg" }];
   const product: Product = {
     id: "cup", name: "Juice cup", category: "Drinks", price: 100, groups: [],
@@ -173,7 +173,20 @@ test("batch deductions let the till sell the full yield and preserve the open sh
   const withReversal = [...sales.slice(0, 5), { ...sales[5], reversedAt: shift.openedAt }];
   assert.ok(stockLeft(shift, withReversal).juice > 0.16);
   const next = updateShiftMenu(shift, [{ ...command.menu[0], uses: [{ stockId: "juice", amount: 0.5 }] }]);
-  assert.deepEqual(next.menu[0].uses, shift.menu[0].uses);
+  assert.deepEqual(next.menu[0].uses, [{ stockId: "juice", amount: 0.5 }]);
+  const oldReceipt = {
+    ...sales[0],
+    lines: sales[0].lines.map(({ stockUses: _, ...line }) => line),
+  };
+  const newReceipt = makeSale({
+    id: crypto.randomUUID(), shift: next, sequence: 2, cart: cart(1), createdAt: next.openedAt,
+    tender: "cash", received: 100, soldOut: [],
+  });
+  assert.equal(newReceipt.lines[0].stockUses?.[0]?.amount, 0.5);
+  assert.deepEqual(stockLeft(next, [oldReceipt]), stockLeft(shift, [sales[0]]));
+  const removed = updateShiftMenu(next, []);
+  assert.deepEqual(removed.menu, []);
+  assert.deepEqual(stockLeft(removed, [oldReceipt, newReceipt]), stockLeft(next, [oldReceipt, newReceipt]));
 });
 
 test("settings accept optional purchase data and till settings omit it", () => {

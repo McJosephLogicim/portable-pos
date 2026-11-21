@@ -11,6 +11,7 @@ import {
   Calculator,
   ListChecks,
   Users,
+  UserRound,
   Coins,
   Percent,
   Store,
@@ -90,6 +91,7 @@ export interface SettingsProps extends EditorProps {
   onPage: (page: SettingsPage | null) => void;
   /** Opens the list of businesses to switch to or add. */
   onBusinesses: () => void;
+  onAccounts?: () => void;
 }
 
 const countText = (n: number) => (n ? String(n) : "None");
@@ -1211,6 +1213,9 @@ function ProfileCard(props: SettingsProps) {
           see it, change it or remove it.
         </Explain>
       </div>
+      {props.onAccounts && (
+        <Row icon={<UserRound size={18} strokeWidth={1.8} />} title="Switch account" onClick={props.onAccounts} />
+      )}
       {error && (
         <p className="alert" role="alert">
           {error}

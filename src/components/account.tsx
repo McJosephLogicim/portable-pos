@@ -1,8 +1,8 @@
 "use client";
-import { ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, UserRound, UserRoundPlus } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { accountsEnabled, authClient } from "@/lib/client";
+import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
 import { onColor } from "@/lib/theme";
 import type { LinkPreview } from "@/lib/types";
@@ -189,8 +189,8 @@ export function AccountLinkError({ title, detail, onContinue, onSwitch }: {
 type AccountProps = {
   onSignedIn: (id: string) => Promise<void>;
 } & (
-  | { entry: AccountEntry; onDemo: () => void; notice?: string }
-  | { requiredUser: string; onDismiss: () => void }
+  | { entry: AccountEntry; onDemo: () => void; notice?: string; onChooseAccount?: () => void }
+  | { requiredUser?: string; initialEmail?: string; onDismiss: () => void }
 );
 
 const MODES = [
@@ -210,12 +210,13 @@ export function Account(props: AccountProps) {
   useEffect(() => {
     if (preview.state === "gone") setMode("signin");
   }, [preview.state]);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(page ? "" : props.initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signInSlot] = useState(() => crypto.randomUUID());
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -230,7 +231,10 @@ export function Account(props: AccountProps) {
     setBusy(true);
     setError("");
     try {
-      const auth = authClient().auth;
+      // Each sign-in gets its own session. Cancelling or typing another account
+      // while reconnecting never replaces the register already on the device.
+      const slot = create ? undefined : signInSlot;
+      const auth = authClient(slot).auth;
       const { data, error } = create
         ? await auth.signUp({
             email,
@@ -240,9 +244,16 @@ export function Account(props: AccountProps) {
         : await auth.signInWithPassword({ email, password });
       if (error) throw error;
       if (data.session && !data.session.user.is_anonymous) {
-        if (!page && props.requiredUser !== data.session.user.id)
-          throw Error("Sign in with the owner account for this register.");
-        await props.onSignedIn(data.session.user.id);
+        const { id, email } = data.session.user;
+        if (!page && props.requiredUser && props.requiredUser !== id) {
+          await auth.signOut({ scope: "local" });
+          throw Error("Sign in with the email for this saved account.");
+        }
+        const previous = savedAccounts().find((account) => account.id === id);
+        rememberAccount({ id, email, slot });
+        if (previous && previous.slot !== slot)
+          void authClient(previous.slot).auth.signOut({ scope: "local" }).catch(() => {});
+        await props.onSignedIn(id);
       } else {
         setPassword("");
         setShowPassword(false);
@@ -315,9 +326,11 @@ export function Account(props: AccountProps) {
 
   // Signing in again from inside the register.
   if (!page) return (
-    <Sheet title="Sign in" onClose={props.onDismiss} busy={busy}>
+    <Sheet title={props.requiredUser ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
       <div className="stack gap-14">
-        <p className="muted">Sign in again to reconnect this register.</p>
+        <p className="muted">
+          {props.requiredUser ? "Sign in again to reconnect this register." : "Sign in to keep another account on this device."}
+        </p>
         {fields}
       </div>
     </Sheet>
@@ -380,6 +393,9 @@ export function Account(props: AccountProps) {
         </section>
       )}
       {sentTo ? sent : form}
+      {props.onChooseAccount && !sentTo && (
+        <button type="button" className={styles.plain} onClick={props.onChooseAccount}>Switch account</button>
+      )}
       {kind === "register" && !sentTo && (
         <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
           <span>
@@ -390,6 +406,57 @@ export function Account(props: AccountProps) {
         </button>
       )}
     </AccountPage>
+  );
+}
+
+export function AccountSwitcher({
+  accounts,
+  current,
+  online,
+  onSelect,
+  onAdd,
+  onClose,
+}: {
+  accounts: SavedAccount[];
+  current?: string;
+  online: boolean;
+  onSelect: (account: SavedAccount) => Promise<void>;
+  onAdd: () => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <Sheet title="Switch account" onClose={onClose} busy={busy}
+      footer={<button type="button" className="btn block" onClick={onAdd} disabled={busy || !online}>
+        <UserRoundPlus size={18} aria-hidden="true" /> Add account
+      </button>}>
+      <div className="card card-list">
+        {accounts.map((account) => (
+          <button key={account.id} type="button" className="list-row" disabled={busy || account.id === current}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await onSelect(account);
+              } catch (error) {
+                setError(errorText(error));
+              } finally {
+                setBusy(false);
+              }
+            }}>
+            <span className="well"><UserRound size={18} aria-hidden="true" /></span>
+            <span className="grow stack" style={{ minWidth: 0 }}>
+              <span className="strong ellipsis">{account.name || account.email || "Account"}</span>
+              <span className="label ellipsis">{[account.name ? account.email : undefined, account.business].filter(Boolean).join(" · ")}</span>
+            </span>
+            {account.id === current ? <Check size={18} aria-label="Current account" /> : <ChevronRight size={18} aria-hidden="true" />}
+          </button>
+        ))}
+      </div>
+      {!online && <p className="label">Connect to sign in or add an account.</p>}
+      {error && <p className="alert" role="alert">{error}</p>}
+    </Sheet>
   );
 }
 

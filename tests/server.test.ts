@@ -36,11 +36,13 @@ test(
     const removed = await call({ action: "removeMenuItem", productId: tea.id });
     assert.deepEqual(removed.menu, [coffee]);
     assert.deepEqual(removed.deletedRecord, { kind: "menuItem", item: tea, index: 0 });
-    assert.equal(removed.shift!.menu[0].id, tea.id);
+    assert.deepEqual(removed.shift!.menu.map((item) => item.id), [coffee.id]);
     const repriced = { ...coffee, price: 300 };
     await call({ action: "menu", menu: [repriced] });
     const restoreItem = { action: "restoreMenuItem", item: tea, index: 0 };
-    assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
+    const restoredMenu = await call(restoreItem);
+    assert.deepEqual(restoredMenu.menu, [tea, repriced]);
+    assert.deepEqual(restoredMenu.shift!.menu.map((item) => item.id), [tea.id, coffee.id]);
     assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
     await assert.rejects(call({ ...restoreItem, item: { ...tea, price: 350 } }), { status: 409 });
 

@@ -193,6 +193,7 @@ export function ReceiptSheet({
   sale,
   shift,
   business,
+  preview = false,
   pending,
   canReverse,
   reverseBlocked,
@@ -203,6 +204,7 @@ export function ReceiptSheet({
   sale: Sale;
   shift: Shift;
   business: Business;
+  preview?: boolean;
   pending?: boolean;
   canReverse: boolean;
   reverseBlocked?: string;
@@ -283,7 +285,7 @@ export function ReceiptSheet({
     );
   return (
     <Sheet
-      title="Receipt"
+      title={preview ? "Test receipt" : "Receipt"}
       onClose={onClose}
       footer={
         !sale.reversedAt && (canReverse || reverseBlocked) ? (

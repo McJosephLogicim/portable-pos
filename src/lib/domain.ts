@@ -5,6 +5,7 @@ import type {
   Expense,
   Product,
   ReceiptLine,
+  ReceiptStockUse,
   Sale,
   Shift,
   StockItem,
@@ -132,6 +133,28 @@ export function totalLines(lines: ReceiptLine[]) {
   return total;
 }
 
+function productStockUses(item: Product): ReceiptStockUse[] {
+  if (item.uses?.length) return item.uses.map(({ stockId, amount }) => ({ stockId, amount }));
+  return item.stock ? [{ stockId: item.id, amount: 1, counted: true }] : [];
+}
+
+/** Older receipts used the first stock recipe the product had on the shift. */
+export function legacyStockUses(
+  menu: Product[],
+  earlierMenus: Product[][],
+  previous: Shift["legacyStockUses"] = {},
+): Shift["legacyStockUses"] {
+  const original = new Map(Object.entries(previous));
+  for (const earlier of earlierMenus) {
+    for (const item of earlier) {
+      if (!original.has(item.id)) original.set(item.id, productStockUses(item));
+    }
+  }
+  const current = new Map(menu.map((item) => [item.id, JSON.stringify(productStockUses(item))]));
+  const changed = [...original].filter(([id, uses]) => current.get(id) !== JSON.stringify(uses));
+  return changed.length ? Object.fromEntries(changed) : undefined;
+}
+
 /**
  * Replay the shift's sales in order. A "Count it" menu item always comes off its count.
  * A stock or prep item only comes off when there's enough of it: at zero, or too little
@@ -145,7 +168,8 @@ export function stockReplay(shift: Shift, sales: Sale[]) {
   const start: Record<string, number> = { ...left };
   /** Stock items a sale found too little of since they were last set. */
   const short = new Set<string>();
-  const model = shiftStock(shift);
+  const recipes = new Map(shift.menu.map((item) => [item.id, productStockUses(item)]));
+  const original = new Map(Object.entries(shift.legacyStockUses ?? {}));
   const sold = sales
     .filter((sale) => sale.shiftId === shift.id && !sale.reversedAt)
     .map((sale) => ({ at: Date.parse(sale.createdAt), order: sale.sequence, sale }));
@@ -166,10 +190,11 @@ export function stockReplay(shift: Shift, sales: Sale[]) {
       continue;
     }
     for (const line of event.sale.lines)
-      for (const { stockId, amount } of model.uses.get(line.productId) ?? []) {
+      for (const { stockId, amount, counted } of line.stockUses ??
+        original.get(line.productId) ?? recipes.get(line.productId) ?? []) {
         if (!(stockId in left)) continue;
         const need = line.quantity * amount;
-        if (!model.limits.has(stockId) && !stockAmountFits(need, left[stockId])) {
+        if (!counted && !stockAmountFits(need, left[stockId])) {
           short.add(stockId);
           continue;
         }
@@ -185,53 +210,42 @@ export function stockLeft(shift: Shift, sales: Sale[]): Record<string, number> {
   return stockReplay(shift, sales).left;
 }
 
-/**
- * Apply menu edits on the open till. Keep the opening stock rules and any removed
- * items until closing so stock used by earlier sales can still be reconciled.
- */
+/** Apply the full recipe to new orders while retaining the shift's stock counts. */
 export function updateShiftMenu(
   shift: Shift,
   menu: Product[],
   counts: Record<string, number> = {},
-  /** The business's stock items, for ones the till starts counting mid-shift. */
   stockItems: StockItem[] = [],
+  at = new Date().toISOString(),
 ): Shift {
-  const byId = new Map(withoutMenuCosts(menu).map((item) => [item.id, item]));
-  const current = shift.menu.map((item) => {
-    const updated = byId.get(item.id);
-    byId.delete(item.id);
-    if (!updated) return item;
-    const { stock, uses, ...details } = updated;
-    return {
-      ...details,
-      ...(item.stock !== undefined ? { stock: item.stock } : {}),
-      ...(item.uses !== undefined ? { uses: item.uses } : {}),
-    };
-  });
-  const fresh = [...byId.values()];
-  if (!fresh.length) return { ...shift, menu: current };
-  const stock = { ...(shift.stock ?? {}) };
-  const tracked = [...(shift.settings.stockItems ?? [])];
-  // A new item counted on its own needs a count now. One that uses stock items the
-  // till already counts just draws on them. A stock item the till didn't count at
-  // opening, like one added with this item, is counted from now so sales draw it down
-  // and closing asks for what's left.
-  for (const p of fresh) {
-    if (p.uses?.length) {
-      for (const use of p.uses) {
-        if (use.stockId in stock) continue;
-        const item = stockItems.find((i) => i.id === use.stockId);
-        const start = validCount(counts[use.stockId]) ? counts[use.stockId] : item?.onHand;
-        if (!item || !validCount(start)) continue;
-        stock[use.stockId] = start;
-        if (!tracked.some((i) => i.id === item.id)) tracked.push({ id: item.id, name: item.name, unit: item.unit });
-      }
-    } else if (p.stock && !(p.id in stock)) stock[p.id] = validCount(counts[p.id]) ? counts[p.id] : 0;
+  const current = withoutMenuCosts(menu);
+  const stockSets = [...(shift.stockSets ?? [])];
+  const counted = new Set([...Object.keys(shift.stock ?? {}), ...stockSets.map((set) => set.stockId)]);
+  // Keep the labels of any counted products that are taken off sale.
+  const tracked = new Map(shiftStock(shift).items.map((item) => [item.id, item]));
+  const catalog = new Map(stockItems.map((item) => [item.id, item]));
+  for (const item of current) {
+    for (const use of productStockUses(item)) {
+      if (counted.has(use.stockId)) continue;
+      const ingredient = catalog.get(use.stockId);
+      const startingCount = validCount(counts[use.stockId])
+        ? counts[use.stockId]
+        : use.counted ? 0 : ingredient?.onHand;
+      if (!validCount(startingCount)) continue;
+      counted.add(use.stockId);
+      stockSets.push({ stockId: use.stockId, amount: startingCount, at });
+      if (ingredient) tracked.set(ingredient.id, { id: ingredient.id, name: ingredient.name, unit: ingredient.unit });
+      else if (use.counted) tracked.set(item.id, { id: item.id, name: item.name, unit: "piece" });
+    }
   }
-  const settings = tracked.length === (shift.settings.stockItems?.length ?? 0)
-    ? shift.settings
-    : { ...shift.settings, stockItems: tracked };
-  return { ...shift, menu: [...current, ...fresh], stock, settings };
+
+  return {
+    ...shift,
+    menu: current,
+    legacyStockUses: legacyStockUses(current, [shift.menu], shift.legacyStockUses),
+    stockSets: stockSets.length ? stockSets : undefined,
+    settings: tracked.size ? { ...shift.settings, stockItems: [...tracked.values()] } : shift.settings,
+  };
 }
 
 export function validCount(n: unknown): n is number {
@@ -424,7 +438,11 @@ export function makeSale(input: SaleInput): Sale {
     (p) => p.id === input.tender,
   );
   if (!method) throw Error("That payment method isn't on this shift.");
-  const lines = priceLines(input.shift.menu, input.cart, input.recorded ? [] : input.soldOut);
+  const recipes = new Map(input.shift.menu.map((item) => [item.id, productStockUses(item)]));
+  const lines = priceLines(input.shift.menu, input.cart, input.recorded ? [] : input.soldOut).map((line) => ({
+    ...line,
+    stockUses: recipes.get(line.productId) ?? [],
+  }));
   if (input.stock && !input.recorded) checkStock(input.shift, lines, input.stock);
   const { subtotal, discount, total } = priceOrder(
     input.shift,

@@ -141,7 +141,7 @@ test("counted items sell down to zero and come back on reversal", () => {
   assert.doesNotThrow(() => sell(1, [{ ...first, reversedAt: "now" }]));
   const added = updateShiftMenu(shift, [bread, tea, { ...bread, id: "ube", name: "Ube roll" }], { ube: 6 });
   assert.equal(added.menu.length, 3);
-  assert.equal(added.stock!.ube, 6);
+  assert.equal(stockLeft(added, []).ube, 6);
 });
 
 test(
@@ -261,7 +261,7 @@ test(
     assert.equal(late.sales.filter((s) => s.shiftId === shift.id).length, 2);
     // An item added mid-shift goes on sale with the count given.
     const added = await o({ action: "menu", menu: [bread, { ...bread, id: "ube", name: "Ube" }], stock: { ube: 4 }, deviceId, pin });
-    assert.equal(added.shift!.stock!.ube, 4);
+    assert.equal(stockLeft(added.shift!, []).ube, 4);
     snap = await o({ action: "bootstrap" });
     assert.equal(snap.bookings![0].sales, 3000);
 
@@ -280,7 +280,8 @@ test(
     await o({ action: "menu", menu: editedMenu, deviceId, pin });
     const refreshed = await o({ action: "bootstrap" });
     assert.equal(refreshed.shift!.id, shift.id);
-    assert.deepEqual(refreshed.shift!.stock, { ...openingStock, ube: 4 });
+    assert.deepEqual(refreshed.shift!.stock, openingStock);
+    assert.equal(stockLeft(refreshed.shift!, refreshed.sales).ube, 4);
     assert.equal(stockLeft(refreshed.shift!, refreshed.sales).bread, -1);
     assert.equal(refreshed.sales[0].lines[0].name, "Pandesal");
     assert.equal(refreshed.shift!.menu[0].name, "Fresh Pandesal");
@@ -298,6 +299,7 @@ test(
     assert.deepEqual(synced.sales.find((s) => s.id === ubeSale.id)?.lines, [{
       productId: "ube", quantity: 1, optionIds: ["large"],
       name: "Ube roll", options: ["Large"], unitPrice: 1500,
+      stockUses: [{ stockId: "ube", amount: 1, counted: true }],
     }]);
     snap = await o({ action: "removeMember", memberId: asPaolo.me!.memberId, pin });
     assert.equal(snap.bookings![0].staff.length, 1);

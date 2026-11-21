@@ -10,13 +10,14 @@ export class RequestFailure extends Error {
   }
 }
 
-let client: SupabaseClient | undefined;
+const clients = new Map<string, SupabaseClient>();
+const SAVED_ACCOUNTS = "portable-pos-saved-accounts";
 export const accountsEnabled = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
     (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
 );
-export function authClient() {
+export function authClient(slot = "") {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -25,8 +26,55 @@ export function authClient() {
     throw Error(
       "Live accounts require a configured Supabase connection. The demo register is available on this device.",
     );
-  return (client ??= createClient(url, key));
+  let client = clients.get(slot);
+  if (!client) {
+    client = createClient(url, key, slot ? {
+      auth: {
+        storageKey: "portable-pos-auth-" + slot,
+        detectSessionInUrl: false,
+        autoRefreshToken: false,
+      },
+    } : undefined);
+    clients.set(slot, client);
+  }
+  return client;
 }
+export interface SavedAccount {
+  id: string;
+  email?: string;
+  slot?: string;
+  register?: string;
+  name?: string;
+  business?: string;
+}
+
+export function savedAccounts(): SavedAccount[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SAVED_ACCOUNTS) ?? "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberAccount(account: SavedAccount) {
+  const accounts = savedAccounts();
+  const before = accounts.find((entry) => entry.id === account.id);
+  const next = { ...before, ...account };
+  localStorage.setItem(SAVED_ACCOUNTS, JSON.stringify([
+    next,
+    ...accounts.filter((entry) => entry.id !== account.id),
+  ]));
+}
+
+export function forgetAccount(id: string) {
+  localStorage.setItem(SAVED_ACCOUNTS, JSON.stringify(savedAccounts().filter((entry) => entry.id !== id)));
+}
+
+export function authForUser(id?: string) {
+  return authClient(savedAccounts().find((account) => account.id === id)?.slot);
+}
+
 /**
  * A register on this device is keyed by the account, plus the business when the
  * person switched away from their first one.
@@ -75,7 +123,7 @@ async function sessionFor(key: string, what: string) {
   const {
     data: { session },
     error,
-  } = await authClient().auth.getSession();
+  } = await authForUser(userId).auth.getSession();
   if (error || !session || session.user.id !== userId)
     throw Error(`Sign back into this account to ${what}.`);
   return {

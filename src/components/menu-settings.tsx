@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, ShoppingBag, Tag as TagIcon, Trash2, X } from "lucide-react";
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
-import { amountText, parseMoney, saveMenuItem } from "@/lib/domain";
+import { amountText, parseMoney, saveMenuItem, stockLeft } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
 import { batchStockUses, catalogSku, maxBatchServings, menuRecipeCost, pricingRules, readTargetMargin, unitFor } from "@/lib/stock";
 import { SetupDetails, SubPage, useCommit } from "./settings";
@@ -318,13 +318,13 @@ export function ItemSheet({
   const [labor, setLabor] = useState(priceText(product?.costing?.laborPerServing ?? 0, currency));
   const [other, setOther] = useState(priceText(product?.costing?.otherPerServing ?? 0, currency));
   const [count, setCount] = useState("");
-  const askCount = mode === "count" && liveShift && !product;
+  const askCount = mode === "count" && liveShift && !counted.includes(itemId);
   // A new item that uses a stock item the shift didn't count at opening needs that count
   // now, or its sales would never draw it down.
   const [useCounts, setUseCounts] = useState<Record<string, string>>({});
   const stockDrafts = deductFromStock ? batchUses : uses;
   const availableStock = deductFromStock ? batchItems : stockItems;
-  const uncountedUses = liveShift && !product && !simple && mode === "uses"
+  const uncountedUses = liveShift && !simple && mode === "uses"
     ? stockDrafts.filter((u, i) => {
         if (!u.name.trim()) return false;
         const item = stockForUse(u, availableStock);
@@ -355,11 +355,6 @@ export function ItemSheet({
     deductFromStock: true,
     uses: costRows.flatMap(({ item, amount }) => item && amount !== undefined ? [{ stockId: item.id, amount }] : []),
   }) : [];
-  const usesChanged = !simple &&
-    JSON.stringify((product?.uses ?? []).map((u) => [u.stockId, u.amount])) !==
-    JSON.stringify(deductFromStock ? batchDeductions.map((u) => [u.stockId, u.amount]) : mode === "uses"
-      ? uses.filter((u) => u.name.trim()).map((u) => [stockForUse(u, stockItems)?.id ?? u.name.trim(), Number(u.amount)])
-      : []);
   const recipeCosts = costRows.filter(({ draft }) => draft.name.trim()).map(({ cost }) => cost);
   const showCostPreview = !simple && (batchEnabled || recipeCosts.length > 0 || Boolean(labor || other));
   const optionalMoney = (value: string) => value === "" ? undefined : parseMoney(value, currency);
@@ -464,7 +459,7 @@ export function ItemSheet({
       onSave={save}
       removeLabel="Remove from menu"
       removeDetail={product && (liveShift
-        ? `${product.name} will stay on Sell until this shift ends. You can undo the removal from the toast.`
+        ? `${product.name} will come off Sell now. You can undo the removal from the toast.`
         : `${product.name} will be removed from the menu. You can undo the removal from the toast.`)}
       onRemove={onRemove}
       onClose={onClose}
@@ -640,9 +635,6 @@ export function ItemSheet({
             />
           </label>
         )}
-        {product && liveShift && (usesChanged || Boolean(product.stock) !== (mode === "count")) && (
-          <p className="label">Stock changes apply from the next shift.</p>
-        )}
       </div>}
 
       {!simple && (
@@ -707,7 +699,10 @@ export function ItemSheet({
   );
 }
 
-export function MenuPage({ costingView = false, ...props }: RecipesProps & { costingView?: boolean }) {
+export function MenuPage({ costingView = false, onPreview, ...props }: RecipesProps & {
+  costingView?: boolean;
+  onPreview?: () => void;
+}) {
   const business = props.state.business!;
   const simple = isSimpleMode(business.settings);
   const menu = props.state.menu;
@@ -742,8 +737,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
       action={costingView || menu.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={costingView ? undefined : (
         <>
-          <p>New items and changes to names, prices and options go live on Sell right away.</p>
-          <p>Removing an item, or changing the stock it uses, takes effect when the next shift opens. To stop selling something now, mark it sold out on Sell.</p>
+          <p>Changes go live on Sell right away. Completed sales keep their original prices and ingredient quantities.</p>
           <p>To change or remove several at once, tap Select, or hold an item.</p>
         </>
       )}
@@ -774,6 +768,11 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
         />
       ) : (
         <>
+          {onPreview && !selecting && (
+            <button type="button" className="btn secondary" onClick={onPreview}>
+              <ShoppingBag size={17} aria-hidden="true" /> See menu in action
+            </button>
+          )}
           {!menu.length && (
             <EmptyState
               icon={<LayoutGrid size={22} strokeWidth={1.6} />}
@@ -833,7 +832,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
               removeDetail={(ids) => {
                 const names = andText(menu.filter((p) => ids.includes(p.id)).map((p) => p.name), 3);
                 return live
-                  ? `${names} will come off the menu. They stay on Sell until this shift ends.`
+                  ? `${names} will come off the menu and Sell now.`
                   : `${names} will come off the menu.`;
               }}
               onRemove={(ids) => commit.menu(menu.filter((p) => !ids.includes(p.id)), "Removed " + plural(ids.length, "item"))}
@@ -859,7 +858,7 @@ export function MenuPage({ costingView = false, ...props }: RecipesProps & { cos
           currency={business.currency}
           menu={menu}
           liveShift={live}
-          counted={Object.keys(props.state.shift?.stock ?? {})}
+          counted={props.state.shift ? Object.keys(stockLeft(props.state.shift, [])) : []}
           stockItems={business.settings.stockItems}
           pricing={business.settings.pricing}
           canCreateStock

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
 import { isSimpleMode } from "@/lib/settings";
 import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
-import { Row, type EditorProps } from "./settings";
+import { Row, SubPage, type EditorProps } from "./settings";
 import { StockPage } from "./stock-settings";
 import { StockListsPage } from "./stock-list-settings";
+import { MenuPreview } from "./sell";
 import { PricingRulesPage } from "./recipe-costing";
 
 export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing";
@@ -22,11 +23,19 @@ export interface RecipesProps extends EditorProps {
 export function RecipesScreen(props: RecipesProps) {
   const { page, onPage, state } = props;
   const simple = isSimpleMode(state.business?.settings);
+  const [preview, setPreview] = useState(false);
   useEffect(() => {
+    if (page !== "menu") setPreview(false);
     window.scrollTo(0, 0);
-  }, [page]);
+  }, [page, preview]);
 
-  if (page === "menu") return <MenuPage key={page} {...props} />;
+  if (page === "menu") {
+    return preview ? (
+      <SubPage title="Menu items" backLabel="Back to menu items" onBack={() => setPreview(false)}>
+        <MenuPreview state={state} />
+      </SubPage>
+    ) : <MenuPage key={page} {...props} onPreview={() => setPreview(true)} />;
+  }
   if (page === "categories") return <CategoriesPage {...props} />;
   if (page === "choices") return <ChoicesPage {...props} />;
   if (!simple) {

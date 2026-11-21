@@ -226,7 +226,8 @@ export function demoAction(
       if (duplicate) throw Error(`Menu SKU ${duplicate} is already in use.`);
       const problem = batchIngredientProblem(menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
-      const shift = state.shift && updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, state.business?.settings.stockItems);
+      const updated = state.shift && updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, state.business?.settings.stockItems);
+      const shift = updated && { ...updated, menuVersion: crypto.randomUUID() };
       return {
         ...state,
         menu,

@@ -8,11 +8,13 @@ import type {
   ReceiptLine,
   RegisterState,
   Sale,
+  Shift,
   Tender,
 } from "@/lib/types";
 import { canMake, shiftStock } from "@/lib/stock";
 import { bookingTitle } from "@/lib/team";
 import {
+  makeSale,
   parseMoney,
   priceLines,
   priceOrder,
@@ -435,6 +437,7 @@ function Checkout({
   lines,
   busy,
   blocked,
+  preview = false,
   onQuantity,
   onClear,
   onPay,
@@ -445,6 +448,7 @@ function Checkout({
   lines: ReceiptLine[];
   busy: boolean;
   blocked: boolean;
+  preview?: boolean;
   onQuantity: (index: number, value: number) => Promise<void>;
   onClear: () => void;
   onPay: (tender: Tender, received: number, discountId?: string, proofs?: string[]) => Promise<Sale | null>;
@@ -536,7 +540,7 @@ function Checkout({
     const resultLabel = showChange ? "Change to give" : cash ? "Exact cash, no change" : "Paid with " + sale.payment.name;
     return (
       <Sheet
-        title="Sale complete"
+        title={preview ? "Test sale complete" : "Sale complete"}
         onClose={onClose}
         footer={
           <>
@@ -559,7 +563,7 @@ function Checkout({
           >
             <span className="row gap-8 hero-label">
               <DoneCheck small />
-              Saved · {number}
+              {preview ? "Preview" : "Saved"} · {number}
             </span>
             <span className="hero-label sale-hero-what">
               {resultLabel}
@@ -587,7 +591,7 @@ function Checkout({
     const change = review - total;
     return (
       <Sheet
-        title="Confirm sale"
+        title={preview ? "Confirm test sale" : "Confirm sale"}
         onClose={onClose}
         busy={busy}
         footer={
@@ -598,7 +602,7 @@ function Checkout({
               {...blockedBy(payRefusal || (review < total && "That's less than the total."))}
               onClick={() => void pay(review)}
             >
-              {busy ? "Saving…" : "Confirm sale"}
+              {busy ? "Saving…" : preview ? "Simulate sale" : "Confirm sale"}
             </button>
             <button
               className="btn ghost block compact"
@@ -639,7 +643,7 @@ function Checkout({
               <Money value={review} currency={currency} />
             </div>
           </div>
-          {!isCash && (
+          {!preview && !isCash && (
             <p className="label">
               Check that {formatMoney(total, currency)} arrived in {chosen.name} first.
             </p>
@@ -659,7 +663,7 @@ function Checkout({
   const quick = quickCash(total, currency);
   return (
     <Sheet
-      title="Charge"
+      title={preview ? "Test checkout" : "Charge"}
       onClose={onClose}
       busy={busy}
       action={
@@ -675,7 +679,7 @@ function Checkout({
             {...blockedBy(payRefusal)}
             onClick={() => ask(total)}
           >
-            {missing ? "Take the photo first ·" : `${chosen.name} received ·`}
+            {missing ? "Take the photo first ·" : preview ? "Simulate payment ·" : `${chosen.name} received ·`}
             {!busy && <Money value={total} currency={currency} />}
           </button>
         ) : chosen && typed !== undefined ? (
@@ -839,7 +843,7 @@ function Checkout({
           />
         </div>
       )}
-      {chosen && chosen.kind !== "cash" && (
+      {!preview && chosen && chosen.kind !== "cash" && (
         <p className="label">
           Check that {formatMoney(total, currency)} arrived in {chosen.name}.
         </p>
@@ -854,6 +858,7 @@ function Checkout({
 }
 
 export interface SellProps {
+  preview?: boolean;
   state: RegisterState;
   status: string;
   online: boolean;
@@ -908,6 +913,7 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
 }
 
 export function SellScreen({
+  preview = false,
   state,
   status,
   online,
@@ -939,7 +945,7 @@ export function SellScreen({
   const shift = state.shift!;
   const business = state.business!;
   const simple = isSimpleMode(business.settings);
-  const canEdit = !state.me || state.me.owner;
+  const canEdit = !preview && (!state.me || state.me.owner);
   const addItemReason = !online ? "Connect to the internet to add items." : state.menu.length >= 1000 && "The menu can hold up to 1,000 items.";
   const currency = shift.settings.currency;
   const menu = shift.menu;
@@ -1045,25 +1051,31 @@ export function SellScreen({
         <div className="page-top">
           <div className="grow stack" style={{ minWidth: 0 }}>
             <div className="page-title">
-              <h1 className="sell-title">Sell</h1>
+              {preview ? <h2 className="sell-title">Menu preview</h2> : <h1 className="sell-title">Sell</h1>}
               <Explain title="Selling" label="How selling works">
-                <p>Tap an item to add it to the order, then Charge.</p>
-                <p>
-                  Something ran out? Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the
-                  top, then the item. It shows Sold out until you tap it again.
-                </p>
+                <p>Tap an item to add it to the order, then {preview ? "Test checkout" : "Charge"}.</p>
+                {!preview && (
+                  <p>
+                    Something ran out? Tap <Ban size={13} strokeWidth={2.2} className="inline-icon" aria-label="Mark sold out" /> at the
+                    top, then the item. It shows Sold out until you tap it again.
+                  </p>
+                )}
               </Explain>
             </div>
-            <span className="label row gap-6">
-              {status !== "Online" && (
-                <span className={"dot" + (online ? "" : " danger")} />
-              )}
-              <span className="ellipsis">
-                Shift {shift.number} ·{" "}
-                {shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}
-                {status !== "Online" ? " · " + status : ""}
+            {preview ? (
+              <p className="label">Try taking an order. Test sales aren’t saved.</p>
+            ) : (
+              <span className="label row gap-6">
+                {status !== "Online" && (
+                  <span className={"dot" + (online ? "" : " danger")} />
+                )}
+                <span className="ellipsis">
+                  Shift {shift.number} ·{" "}
+                  {shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}
+                  {status !== "Online" ? " · " + status : ""}
+                </span>
               </span>
-            </span>
+            )}
           </div>
           {menu.length > 8 && (
             <button
@@ -1078,16 +1090,18 @@ export function SellScreen({
               {searching ? <X size={19} /> : <Search size={19} />}
             </button>
           )}
-          <button
-            className="round"
-            aria-label="Mark items sold out"
-            aria-pressed={marking}
-            onClick={() => setMarking(!marking)}
-          >
-            <Ban size={19} />
-          </button>
+          {!preview && (
+            <button
+              className="round"
+              aria-label="Mark items sold out"
+              aria-pressed={marking}
+              onClick={() => setMarking(!marking)}
+            >
+              <Ban size={19} />
+            </button>
+          )}
         </div>
-        <ShiftStrip state={state} onTill={onTill} />
+        {!preview && <ShiftStrip state={state} onTill={onTill} />}
         {marking && (
           <div className="mode-bar" role="status">
             <span className="grow">Tap what ran out. Tap again to bring it back.</span>
@@ -1216,12 +1230,14 @@ export function SellScreen({
         ) : (
           <EmptyState
             icon={menu.length ? <Search size={22} /> : <ShoppingBag size={22} />}
-            title={!menu.length ? "No items on this shift" : query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
+            title={!menu.length ? (preview ? "Your menu is empty" : "No items on this shift") : query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
             text={menu.length
               ? "Try another name or category."
-              : canEdit
-                ? "Add your first item. It goes on sale right away."
-                : "Ask the owner to add items."}
+              : preview
+                ? "Add an item to your menu to try it here."
+                : canEdit
+                  ? "Add your first item. It goes on sale right away."
+                  : "Ask the owner to add items."}
           >
             {canEdit && !menu.length && (
               <button
@@ -1243,11 +1259,11 @@ export function SellScreen({
           ref={fadeOnExit}
           disabled={busy}
           onClick={() => { setPaid(false); setCharging(true); }}
-          aria-label={blocked ? "Review order with sold-out items" : `Charge ${formatMoney(total, currency)} for ${count} ${count === 1 ? "item" : "items"}`}
+          aria-label={blocked ? "Review order with sold-out items" : preview ? "Test checkout" : `Charge ${formatMoney(total, currency)} for ${count} ${count === 1 ? "item" : "items"}`}
         >
           <span className="badge">{count}</span>
           <span className="grow" style={{ textAlign: "left" }}>
-            {blocked ? "Review order" : "Charge"}
+            {blocked ? "Review order" : preview ? "Test checkout" : "Charge"}
           </span>
           <Money value={total} currency={currency} />
           <span style={{ width: 8 }} />
@@ -1274,6 +1290,7 @@ export function SellScreen({
         ))}
       {charging && (paid || (!cartMenuError && (count > 0 || busy))) && (
         <Checkout
+          preview={preview}
           key={shift.menuVersion ?? "opening"}
           state={state}
           lines={lines}
@@ -1312,7 +1329,7 @@ export function SellScreen({
           currency={currency}
           menu={state.menu}
           liveShift
-          counted={Object.keys(shift.stock ?? {})}
+          counted={Object.keys(left)}
           stockItems={shift.settings.stockItems}
           costItems={business.settings.stockItems}
           pricing={business.settings.pricing}
@@ -1339,6 +1356,7 @@ export function SellScreen({
       )}
       {receipt && (
         <ReceiptSheet
+          preview={preview}
           sale={state.sales.find((s) => s.id === receipt.id) ?? receipt}
           shift={shift}
           business={business}
@@ -1349,5 +1367,54 @@ export function SellScreen({
         />
       )}
     </>
+  );
+}
+
+
+/** The real Sell screen with a temporary till and no register writes. */
+export function MenuPreview({ state }: { state: RegisterState }) {
+  const business = state.business!;
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [openedAt] = useState(() => new Date().toISOString());
+  const shift: Shift = {
+    id: "menu-preview",
+    number: 1,
+    businessId: business.id,
+    deviceId: "menu-preview",
+    openedAt,
+    closedAt: null,
+    openingCash: 0,
+    menu: state.menu,
+    settings: {
+      ...business.settings,
+      currency: business.currency,
+      payments: business.settings.payments.map((method) => ({ ...method, proof: false })),
+      discounts: business.settings.discounts.map((discount) => ({ ...discount, proof: false })),
+    },
+  };
+  return (
+    <SellScreen
+      preview
+      state={{ business, menu: state.menu, deviceId: shift.deviceId, shift, shifts: [shift], cart, sales, pending: [], soldOut: [] }}
+      status="Online"
+      online
+      pending={false}
+      onCart={async (next) => setCart(next)}
+      onCheckout={async (tender, received, discountId) => {
+        const sale = makeSale({
+          id: crypto.randomUUID(), shift, sequence: sales.length + 1, cart,
+          soldOut: [], tender, received, discountId, createdAt: new Date().toISOString(),
+        });
+        setSales((previous) => [...previous, sale]);
+        setCart([]);
+        return sale;
+      }}
+      onAvailability={async () => {}}
+      onReverse={async () => {}}
+      onMenu={async () => {}}
+      onSaved={() => {}}
+      onTill={() => {}}
+    />
   );
 }

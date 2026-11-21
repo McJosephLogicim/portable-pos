@@ -296,3 +296,30 @@ test("Team keeps the pending-invites empty state in its own tab", async ({ page 
   await empty.getByRole("button", { name: "Invite", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Invite someone", exact: true })).toBeVisible();
 });
+
+test("menu preview uses the Sell checkout and leaves the live order and sales alone", async ({ page }) => {
+  await startDemo(page);
+  await page.getByRole("button", { name: "Sell", exact: true }).click();
+  await page.getByRole("button", { name: /^Add Butter Croissant,/ }).click();
+  const liveOrder = page.getByRole("button", { name: /^Charge .* for 1 item$/ });
+  await expect(liveOrder).toBeVisible();
+
+  await page.getByRole("button", { name: /^Recipes/ }).click();
+  await page.getByRole("button", { name: /^Menu items/ }).click();
+  await page.getByRole("button", { name: "See menu in action" }).click();
+  await expect(page.getByRole("heading", { name: "Menu preview" })).toBeVisible();
+  const testOrder = page.getByRole("button", { name: "Test checkout", exact: true });
+  await expect(testOrder).toHaveCount(0);
+  await page.getByRole("button", { name: /^Add Butter Croissant,/ }).click();
+  await testOrder.click();
+  await page.getByRole("dialog", { name: "Test checkout" }).getByRole("button", { name: "Exact", exact: true }).click();
+  await page.getByRole("button", { name: "Simulate sale" }).click();
+  const done = page.getByRole("dialog", { name: "Test sale complete" });
+  await done.getByRole("button", { name: "View receipt" }).click();
+  await page.getByRole("dialog", { name: "Test receipt" }).getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Back to menu items" }).click();
+  await expect(page.getByRole("button", { name: "See menu in action" })).toBeVisible();
+  await page.getByRole("button", { name: "Sell", exact: true }).click();
+  await expect(liveOrder).toBeVisible();
+  await expect(page.getByText(/Shift .* · 0 sales/)).toBeVisible();
+});

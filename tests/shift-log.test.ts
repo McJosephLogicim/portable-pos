@@ -53,8 +53,8 @@ test("an item added mid-shift with a new stock item tracks it from then, and clo
   const shift = openShift({ sb: 28, ice: 5 });
   const mango = { id: "mango", name: "Mango", unit: "kg", purchase: { price: 20000, quantity: 1 } };
   const shake: Product = { id: "shake", name: "Mango shake", category: "", price: 14000, groups: [], uses: [{ stockId: "mango", amount: 0.25 }, { stockId: "ice", amount: 0.2 }] };
-  const next = updateShiftMenu(shift, [dcc, sc, shake], { mango: 2, ice: 99 }, [strawberry, ice, mango]);
-  assert.deepEqual(next.stock, { sb: 28, ice: 5, mango: 2 });
+  const next = updateShiftMenu(shift, [dcc, sc, shake], { mango: 2, ice: 99 }, [strawberry, ice, mango], "2026-11-16T04:59:00.000Z");
+  assert.deepEqual(stockLeft(next, []), { sb: 28, ice: 5, mango: 2 });
   assert.deepEqual(next.settings.stockItems?.at(-1), { id: "mango", name: "Mango", unit: "kg" });
   // Stock items never sell a menu item out.
   assert.equal(canMake(shiftStock(next), stockLeft(next, []), "shake"), undefined);
@@ -69,7 +69,7 @@ test("an item added mid-shift with a new stock item tracks it from then, and clo
   // Without a count the item still sells, and the till isn't changed.
   assert.deepEqual(updateShiftMenu(shift, [dcc, sc, shake], {}, [strawberry, ice, mango]).stock, { sb: 28, ice: 5 });
   // A stock item with an amount saved starts from it.
-  assert.deepEqual(updateShiftMenu(shift, [dcc, sc, shake], {}, [strawberry, ice, { ...mango, onHand: 3 }]).stock, { sb: 28, ice: 5, mango: 3 });
+  assert.deepEqual(stockLeft(updateShiftMenu(shift, [dcc, sc, shake], {}, [strawberry, ice, { ...mango, onHand: 3 }]), []), { sb: 28, ice: 5, mango: 3 });
 });
 
 test("menu items use stock items, sales draw them down, and closing reports the gap", () => {
