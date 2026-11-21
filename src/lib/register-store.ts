@@ -1,7 +1,7 @@
 import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domain";
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
 import { demoPlan } from "./demo-plan";
-import { demoAction, PRACTICE, practiceBootstrap, type OwnerAction } from "./demo";
+import { demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
 import type {
   Bootstrap,
   CartLine,
@@ -206,15 +206,24 @@ async function updateRegister(
 }
 
 /** This key is dedicated to the walkthrough and never enters the account sync path. */
-export function openPracticeRegister(): Promise<RegisterState> {
-  return updateRegister(PRACTICE, (current) => current.business ? current : {
-    ...current,
-    ...practiceBootstrap(current.deviceId),
+export function openPracticeRegister(key: string, live: RegisterState): Promise<RegisterState> {
+  if (!isPracticeKey(key) || !live.business) throw Error("Open a business to start practice.");
+  return updateRegister(key, (current) => {
+    if (!current.business) return { ...current, ...practiceBootstrap(current.deviceId, live) };
+    const menu = practiceMenu(live.menu);
+    const changed = JSON.stringify(menu) !== JSON.stringify(current.menu);
+    const shift = current.shift && changed ? { ...current.shift, menu } : current.shift;
+    return {
+      ...current, menu, shift, bookings: live.bookings,
+      cart: changed ? [] : current.cart,
+      shifts: current.shifts.map((record) => record.id === shift?.id ? shift : record),
+    };
   });
 }
 
-export function savePracticeAction(input: OwnerAction): Promise<RegisterState> {
-  return updateRegister(PRACTICE, (current) => {
+export function savePracticeAction(key: string, input: OwnerAction): Promise<RegisterState> {
+  if (!isPracticeKey(key)) throw Error("Open a practice register first.");
+  return updateRegister(key, (current) => {
     if (!current.business) throw Error("Open the practice register first.");
     if (input.action === "close" && current.cart.length) throw Error("Finish or clear the current order before closing.");
     const { deletedRecord: _deletedRecord, inviteDelivery: _inviteDelivery, ...snapshot } = demoAction(current, input);
@@ -385,7 +394,7 @@ export function setAvailability(
     return {
       ...current,
       soldOut: withAvailability(current.soldOut, targetId, soldOut),
-      pending: key === PRACTICE ? current.pending : [
+      pending: isPracticeKey(key) ? current.pending : [
         ...current.pending,
         {
           type: "availability",
@@ -440,7 +449,7 @@ export async function checkout(
       ...current,
       cart: [],
       sales: [sale, ...current.sales],
-      pending: key === PRACTICE ? current.pending : [
+      pending: isPracticeKey(key) ? current.pending : [
         ...current.pending,
         { id: sale.id, shiftId: shift.id, type: "sale", sale, menuVersion },
       ],
@@ -504,7 +513,7 @@ export function logExpense(
     return {
       ...current,
       expenses: [expense, ...(current.expenses ?? [])],
-      pending: key === PRACTICE ? current.pending : [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
+      pending: isPracticeKey(key) ? current.pending : [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
     };
   });
 }
@@ -521,7 +530,7 @@ export function removeExpense(key: string, expenseId: string) {
       expenses: (current.expenses ?? []).map((e) =>
         e.id === expenseId ? { ...e, voidedAt: new Date().toISOString() } : e,
       ),
-      pending: key === PRACTICE ? current.pending : [...current.pending, { id, shiftId: shift.id, type: "unexpense", targetId: expenseId }],
+      pending: isPracticeKey(key) ? current.pending : [...current.pending, { id, shiftId: shift.id, type: "unexpense", targetId: expenseId }],
     };
   });
 }

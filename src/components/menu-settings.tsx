@@ -253,7 +253,6 @@ export function ItemSheet({
   currency,
   menu,
   simple = false,
-  practice = false,
   liveShift = false,
   counted = [],
   stockItems = [],
@@ -268,8 +267,6 @@ export function ItemSheet({
   /** A new item's category, when it is added from a category tab. */
   category?: string;
   simple?: boolean;
-  /** The first practice item uses the core sellable fields. */
-  practice?: boolean;
   /** What the item can use up with each sale. */
   stockItems?: StockItem[];
   /** Current cost sources when the till limits selection to its opening stock. */
@@ -499,7 +496,7 @@ export function ItemSheet({
         <PhotoPicker value={image} onChange={setImage} label="item photo" />
       </div>
 
-      {!practice && (!simple || !product?.uses?.length) && <div className="card card-pad stack gap-14">
+      {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-14">
         <span className="strong title-help">
           Stock
           <Explain title="Stock">
@@ -697,7 +694,7 @@ export function ItemSheet({
         </div>
       </SetupDetails>}
 
-      {!practice && <ItemChoices groups={groups} reuse={reuse} currency={currency} onChange={setGroups} />}
+      <ItemChoices groups={groups} reuse={reuse} currency={currency} onChange={setGroups} />
     </RecordSheet>
   );
 }

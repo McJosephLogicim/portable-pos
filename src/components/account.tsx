@@ -189,7 +189,7 @@ export function AccountLinkError({ title, detail, onContinue, onSwitch }: {
 type AccountProps = {
   onSignedIn: (id: string) => Promise<void>;
 } & (
-  | { entry: AccountEntry; onDemo: () => void; onPractice?: () => void; notice?: string; onChooseAccount?: () => void }
+  | { entry: AccountEntry; onDemo: () => void; notice?: string; onChooseAccount?: () => void }
   | { requiredUser?: string; initialEmail?: string; onDismiss: () => void }
 );
 
@@ -382,15 +382,6 @@ export function Account(props: AccountProps) {
   return (
     <AccountPage brand={data?.business.brand} credit={Boolean(data)}>
       {!data && <AppMark />}
-      {kind === "register" && props.onPractice && !sentTo && (
-        <button type="button" className={`${styles.demo} ${styles.practice}`} disabled={busy} onClick={props.onPractice}>
-          <span>
-            <strong>Practice with POP POS</strong>
-            <span>Try the register step by step. Everything stays on this device.</span>
-          </span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
-      )}
       {preview.state === "loading" && <Placeholder />}
       {data && (kind === "invite" ? <InviteCard data={data} /> : <ShiftCard data={data} />)}
       {preview.state === "gone" && (
@@ -473,11 +464,13 @@ export function Setup({
   onSave,
   onSignOut,
   adding = false,
+  onboarding = false,
 }: {
   onSave: (a: OwnerAction) => Promise<void>;
   onSignOut: () => void;
   /** Adding another business, rather than the first one. */
   adding?: boolean;
+  onboarding?: boolean;
 }) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState("");
@@ -489,7 +482,8 @@ export function Setup({
   return (
     <div className="page">
       <h1 className="headline" style={{ paddingTop: 24 }}>
-        {adding ? "Add a business." : "Set up your stall."} <span className="g">{adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>
+        {adding ? "Add a business." : onboarding ? "Create your business" : "Set up your stall."}
+        {!onboarding && <span className="g"> {adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>}
       </h1>
       <form
         className="card card-pad stack gap-14"
@@ -557,7 +551,7 @@ export function Setup({
           </p>
         )}
         <button className="btn block" disabled={busy}>
-          {busy ? "Creating…" : adding ? "Add" : "Create register"}
+          {busy ? "Creating…" : adding ? "Add" : onboarding ? "Create business" : "Create register"}
         </button>
       </form>
       <button className="link" onClick={onSignOut}>

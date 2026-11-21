@@ -35,6 +35,10 @@ const date = (name: string) =>
 
 type MenuRevision = { id: string; appliedAt: string; previousMenu: Product[] };
 
+export const completedOnboarding = register.table("completed_onboarding", {
+  userId: uuid("user_id").primaryKey(),
+}).enableRLS();
+
 export const businesses = register
   .table("businesses", {
     id: uuid().primaryKey().defaultRandom(),

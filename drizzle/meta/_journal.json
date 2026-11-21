@@ -78,6 +78,13 @@
       "when": 1795207813801,
       "tag": "0010_booths",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795245292203,
+      "tag": "0011_account_onboarding",
+      "breakpoints": true
     }
   ]
 }

@@ -16,7 +16,7 @@ import { ensure } from "./errors";
 import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
-import { bookings, businesses, members, sales, shifts } from "./schema";
+import { bookings, businesses, completedOnboarding, members, sales, shifts } from "./schema";
 import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
@@ -69,10 +69,15 @@ export async function runCommand(
   }
 
   const data = await getDb().transaction(async (tx) => {
-    const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => ({
-      ...(await baseSnapshot(tx, access, view)),
-      businesses: await listBusinesses(tx, actor),
-    });
+    const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => {
+      const [completion] = await tx.select({ userId: completedOnboarding.userId })
+        .from(completedOnboarding).where(eq(completedOnboarding.userId, actor.id));
+      return {
+        ...(await baseSnapshot(tx, access, view)),
+        businesses: await listBusinesses(tx, actor),
+        onboardingComplete: Boolean(completion),
+      };
+    };
     if (cmd.action === "setup") {
       if (cmd.id) {
         // Another business: the new one is what the app works in from now on.
@@ -111,6 +116,11 @@ export async function runCommand(
     ensure(access, "Create your business first.", 404);
     const { business, member } = access;
     const me = presentMe(member);
+    if (cmd.action === "completeOnboarding") {
+      ensure(me.owner, "Only a business owner can finish this setup.", 403);
+      await tx.insert(completedOnboarding).values({ userId: actor.id }).onConflictDoNothing();
+      return snapshot(access);
+    }
     ensure(!ownerActions.includes(cmd.action) || me.owner, "Only the owner can change this.", 400);
     /** Every booth's open shift. */
     const openShifts = () =>

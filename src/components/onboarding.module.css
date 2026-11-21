@@ -65,17 +65,6 @@
   object-fit: contain;
 }
 
-.doneMark {
-  display: grid;
-  place-items: center;
-  width: 86px;
-  aspect-ratio: 1;
-  border-radius: 26px;
-  color: white;
-  background: var(--glossy);
-  box-shadow: 0 14px 32px #28282025;
-}
-
 .content h1 {
   max-width: 13ch;
   margin: 0;

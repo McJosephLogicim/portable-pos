@@ -89,12 +89,11 @@ export function RolePicker({
   );
 }
 
-export function MemberSheet({
+function MemberSheet({
   member,
   canChangeAccess,
   link,
   currency,
-  practice = false,
   onSave,
   onResend,
   onRemove,
@@ -105,7 +104,6 @@ export function MemberSheet({
   /** A pending invite's link. */
   link?: string;
   currency: string;
-  practice?: boolean;
   onSave: (input: { name: string; email: string; rate: number; owner?: boolean; photo?: string | null }) => Promise<boolean>;
   onResend?: () => Promise<boolean>;
   onRemove?: () => Promise<boolean>;
@@ -140,7 +138,7 @@ export function MemberSheet({
   return (
     <>
     <Sheet
-      title={member ? member.name : practice ? "Add someone" : "Invite someone"}
+      title={member ? member.name : "Invite someone"}
       onClose={onClose}
       busy={busy}
       footer={
@@ -160,7 +158,7 @@ export function MemberSheet({
               )
             }
           >
-            {busy ? "Saving…" : member ? "Save" : practice ? "Add person" : email.trim() ? "Invite" : "Create"}
+            {busy ? "Saving…" : member ? "Save" : email.trim() ? "Invite" : "Create"}
           </button>
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
@@ -198,9 +196,7 @@ export function MemberSheet({
               <span className="field-head">
                 Email (optional)
                 <Explain title="Their email">
-                  {practice
-                    ? "Use an example address. It stays in this practice register on this device."
-                    : "Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own."}
+                  Leave it empty to just share an invite link. With an email, they also get the link by email and can join by signing in with that address. They can use their existing Portable POS account and keep any businesses they already own.
                 </Explain>
               </span>
             )}
@@ -272,10 +268,10 @@ export function MemberSheet({
   );
 }
 
-export function TeamPage(props: SettingsProps) {
+export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onPage"> & { startAdding?: boolean }) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
-  const [editing, setEditing] = useState<Member | "new" | null>(null);
+  const [editing, setEditing] = useState<Member | "new" | null>(props.startAdding ? "new" : null);
   // After an invite, open the new person so their link is ready to share.
   const invited = useRef<Set<string> | null>(null);
   useEffect(() => {

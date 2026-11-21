@@ -288,6 +288,7 @@ export const planCommand = z.discriminatedUnion("action", [
 
 const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
+  z.object({ action: z.literal("completeOnboarding") }),
   z.object({ action: z.literal("acceptInvite"), code: z.string().regex(/^[0-9A-Za-z]{8}$/) }),
   z.object({
     action: z.literal("setup"),

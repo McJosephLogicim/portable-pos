@@ -333,6 +333,8 @@ export interface BusinessSummary {
   brand?: string;
 }
 export interface Bootstrap {
+  /** Scoped to the signed-in account, across its businesses and devices. */
+  onboardingComplete?: boolean;
   businesses?: BusinessSummary[];
   business: Business | null;
   me?: Me | null;

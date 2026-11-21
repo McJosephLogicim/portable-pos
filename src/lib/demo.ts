@@ -19,7 +19,8 @@ import type {
 } from "./types";
 
 export const DEMO = "demo-register-v2";
-export const PRACTICE = "practice-register-v1";
+export const PRACTICE = "practice-register-v2";
+export const isPracticeKey = (key: string) => key.startsWith(PRACTICE + ":");
 export const DEMO_PIN = "1234";
 export function newShift(
   deviceId: string,
@@ -81,19 +82,20 @@ export function demoBootstrap(deviceId: string): Bootstrap {
 }
 
 /** A blank lesson starts with an unlinked till so an item can be sold before scheduling. */
-export function practiceBootstrap(deviceId: string): Bootstrap {
-  const currency = "PHP";
+export function practiceBootstrap(deviceId: string, live: RegisterState): Bootstrap {
+  const { currency, timeZone, name } = live.business!;
   const settings = defaultSettings(currency);
   settings.mode = "simple";
   const business = {
     id: PRACTICE,
-    name: "POP POS Practice",
+    name,
     currency,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone,
     settings,
   };
-  const me = { memberId: "practice-owner", name: "You", roles: [], owner: true };
-  const shift = newShift(deviceId, business.id, 1, 0, [], {
+  const me = live.me;
+  const menu = practiceMenu(live.menu);
+  const shift = newShift(deviceId, business.id, 1, 0, menu, {
     ...settings,
     currency,
     payments: settings.payments.filter((method) => method.kind === "cash"),
@@ -101,15 +103,20 @@ export function practiceBootstrap(deviceId: string): Bootstrap {
   return {
     business,
     me,
-    team: [{ id: me.memberId, name: me.name, email: "", roles: [], rate: 0, owner: true, primaryOwner: true, joined: true }],
+    team: [],
     organizers: [],
-    bookings: [],
-    menu: [],
+    bookings: live.bookings,
+    menu,
     shift,
     shifts: [shift],
     sales: [],
     soldOut: [],
   };
+}
+
+/** Let a first sale use the real catalog without consuming or depending on its stock. */
+export function practiceMenu(menu: Product[]): Product[] {
+  return menu.map(({ stock: _stock, uses: _uses, costing: _costing, ...item }) => item);
 }
 export interface Opening {
   openingCash: number;
@@ -133,6 +140,7 @@ export interface Closing {
   pin: string;
 }
 export type OwnerAction =
+  | { action: "completeOnboarding" }
   | ({ action: "open" } & Opening)
   | { action: "link"; newShift: WalkIn }
   | { action: "linkBooking"; shiftId: string; bookingId: string }
@@ -381,6 +389,7 @@ export function demoAction(
       };
     }
     case "setup":
+    case "completeOnboarding":
       throw Error("Create a live account to set up a business.");
     default: {
       const me = state.me!;

@@ -331,19 +331,6 @@
   background: var(--surface-muted);
 }
 
-.demo.practice {
-  background: var(--glossy);
-  color: white;
-}
-
-.practice strong {
-  color: inherit;
-}
-
-.practice span span {
-  color: #deded8;
-}
-
 /* Only the submit button carries the color; the mode switch stays neutral. */
 .modes {
   --accent: var(--surface-muted);
