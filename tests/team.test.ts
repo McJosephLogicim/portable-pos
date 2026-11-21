@@ -155,7 +155,7 @@ test(
     process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
     for (const [name, value] of Object.entries({
       RESEND_API_KEY: "test-mail-key",
-      POS_INVITE_FROM: "Portable POS <team@example.com>",
+      POS_INVITE_FROM: "team@example.com",
       POS_APP_URL: "https://pos.example.com",
     })) {
       const previous = process.env[name];

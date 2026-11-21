@@ -9,9 +9,10 @@ export async function sendInvitationEmail(
   code?: string,
 ): Promise<NonNullable<RegisterResponse["inviteDelivery"]>> {
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.POS_INVITE_FROM;
+  const configuredFrom = process.env.POS_INVITE_FROM?.trim();
   const origin = process.env.POS_APP_URL;
-  if (!key || !from || !origin) return "unavailable";
+  if (!key || !configuredFrom || !origin) return "unavailable";
+  const address = configuredFrom.match(/<([^<>]+)>$/)?.[1].trim() ?? configuredFrom;
 
   try {
     if (new URL(origin).protocol !== "https:") return "unavailable";
@@ -24,7 +25,7 @@ export async function sendInvitationEmail(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from,
+        from: `${APP_NAME} <${address}>`,
         to: [email],
         subject: `You're invited to a team on ${APP_NAME}`,
         text: [
