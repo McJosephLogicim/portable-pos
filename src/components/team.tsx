@@ -435,7 +435,7 @@ function ChecklistStepSheet({ onAdd, onClose }: { onAdd: (text: string) => void;
 }
 
 export function ChecklistPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props, "Save checklist", "Checklist saved");
+  const { draft, setDraft, bar } = useDraft(props, "Checklist saved");
   const [adding, setAdding] = useState<"single" | "bulk" | null>(null);
   const [photoError, setPhotoError] = useState("");
   const list = draft.settings.checklist ?? [];
