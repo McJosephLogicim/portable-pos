@@ -2,10 +2,10 @@ export const APP_NAME = "POP POS";
 
 // Versioned URLs let installed apps fetch new artwork through the offline cache.
 export const appIcons = {
-  small: "/icon-192.png?v=popo-peek",
-  large: "/icon-512.png?v=popo-peek",
-  maskable: "/icon-maskable-512.png?v=popo-peek",
-  apple: "/apple-touch-icon.png?v=popo-peek",
+  small: "/icon-192.png?v=popo-peek-clear",
+  large: "/icon-512.png?v=popo-peek-clear",
+  maskable: "/icon-maskable-512.png?v=popo-peek-clear",
+  apple: "/apple-touch-icon.png?v=popo-peek-clear",
 };
 
 export const leaderboardCrown = "/mascots/popo/leaderboard-crown.webp";
