@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowDown, ArrowLeft, Building2, CalendarDays, ChevronDown, Crown, MapPin, Share } from "lucide-react";
-import { appIcons } from "@/lib/app-brand";
+import { ArrowLeft, Building2, CalendarDays, ChevronDown, MapPin, Share } from "lucide-react";
+import { appIcons, leaderboardCrown } from "@/lib/app-brand";
 import { leaderboard, leaderboardShareRows, leaderboardText, type Board, type LeaderboardShare, type Rank } from "@/lib/insights";
 import { leaderboardImage } from "@/lib/report-image";
 import { addDays, dayOf, weekday, zonedInstant } from "@/lib/team";
@@ -11,7 +11,7 @@ import type { RegisterState } from "@/lib/types";
 import { ImageShareSheet } from "./share";
 import { useBookingSales } from "./shift-list";
 import { Avatar } from "./team";
-import { buzz, EmptyState, formatMoney, useFaces } from "./ui";
+import { buzz, EmptyState, formatMoney, Sheet, useFaces } from "./ui";
 import styles from "./leaderboard.module.css";
 
 const categories = [
@@ -57,6 +57,7 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
   const [board, setBoard] = useState<Board>("people");
   const [range, setRange] = useState<Period>("month");
   const [share, setShare] = useState<LeaderboardShare | null>(null);
+  const [selectedRank, setSelectedRank] = useState<{ rank: Rank; position: number } | null>(null);
   const buildShareImage = useMemo(() => share && (() => leaderboardImage(share)), [share]);
   const heading = useRef<HTMLHeadingElement>(null);
   const podiumList = useRef<HTMLOListElement>(null);
@@ -77,6 +78,11 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
 
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!themeColor) return;
+    const previous = themeColor.content;
+    themeColor.content = "#101d3a";
+    return () => { themeColor.content = previous; };
   }, []);
 
   function openShare() {
@@ -100,11 +106,14 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
     return owner ? format(rank.sales ?? 0) : `${rank.hits} ${rank.hits === 1 ? "quota" : "quotas"} hit`;
   }
 
+  function shifts(rank: Rank) {
+    return `${rank.shifts} ${rank.shifts === 1 ? "shift" : "shifts"}`;
+  }
+
   function details(rank: Rank) {
-    const shifts = `${rank.shifts} ${rank.shifts === 1 ? "shift" : "shifts"}`;
-    if (!owner) return [shifts];
+    if (!owner) return [shifts(rank)];
     const profit = rank.profit ?? 0;
-    const result = [shifts, `${profit < 0 ? "Loss" : "Profit"} ${format(Math.abs(profit))}`];
+    const result = [shifts(rank), `${profit < 0 ? "Loss" : "Profit"} ${format(Math.abs(profit))}`];
     if (rank.hits) result.push(`${rank.hits} ${rank.hits === 1 ? "quota" : "quotas"} hit`);
     return result;
   }
@@ -122,7 +131,7 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
           <button type="button" className={`round ${styles.back}`} aria-label="Back to shifts" onClick={onBack}>
             <ArrowLeft size={19} aria-hidden="true" />
           </button>
-          <img className={styles.appIcon} src={appIcons.small} width={44} height={44} alt="" />
+          <img className={styles.appIcon} src={appIcons.small} width={54} height={54} alt="" />
           <button type="button" className={`btn responsive-icon ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
             <Share size={17} aria-hidden="true" /> <span className="button-label">Share</span>
           </button>
@@ -162,22 +171,32 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
 
         {podium.length > 0 ? (
           <>
-            <p className={styles.ranking}>{ranking}</p>
-            <ol ref={podiumList} className={styles.podium} data-count={podium.length} aria-label="Top ranks" role="list">
+            <p id="leaderboard-ranking" className="sr-only">{ranking}</p>
+            <ol ref={podiumList} className={styles.podium} data-count={podium.length} aria-label="Top ranks" aria-describedby="leaderboard-ranking" role="list">
               {podium.map((rank, i) => (
                 <li key={rank.key} className={styles.placement} data-place={i + 1}>
                   <div className={styles.medal}>
-                    {i === 0 && <Crown className={styles.crown} aria-hidden="true" />}
+                    {i === 0 && <img className={styles.crown} src={leaderboardCrown} alt="" />}
                     <div className={styles.portrait}><RankPortrait rank={rank} board={board} /></div>
                     <span className={styles.position}><span className="sr-only">Rank </span>{i + 1}</span>
                   </div>
                   <div className={styles.identity}>
                     <p className={styles.name} title={rank.label}>{rank.label}{rank.me && <span className={styles.you}> · you</span>}</p>
                     <p className={styles.score}>{score(rank)}</p>
-                    <div className={styles.details}>
-                      {details(rank).map((detail) => <span key={detail}>{detail}</span>)}
-                    </div>
+                    <p className={styles.shifts}>{shifts(rank)}</p>
                   </div>
+                  {owner && (
+                    <button
+                      type="button"
+                      className={styles.rankDetailsButton}
+                      aria-label={`View rank ${i + 1} details for ${rank.label}`}
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        buzz.tap();
+                        setSelectedRank({ rank, position: i + 1 });
+                      }}
+                    />
+                  )}
                 </li>
               ))}
             </ol>
@@ -211,10 +230,18 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
           <button type="button" className={styles.jump} aria-label={`Jump to your rank, number ${myIndex + 1}`} onClick={jumpToMyRank}>
             <Avatar name={myRank.label} id={myRank.key} small />
             You · #{myIndex + 1}
-            <ArrowDown size={15} aria-hidden="true" />
+            <ChevronDown size={22} aria-hidden="true" />
           </button>
         )}
       </div>
+
+      {selectedRank && (
+        <Sheet title={selectedRank.rank.label} onClose={() => setSelectedRank(null)}>
+          <p className="label">Rank {selectedRank.position} · {period}</p>
+          <p className="strong">{score(selectedRank.rank)} in sales</p>
+          {details(selectedRank.rank).map((detail) => <p key={detail}>{detail}</p>)}
+        </Sheet>
+      )}
 
       {share && buildShareImage && (
         <ImageShareSheet

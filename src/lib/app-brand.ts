@@ -8,6 +8,8 @@ export const appIcons = {
   apple: "/apple-touch-icon.png?v=popo-peek",
 };
 
+export const leaderboardCrown = "/mascots/popo/leaderboard-crown.webp";
+
 export const popoLoading = {
   poster: "/mascots/popo/poster.png",
   wave: "/mascots/popo/wave.webp",

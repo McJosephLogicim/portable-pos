@@ -17,7 +17,7 @@ function assetURL(input, base = ROOT) {
   // Uploaded photos never change under the same id.
   if (/^\/api\/images\/[0-9a-f-]{36}$/.test(url.pathname)) return url.href;
   if (url.pathname.startsWith("/api/")) return;
-  if (/^\/mascots\/popo\/(welcome|menu|sale|plan|connect|close|team)\.webp$/.test(url.pathname))
+  if (/^\/mascots\/popo\/(welcome|menu|sale|plan|connect|close|team|leaderboard-crown)\.webp$/.test(url.pathname))
     return url.href;
   if (
     ["/menu/", "/cash/", "/empty-states/"].some((prefix) => url.pathname.startsWith(prefix)) &&

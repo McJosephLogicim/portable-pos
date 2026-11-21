@@ -1,5 +1,5 @@
 import { countRows } from "./cash";
-import { APP_NAME, appIcons } from "./app-brand";
+import { APP_NAME, appIcons, leaderboardCrown } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
 import { round, unitText } from "./stock";
@@ -487,10 +487,11 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
   const palette = leaderboardColors;
   const sources = [...new Set(report.rows.flatMap((row) => row.photo ? [row.photo] : []))];
-  const [logo, icon, brandIcon, photos] = await Promise.all([
+  const [logo, icon, brandIcon, crown, photos] = await Promise.all([
     report.business.logo ? loadImage(report.business.logo) : null,
     report.icon ? loadImage(report.icon) : null,
     loadImage(BRAND_ICON),
+    loadImage(leaderboardCrown),
     Promise.all(sources.map(async (source) => [source, await loadImage(source)] as const)),
     document.fonts?.ready,
   ]);
@@ -590,23 +591,10 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
     const portraitLeft = center - face / 2;
     drawPortrait(row, portraitLeft, portraitTop, face, ring);
 
-    if (first) {
-      const start = center - 19;
-      const y = portraitTop - 26;
-      ctx.beginPath();
-      ctx.moveTo(start, y + 6);
-      ctx.lineTo(start + 11, y + 12);
-      ctx.lineTo(center, y);
-      ctx.lineTo(center + 8, y + 12);
-      ctx.lineTo(center + 19, y + 6);
-      ctx.lineTo(center + 14, y + 25);
-      ctx.lineTo(start + 5, y + 25);
-      ctx.closePath();
-      ctx.fillStyle = "#559ee9";
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "#d8f6ff";
-      ctx.stroke();
+    if (first && crown) {
+      const width = 56;
+      const height = width * crown.height / crown.width;
+      ctx.drawImage(crown, center - width / 2, portraitTop - height + 4, width, height);
     }
 
     const badgeLeft = portraitLeft + face - badgeSize * 0.65;

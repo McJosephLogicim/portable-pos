@@ -51,6 +51,8 @@ async function seedTill(
           if (rankedAs) {
             const names = ["Mika Reyes", "Bea Cruz", "Paolo Tan", "Jules Lim", "Sam Flores", "Ana Cruz", "Tess Ong", "Lia Uy", "Marco Go", "Nico Lao"];
             state.me = { memberId: "member-5", name: "Ana Cruz", roles: ["cashier"], owner: rankedAs === "owner" };
+            const testPhoto = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="240"><rect width="120" height="240" fill="#c1d8ee"/><circle cx="60" cy="120" r="47" fill="#5c7da2"/></svg>');
+            state.faces = Object.fromEntries(names.map((_, index) => ["member-" + index, testPhoto]));
             state.bookings = names.map((name, index) => ({
               ...booking("Market " + index, "2026-11-11T01:00:00Z", "2026-11-11T03:00:00Z"),
               staff: [{ memberId: "member-" + index, name, role: "cashier" }],
@@ -280,7 +282,25 @@ test("Blue Halo raises first place and can jump to your row on a narrow screen",
   await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
 
   const myRank = page.getByRole("list", { name: "Remaining ranks" }).getByRole("listitem").filter({ hasText: "Ana Cruz" });
-  await page.getByRole("button", { name: "Jump to your rank, number 6" }).click();
+  const jump = page.getByRole("button", { name: "Jump to your rank, number 6" });
+  const crown = podium.locator('img[src$="/leaderboard-crown.webp"]');
+  await expect(crown).toBeVisible();
+  await expect.poll(() => crown.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  for (const photo of [top.nth(0), top.nth(1), myRank, jump].map((element) => element.locator(".avatar img"))) {
+    await expect(photo).toHaveCSS("border-radius", "50%");
+    await expect(photo).toHaveCSS("object-fit", "cover");
+    await expect.poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(240);
+    const size = await photo.boundingBox();
+    expect(size!.width).toBeCloseTo(size!.height, 1);
+  }
+  await expect(top.nth(0)).not.toContainText("Profit");
+  await top.nth(0).getByRole("button", { name: "View rank 1 details for Mika Reyes" }).click();
+  const rankDetails = page.getByRole("dialog", { name: "Mika Reyes" });
+  await expect(rankDetails.getByText("Profit ₱43,000")).toBeVisible();
+  await rankDetails.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(rankDetails).toBeHidden();
+
+  await jump.click();
   await expect(myRank).toBeFocused();
   await expect(myRank).toBeInViewport();
 
@@ -298,8 +318,8 @@ test("Blue Halo displays quotas and shifts for team members", async ({ page }) =
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   await page.getByRole("button", { name: "Leaderboard", exact: true }).click();
 
-  await expect(page.getByText("Ranked by quotas hit, then shifts worked")).toBeVisible();
   const podium = page.getByRole("list", { name: "Top ranks" });
+  await expect(podium).toHaveAccessibleDescription("Ranked by quotas hit, then shifts worked");
   await expect(podium.getByText("1 quota hit", { exact: true })).toHaveCount(3);
   await expect(page.getByRole("main")).not.toContainText(/₱|Profit|Loss/);
 });
