@@ -982,10 +982,8 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
 export function ClosedSellScreen({ onTill }: { onTill: () => void }) {
   return (
     <>
-      <div className="sell-head">
-        <div className="page-top">
-          <h1 className="sell-title">Sell</h1>
-        </div>
+      <div className="page-top">
+        <h1 className="headline">Sell</h1>
       </div>
       <EmptyState pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
         <button type="button" className="btn compact" onClick={onTill}>Open till</button>
@@ -1136,7 +1134,7 @@ export function SellScreen({
         <div className="page-top">
           <div className="grow stack" style={{ minWidth: 0 }}>
             <div className="page-title">
-              {preview ? <h2 className="sell-title">Menu preview</h2> : <h1 className="sell-title">Sell</h1>}
+              {preview ? <h2 className="headline">Menu preview</h2> : <h1 className="headline">Sell</h1>}
               <Explain title="Selling" label="How selling works">
                 <p>Tap an item to add it to the order, then {preview ? "Test checkout" : "Charge"}.</p>
                 {!preview && !practice && (

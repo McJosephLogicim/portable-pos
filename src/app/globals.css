@@ -1234,12 +1234,6 @@ button.list-row:not(.sell-option):active {
   flex-direction: column;
   gap: 12px;
 }
-.sell-title {
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-}
 .mode-bar {
   display: flex;
   align-items: center;
@@ -2825,12 +2819,6 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   display: block;
   margin: 0 auto 8px;
 }
-@media (max-width: 359px) {
-  .sell-title {
-    font-size: 20px;
-  }
-}
-
 /* iOS zooms into any field under 16px when it's tapped. Keep every field at 16px or more,
    and stop double-tap zoom on controls. */
 input:not(.big):not([type="checkbox"]):not([type="radio"]),
