@@ -27,14 +27,17 @@ export type RadiusId = (typeof radii)[number]["id"];
 function luminance(hex: string) {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 /** White or black text, whichever reads better on the color. */
 export function onColor(hex: string) {
-  return luminance(hex) > 0.36 ? "#0a0a0a" : "#ffffff";
+  const lightness = luminance(hex) + 0.05;
+  const blackContrast = lightness / 0.05;
+  const whiteContrast = 1.05 / lightness;
+  return blackContrast >= whiteContrast ? "#000000" : "#ffffff";
 }
 
 /** Shared by the on-screen leaderboard and its PNG export. */
@@ -68,7 +71,7 @@ export function leaderboardPalette(brand?: string) {
   };
 }
 
-const vars = ["--accent", "--accent-ring", "--on-accent", "--on-accent-secondary", "--glossy", "--ink", "--font-sans", "--brand",
+const vars = ["--accent", "--accent-ring", "--accent-pressed", "--on-accent", "--hero-brand-strength", "--glossy", "--ink", "--font-sans", "--brand",
   "--radius-xl", "--radius-lg", "--radius-md", "--radius-sm", "--radius-xs", "--radius-pill"];
 
 /** Theme the whole app from the business's branding: buttons, text, font and corners. */
@@ -78,16 +81,25 @@ export function applyTheme(settings: Pick<Settings, "brand" | "font" | "radius" 
   root.classList.toggle("branded", Boolean(settings?.brand));
   if (!settings) return;
   const set = (k: string, v: string) => root.style.setProperty(k, v);
-  if (settings.brand && /^#[0-9a-f]{6}$/i.test(settings.brand)) {
-    const on = onColor(settings.brand);
-    set("--brand", settings.brand);
-    set("--accent", settings.brand);
-    set("--accent-ring", settings.brand);
+  const { brand, ink } = settings;
+  if (brand && /^#[0-9a-f]{6}$/i.test(brand)) {
+    const on = onColor(brand);
+    const dark = on === "#ffffff";
+    const shade = dark ? "#000" : "#fff";
+    const gloss = `color-mix(in srgb, ${brand} 82%, ${shade})`;
+    const glossStops = dark ? `${brand}, ${gloss}` : `${gloss}, ${brand}`;
+    set("--brand", brand);
+    set("--accent", brand);
+    set("--accent-ring", brand);
     set("--on-accent", on);
-    set("--on-accent-secondary", on === "#ffffff" ? "rgb(255 255 255 / 0.7)" : "rgb(0 0 0 / 0.55)");
-    set("--glossy", `linear-gradient(180deg, color-mix(in srgb, ${settings.brand} 82%, #fff) 0%, ${settings.brand} 100%)`);
+    set("--accent-pressed", `color-mix(in srgb, ${brand} 88%, ${shade})`);
+    set("--glossy", `linear-gradient(180deg in srgb, ${glossStops})`);
+    // Bright brands need a darker tint for white text across the hero gradient.
+    set("--hero-brand-strength", dark ? "88%" : "45%");
   }
-  if (settings.ink && /^#[0-9a-f]{6}$/i.test(settings.ink)) set("--ink", settings.ink);
+  if (ink && /^#[0-9a-f]{6}$/i.test(ink) && (luminance("#ededed") + 0.05) / (luminance(ink) + 0.05) >= 4.5) {
+    set("--ink", ink);
+  }
   const font = fonts.find((f) => f.id === settings.font);
   if (font && font.google) {
     const id = "brand-font-" + font.id;

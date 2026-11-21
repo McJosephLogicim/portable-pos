@@ -59,7 +59,7 @@ export function currencySymbol(currency: string) {
   );
 }
 
-/** A number set large with its currency sign small and grey, the Studio way. */
+/** A number with a smaller currency sign that shares its text color. */
 export function Money({
   value,
   currency,

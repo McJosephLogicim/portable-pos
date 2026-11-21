@@ -113,7 +113,7 @@
 
 .quickCash:global(.quick) > button:first-child:active:not(:disabled):not([aria-disabled="true"]),
 .chargeBar:global(.charge-bar):active:not(:disabled):not([aria-disabled="true"]) {
-  background: color-mix(in srgb, var(--accent), var(--on-accent) 12%);
+  background: var(--accent-pressed);
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -2,6 +2,7 @@
 
 import { Check, Plus } from "lucide-react";
 import type { BusinessSummary, RegisterState } from "@/lib/types";
+import { onColor } from "@/lib/theme";
 import { Sheet } from "./ui";
 import { blocked, OFFLINE } from "@/lib/reject";
 
@@ -38,7 +39,7 @@ export function BusinessMark({
         height: size,
         borderRadius: Math.round(size * 0.3),
         fontSize: Math.round(size * 0.35),
-        ...(brand && !logo ? { background: brand } : {}),
+        ...(brand && !logo ? { background: brand, color: onColor(brand) } : {}),
         ...(logo ? { background: "var(--surface)" } : {}),
       }}
     >

@@ -455,11 +455,11 @@ function BusinessPage(props: SettingsProps) {
           />
         </label>
       </div>
-      <div className="brand-preview" style={{ background: brand }}>
+      <div className="brand-preview" style={{ background: brand, color: onColor(brand) }}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
-          <span className="strong ellipsis" style={{ color: onColor(brand) }}>{draft.name || "Your stall"}</span>
-          <span className="label" style={{ color: onColor(brand), opacity: 0.72 }}>Buttons, highlights and cards take this look</span>
+          <span className="strong ellipsis">{draft.name || "Your stall"}</span>
+          <span className="label">Buttons, highlights and cards take this look</span>
         </span>
       </div>
       <div className="stack gap-10">
@@ -481,7 +481,7 @@ function BusinessPage(props: SettingsProps) {
                   type="button"
                   aria-label={"Brand color " + c}
                   aria-pressed={brand === c}
-                  style={{ background: c }}
+                  style={{ background: c, color: onColor(c) }}
                   onClick={() => {
                     buzz.tap();
                     setBrand({ brand: c === brands[0] ? undefined : c });
