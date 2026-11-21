@@ -191,7 +191,7 @@ type AccountProps = {
   onSignedIn: (id: string) => Promise<void>;
 } & (
   | { entry: AccountEntry; onDemo: () => void; notice?: string; onChooseAccount?: () => void }
-  | { requiredUser?: string; initialEmail?: string; onDismiss: () => void }
+  | { signInOnly?: boolean; initialEmail?: string; onDismiss: () => void }
 );
 
 const MODES = [
@@ -224,7 +224,7 @@ export function Account(props: AccountProps) {
   const passwordId = useId();
   const codeInput = useRef<HTMLInputElement>(null);
   const busy = request !== null;
-  const requiredUser = page ? undefined : props.requiredUser;
+  const signInOnly = !page && props.signInOnly;
   const emailOptions = { emailRedirectTo: entry?.returnTo };
 
   useEffect(() => {
@@ -250,10 +250,6 @@ export function Account(props: AccountProps) {
   async function finishSignIn(session: Session | null) {
     if (!session || session.user.is_anonymous) throw Error("Couldn't sign in. Try again.");
     const { id, email } = session.user;
-    if (requiredUser && requiredUser !== id) {
-      await authClient(slot).auth.signOut({ scope: "local" });
-      throw Error("Sign in with the email for this saved account.");
-    }
     const previous = savedAccounts().find((account) => account.id === id);
     rememberAccount({ id, email, slot });
     if (previous && previous.slot !== slot)
@@ -272,7 +268,7 @@ export function Account(props: AccountProps) {
       const { data, error } = create
         ? await auth.signUp({ email: address, password, options: emailOptions })
         : await auth.signInWithPassword({ email: address, password });
-      if (!create && !requiredUser && error?.code === "email_not_confirmed") {
+      if (!create && error?.code === "email_not_confirmed") {
         openVerification(address);
         return;
       }
@@ -389,7 +385,7 @@ export function Account(props: AccountProps) {
     </form>
   );
 
-  const modes = accountsEnabled && !requiredUser && (
+  const modes = accountsEnabled && !signInOnly && (
     <div className={styles.modes}>
       <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
     </div>
@@ -430,10 +426,9 @@ export function Account(props: AccountProps) {
   );
 
   if (!page) return (
-    <Sheet title={sentTo ? "Check your email" : requiredUser ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
+    <Sheet title={sentTo ? "Check your email" : signInOnly ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
       <div className="stack gap-14">
         {sentTo ? verification : <>
-          {requiredUser && <p className="muted">Sign in again to reconnect this register.</p>}
           {modes}
           {fields}
         </>}

@@ -710,7 +710,7 @@ export function Workspace() {
       )}
       {signingInto && (
         <Account
-          requiredUser={signingInto === "new" ? undefined : signingInto.id}
+          signInOnly={signingInto !== "new"}
           initialEmail={signingInto === "new" ? undefined : signingInto.email}
           onDismiss={() => { setSigningInto(null); setPickingAccount(true); }}
           onSignedIn={openAccount}
@@ -1054,10 +1054,11 @@ export function Workspace() {
       {account && !demo && (
         <Account
           onDismiss={() => setAccount(false)}
-          requiredUser={parseKey(key).userId}
-          onSignedIn={async () => {
+          signInOnly
+          onSignedIn={async (id) => {
             setAccount(false);
-            await connect(key);
+            if (id === userId) await connect(key);
+            else await openAccount(id);
           }}
         />
       )}
