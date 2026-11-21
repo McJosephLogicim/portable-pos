@@ -53,6 +53,11 @@
   --popo-width: clamp(46px, 17vw, 74px);
 }
 
+.emptyMenu {
+  padding-block: 20px 26px;
+  background: radial-gradient(ellipse 116px 92px at 50% 72px, #e1ebff, transparent), var(--surface);
+}
+
 .stageFocus:focus {
   outline: none;
 }

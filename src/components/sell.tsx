@@ -1239,6 +1239,8 @@ export function SellScreen({
         ) : (
           <EmptyState
             icon={menu.length ? <Search size={22} /> : <ShoppingBag size={22} />}
+            illustration={!menu.length ? <Popo pose="menu" motion="curiousPeek" size={108} /> : undefined}
+            className={!menu.length ? styles.emptyMenu : undefined}
             title={!menu.length ? (preview ? "Your menu is empty" : "No items on this shift") : query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
             text={menu.length
               ? "Try another name or category."

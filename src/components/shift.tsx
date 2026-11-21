@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ComponentProps } from "react";
-import { CalendarDays, Check, ChevronDown, ChevronRight, FileText, Wallet } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, FileText, Wallet } from "lucide-react";
 import type { Booking, ExpenseInput, OpeningExpense, RegisterState, Shift } from "@/lib/types";
 import { shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
@@ -230,16 +230,23 @@ function OpenShift({
   const value = cash.amount;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
+  const OpeningClipboard = value !== undefined && !unticked && !uncounted ? ClipboardCheck : ClipboardList;
   const celebrate = useCelebrate();
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
   return (
     <div className="stack gap-18">
       <h1 className="headline">Open till</h1>
       {(limits.size > 0 || checklist.length > 0) && (
-        <div className="steps" role="list" aria-label="Before you open">
-          <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash</em></span>
-          {limits.size > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
-          {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
+        <div className={styles.openingProgress}>
+          <div className="steps" role="list" aria-label="Before you open">
+            <span role="listitem" className={value !== undefined ? "done" : undefined}><em>Cash</em></span>
+            {limits.size > 0 && <span role="listitem" className={!uncounted ? "done" : undefined}><em>Stock</em></span>}
+            {checklist.length > 0 && <span role="listitem" className={!unticked ? "done" : undefined}><em>Checklist</em></span>}
+          </div>
+          <span className={styles.openingArt} aria-hidden="true">
+            <Popo pose="plan" motion="curiousPeek" size={58} />
+            <OpeningClipboard className={styles.openingClipboard} size={22} strokeWidth={1.7} />
+          </span>
         </div>
       )}
       <div className="stack gap-10">

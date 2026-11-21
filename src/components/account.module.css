@@ -239,6 +239,23 @@
   padding: 24px 20px 22px;
 }
 
+.inviteTicket {
+  background: radial-gradient(ellipse 112px 88px at calc(100% - 56px) 46px, #e4edff, transparent), var(--surface);
+}
+
+.inviteMarks {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+}
+
+.inviteMascot {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-start: -10px;
+}
+
 .business {
   margin: 18px 0 0;
   font-size: 34px;

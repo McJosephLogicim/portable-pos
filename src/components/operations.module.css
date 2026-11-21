@@ -51,6 +51,57 @@
   --popo-width: clamp(50px, 18vw, 74px);
 }
 
+.openingProgress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  background: radial-gradient(ellipse 64px 21px at calc(100% - 28px) center, #deebff, transparent);
+}
+
+.openingArt,
+.prepArt {
+  position: relative;
+  display: block;
+}
+
+.openingArt {
+  height: 42px;
+  padding-inline-end: 7px;
+}
+
+.openingArt > span {
+  inset-block-start: -8px;
+}
+
+.openingClipboard,
+.prepPot {
+  position: absolute;
+  color: #365386;
+  background: #edf3ff;
+  box-sizing: content-box;
+}
+
+.openingClipboard {
+  inset: auto 0 0 auto;
+  border: 1px solid #d6e2f8;
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.emptyPrep {
+  padding-block: 20px 26px;
+  background: radial-gradient(ellipse 116px 92px at 50% 72px, #e1ebff, transparent), var(--surface);
+}
+
+.prepPot {
+  inset: auto -8px 4px auto;
+  border: 1px solid #d6e2f8;
+  border-radius: 12px;
+  padding: 5px;
+}
+
 .reportMascot {
   --popo-width: clamp(40px, 14vw, 64px);
   margin-inline-start: auto;

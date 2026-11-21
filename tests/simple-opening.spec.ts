@@ -65,6 +65,9 @@ for (const mode of ["simple", "advanced"] as const) {
     await page.getByRole("button", { name: "Open till", exact: true }).click();
     await page.getByRole("button", { name: /^Opening test/ }).click();
     await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
+    const progress = page.getByRole("list", { name: "Before you open" }).locator("..");
+    await expect(progress.locator('img[src$="/plan.webp"]')).toBeAttached();
+    await expect(progress.locator(".lucide-clipboard-list")).toBeVisible();
     await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
     await page.getByRole("button", { name: "Type the total", exact: true }).click();
     await expect(page.getByText("Starting cash", { exact: true })).toHaveCount(1);
@@ -77,6 +80,7 @@ for (const mode of ["simple", "advanced"] as const) {
     await stock.locator("summary").filter({ hasText: /^Stock and prep$/ }).click();
     await expect(stock.getByText("6 L", { exact: true })).toBeVisible();
     await page.getByRole("checkbox", { name: "Put out the QR stand", exact: true }).click();
+    await expect(progress.locator(".lucide-clipboard-check")).toBeVisible();
     await expect(open).toBeEnabled();
     await page.getByRole("switch", { name: "Count stock and prep", exact: true }).click();
     await expect(page.getByText("Expected 6 L", { exact: true })).toBeVisible();

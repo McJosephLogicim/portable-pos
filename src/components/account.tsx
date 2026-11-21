@@ -98,8 +98,11 @@ function formatShift(shift: NonNullable<LinkPreview["shift"]>) {
 function InviteCard({ data }: { data: LinkPreview }) {
   const { business, invite } = data;
   return (
-    <section className={styles.ticket} aria-labelledby="account-title">
-      <BusinessMark name={business.name} logo={business.logo} brand={business.brand} size={56} />
+    <section className={`${styles.ticket} ${styles.inviteTicket}`} aria-labelledby="account-title">
+      <div className={styles.inviteMarks}>
+        <BusinessMark name={business.name} logo={business.logo} brand={business.brand} size={56} />
+        <Popo pose="welcome" size={76} className={styles.inviteMascot} />
+      </div>
       <h1 id="account-title" className={styles.business}>{business.name}</h1>
       {invite && (
         <p className={styles.sentence}>

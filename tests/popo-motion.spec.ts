@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { popoLoading } from "../src/lib/app-brand";
+import type { RegisterState } from "../src/lib/types";
 
 const appUrl = process.env.POS_TEST_APP_URL ?? "http://localhost:3000";
 const wave = `img[src$="${popoLoading.wave}"]`;
@@ -89,4 +90,63 @@ test("Till keeps a still Popo if the clip cannot be loaded", async ({ page }) =>
   const drawerPopo = page.locator(".hero").filter({ hasText: "Expected in the drawer" }).locator(peek);
   await expect(drawerPopo.locator(".masko-player")).toHaveCount(0);
   await expect(drawerPopo.locator('img[src*="icon-512.png"]')).toBeVisible();
+});
+
+test("Popo appears beside the first actions in Sell and Prep", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto(appUrl);
+  await page.getByRole("button", { name: "Try the demo" }).click();
+
+  await page.getByRole("button", { name: /^Recipes/ }).click();
+  await page.getByRole("button", { name: /^Prep What you make/ }).click();
+  const prep = page.locator(".empty").filter({ hasText: "Nothing made ahead yet" });
+  await expect(prep.locator(peek)).toHaveAttribute("data-animating", "");
+  await prep.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "New prep item", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open("portable-pos-register", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction("registers", "readwrite");
+      const store = tx.objectStore("registers");
+      const get = store.get("demo-register-v2");
+      get.onsuccess = () => {
+        const state = get.result as RegisterState;
+        state.menu = [];
+        state.shift!.menu = [];
+        store.put(state, "demo-register-v2");
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  }));
+  await page.reload();
+  await page.getByRole("button", { name: "Sell", exact: true }).click();
+  const sell = page.locator(".empty").filter({ hasText: "No items on this shift" });
+  await expect(sell.locator(peek)).toHaveAttribute("data-animating", "");
+  await sell.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "New item", exact: true })).toBeVisible();
+});
+
+test("Popo welcomes a teammate opening a valid invite", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.route("**/api/links/invite/invite42", (route) => route.fulfill({
+    json: {
+      business: { name: "Market Counter", brand: "#151515" },
+      invite: { name: "Bea", owner: false, invitedBy: "Alex" },
+    },
+  }));
+  await page.goto(new URL("/i/invite42", appUrl).href);
+  const invite = page.getByRole("region", { name: "Market Counter", exact: true });
+  await expect(invite.getByText(/Alex invited you to join as Bea/)).toBeVisible();
+  await expect(invite.locator(wave)).toBeVisible();
+
+  await page.unroute("**/api/links/invite/invite42");
+  await page.route("**/api/links/invite/invite42", (route) => route.fulfill({ status: 404 }));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "This invite was used" })).toBeVisible();
+  await expect(page.locator(wave)).toHaveCount(0);
 });
