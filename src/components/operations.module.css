@@ -12,7 +12,13 @@
   overflow: hidden;
   padding-inline-end: calc(var(--drawer-popo-size) - 19px);
   background:
-    radial-gradient(ellipse 51% 107% at 93% 106%, #25395a, #151e2e 54%, transparent),
+    radial-gradient(
+      ellipse calc(var(--drawer-popo-size) * 0.74) calc(var(--drawer-popo-size) * 0.64)
+      at calc(100% - var(--drawer-popo-size) * 0.44) calc(100% - 24px),
+      rgb(91 144 232 / 0.26),
+      rgb(91 144 232 / 0.08) 57%,
+      rgb(91 144 232 / 0) 100%
+    ),
     var(--hero);
 }
 
