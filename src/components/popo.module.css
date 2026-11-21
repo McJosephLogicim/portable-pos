@@ -8,7 +8,8 @@
 }
 
 .poster,
-.wave {
+.wave,
+.clip {
   position: absolute;
   display: block;
   object-fit: contain;
@@ -30,12 +31,21 @@
   visibility: hidden;
 }
 
+.clip {
+  inset: 0;
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .art[data-waving] .wave {
+  .art[data-animating] .wave {
     visibility: visible;
   }
 
-  .art[data-waving] .poster {
+  .art[data-animating] .clip {
+    opacity: 1;
+  }
+
+  .art[data-animating] .poster {
     visibility: hidden;
   }
 }

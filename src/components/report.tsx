@@ -70,7 +70,7 @@ export function ReportSheet({
               </span>
             )}
           </div>
-          <Popo pose="close" size={64} className={styles.reportMascot} />
+          <Popo pose="close" motion="victoryHop" size={64} className={styles.reportMascot} />
         </div>
       )}
     </ImageShareSheet>

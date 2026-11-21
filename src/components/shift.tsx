@@ -612,7 +612,7 @@ export function ShiftScreen({
                 {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
               </span>
             </div>
-            {!compact && <Popo key={shift.id} size={212} className={styles.drawerMascot} />}
+            {!compact && <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />}
           </div>
           {!compact && !state.closingShiftId && (
             <button className="btn block" onClick={onSell}>Back to selling</button>

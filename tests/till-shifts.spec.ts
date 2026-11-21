@@ -126,6 +126,7 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
   await pin.getByRole("button", { name: "Confirm" }).click();
   const report = page.getByRole("dialog", { name: /Shift .* closed/ });
+  await expect(report.locator('[data-popo-motion="victoryHop"]')).toHaveAttribute("data-animating", "");
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toContainText("Closing supplies");
   await expect(report.locator("pre")).toContainText("Closing fare");

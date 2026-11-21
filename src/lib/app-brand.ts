@@ -12,6 +12,17 @@ export const popoLoading = {
   wave: "/mascots/popo/wave.webp",
 };
 
+export const popoClips = {
+  curiousPeek: {
+    webm: "/mascots/popo/curious-peek.webm",
+    hevc: "/mascots/popo/curious-peek.mov",
+  },
+  victoryHop: {
+    webm: "/mascots/popo/victory-hop.webm",
+    hevc: "/mascots/popo/victory-hop.mov",
+  },
+};
+
 export const popoPoses = {
   neutral: appIcons.large,
   welcome: "/mascots/popo/welcome.webp",

@@ -35,9 +35,6 @@
 
 .drawerMascot {
   --popo-width: var(--drawer-popo-size);
-  --popo-wave-scale: 106%;
-  --popo-wave-start: 0%;
-  --popo-wave-top: -6%;
   position: absolute;
   inset-inline-end: -10px;
   inset-block-end: -53px;

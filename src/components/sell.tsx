@@ -579,7 +579,7 @@ function Checkout({
                   : new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(sale.createdAt))}
               </span>
             </div>
-            <Popo pose="sale" size={74} className={styles.resultMascot} />
+            <Popo pose="sale" motion="victoryHop" size={74} className={styles.resultMascot} />
           </div>
           <div className={`row gap-10 sale-items ${styles.resultDetails}`}>
             <ItemFaces items={faces(sale.lines)} />

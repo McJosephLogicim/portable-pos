@@ -146,7 +146,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
         {!entries.length && (
           <EmptyState
             icon={<CalendarDays size={22} />}
-            illustration={illustrateEmpty ? <Popo pose="plan" size={123} className={styles.shiftsEmptyPopo} /> : undefined}
+            illustration={illustrateEmpty ? <Popo pose="plan" motion="curiousPeek" size={123} className={styles.shiftsEmptyPopo} /> : undefined}
             className={illustrateEmpty ? styles.shiftsEmpty : undefined}
             title={filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
             text={filter === "day"
