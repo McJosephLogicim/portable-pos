@@ -20,7 +20,7 @@ function assetURL(input, base = ROOT) {
   if (/^\/mascots\/popo\/(welcome|menu|sale|plan|connect|close|team)\.webp$/.test(url.pathname))
     return url.href;
   if (
-    (url.pathname.startsWith("/menu/") || url.pathname.startsWith("/cash/")) &&
+    ["/menu/", "/cash/", "/empty-states/"].some((prefix) => url.pathname.startsWith(prefix)) &&
     /\.(png|jpe?g|webp|svg|avif)$/i.test(url.pathname)
   )
     return url.href;

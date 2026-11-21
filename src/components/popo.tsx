@@ -6,19 +6,22 @@ import type { MaskoHandle } from "@masko/player/react";
 import { popoClips, popoLoading, popoPoses } from "@/lib/app-brand";
 import styles from "./popo.module.css";
 
+export type PopoPose = keyof typeof popoPoses;
+export type PopoMotion = keyof typeof popoClips | "wave" | "idle";
+
 export function Popo({
   pose = "neutral",
-  motion,
+  motion = "wave",
   size,
   className,
 }: {
-  pose?: keyof typeof popoPoses;
-  motion?: keyof typeof popoClips;
+  pose?: PopoPose;
+  motion?: PopoMotion;
   size: number;
   className?: string;
 }) {
   const src = popoPoses[pose];
-  const clip = motion ? popoClips[motion] : undefined;
+  const clip = motion === "curiousPeek" || motion === "victoryHop" ? popoClips[motion] : undefined;
   const art = useRef<HTMLSpanElement>(null);
   const clipHost = useRef<HTMLSpanElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -87,17 +90,19 @@ export function Popo({
       ref={art}
       className={[styles.art, className].filter(Boolean).join(" ")}
       style={{ "--popo-size": `${size}px` } as CSSProperties}
-      data-animating={showMotion && motionReady ? "" : undefined}
-      data-popo-motion={motion}
+      data-animating={showMotion && (clip || motion === "wave") && motionReady ? "" : undefined}
+      data-popo-motion={motion === "wave" ? undefined : motion}
+      data-idle={motion === "idle" && playing ? "" : undefined}
       aria-hidden="true"
     >
       <Image src={src} alt="" width={size} height={size} className={styles.poster} unoptimized />
-      {showMotion && (clip ? (
+      {showMotion && clip && (
         <span className={styles.clip} ref={clipHost} inert />
-      ) : (
+      )}
+      {showMotion && motion === "wave" && (
         <Image src={popoLoading.wave} alt="" width={size} height={size} className={styles.wave}
           loading="eager" unoptimized onLoad={() => setMotionReady(true)} onError={() => setMotionFailed(true)} />
-      ))}
+      )}
     </span>
   );
 }

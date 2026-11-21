@@ -36,7 +36,21 @@
   opacity: 0;
 }
 
+@keyframes popo-idle {
+  from, to {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5%);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .art[data-idle] .poster {
+    animation: popo-idle 2.8s ease-in-out infinite;
+  }
+
   .art[data-animating] .wave {
     visibility: visible;
   }

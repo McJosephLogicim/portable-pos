@@ -14,7 +14,7 @@ import { BulkNamesSheet } from "./bulk-add";
 import { matches, RecordNoMatch, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { CopyButton } from "./share";
 import { Popo } from "./popo";
-import { ConfirmSheet, EmptyState, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
+import { ConfirmSheet, EmptyState, errorText, Explain, formatMoney, GlossyObject, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 import { blocked, OFFLINE } from "@/lib/reject";
 import styles from "./operations.module.css";
 
@@ -165,7 +165,15 @@ function MemberSheet({
           >
             {busy ? "Saving…" : member ? "Save" : email.trim() ? "Invite" : "Create"}
           </button>
-          {link && <CopyButton text={link} label="Copy invite link" disabled={busy} onError={setCopyError} />}
+          {link && (
+            <CopyButton
+              text={link}
+              label="Copy invite link"
+              icon={<GlossyObject className="action-object" object="inviteLink" />}
+              disabled={busy}
+              onError={setCopyError}
+            />
+          )}
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
               Resend
@@ -322,7 +330,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
     <SubPage
       title="Team"
       help={<p>Owners invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.</p>}
-      sentence={canManage ? (
+      sentence={canManage ? team.length > 0 && (
         <>
           {team.length} {team.length === 1 ? "person" : "people"}{" "}
           <span className="g">{waiting.length ? `on the team, ${waiting.length} yet to sign in.` : "on the team."}</span>
@@ -341,7 +349,12 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
             filters={{ label: "Team members", options: [PENDING], value: pending ? PENDING : null, onChange: (v) => setPending(v === PENDING) }}
           />
           {!inTab.length && (
-            <EmptyState icon={<UserPlus size={22} />} title={pending ? "No pending invites" : "No team members yet"}>
+            <EmptyState
+              pose={pending ? "connect" : "team"}
+              object="inviteLink"
+              title={pending ? "No pending invites" : "No team members yet"}
+              text={pending ? "Invites appear here until someone joins." : "Invite teammates to work shifts and use the till."}
+            >
               {invite}
             </EmptyState>
           )}
@@ -413,6 +426,9 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
             />
           )}
         </>
+      )}
+      {!canManage && !roster.length && (
+        <EmptyState pose="team" title="No team members to show" text="Your teammates will appear here." />
       )}
       {!canManage && roster.length > 0 && (
         <div className="card card-list" role="list" aria-label="Team roster">
@@ -503,31 +519,31 @@ export function ChecklistPage(props: SettingsProps) {
     const added = names.map((text) => ({ id: crypto.randomUUID(), text }));
     update((steps) => [...steps, ...added]);
   }
+  const addStep = (
+    <AddMenu
+      singleLabel="Add a step"
+      blockedReason={full && "The checklist can hold up to 30 steps."}
+      onSingle={() => setAdding("single")}
+      onBulk={() => setAdding("bulk")}
+    />
+  );
   return (
     <SubPage
       title="Opening checklist"
       help={<p>Steps the team ticks before the till opens, like setting up the QR stand. Add a photo to show how it should look. Saved steps appear the next time someone opens the till.</p>}
-      sentence={
-        list.length ? (
-          <>
-            {list.length} {list.length === 1 ? "thing" : "things"} <span className="g">to tick before the till opens.</span>
-          </>
-        ) : (
-          <>
-            No checklist. <span className="g">Add what has to be ready before the first sale.</span>
-          </>
-        )
-      }
-      sentenceAction={
-        <AddMenu
-          singleLabel="Add a step"
-          blockedReason={full && "The checklist can hold up to 30 steps."}
-          onSingle={() => setAdding("single")}
-          onBulk={() => setAdding("bulk")}
-        />
-      }
+      sentence={list.length > 0 && (
+        <>
+          {list.length} {list.length === 1 ? "thing" : "things"} <span className="g">to tick before the till opens.</span>
+        </>
+      )}
+      sentenceAction={list.length > 0 && addStep}
       onBack={() => props.onPage(null)}
     >
+      {!list.length && (
+        <EmptyState pose="plan" object="checklistClipboard" title="No checklist yet" text="Add what has to be ready before the first sale.">
+          {addStep}
+        </EmptyState>
+      )}
       {list.length > 0 && (
         <div className="card card-list">
           {list.map((item, i) => (

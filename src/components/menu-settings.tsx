@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, LayoutGrid, ListPlus, Plus, ShoppingBag, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { Image as ImageIcon, ListPlus, Plus, ShoppingBag, Tag as TagIcon, Trash2, X } from "lucide-react";
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem, stockLeft } from "@/lib/domain";
 import { isSimpleMode } from "@/lib/settings";
@@ -731,6 +731,14 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
   const live = Boolean(props.state.shift && !props.state.shift.closedAt);
   const shownIds = grouped.flatMap((g) => g.items.map((p) => p.id));
   const selecting = select.on && !costingView;
+  const addItems = (
+    <AddMenu
+      singleLabel="Add an item"
+      blockedReason={!props.online ? OFFLINE : menu.length >= 1000 && "The menu can hold up to 1,000 items."}
+      onSingle={() => setEditing("new")}
+      onBulk={() => setAdding(true)}
+    />
+  );
   return (
     <SubPage
       title={costingView ? "Menu costing" : "Menu items"}
@@ -742,19 +750,12 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
         </>
       )}
       backLabel="Back to recipes"
-      sentence={costingView ? undefined : (
+      sentence={!costingView && menu.length > 0 && (
         <>
           {plural(menu.length, "item")} <span className="g">for sale.</span>
         </>
       )}
-      sentenceAction={!costingView && !selecting && (
-        <AddMenu
-          singleLabel="Add an item"
-          blockedReason={!props.online ? OFFLINE : menu.length >= 1000 && "The menu can hold up to 1,000 items."}
-          onSingle={() => setEditing("new")}
-          onBulk={() => setAdding(true)}
-        />
-      )}
+      sentenceAction={!costingView && !selecting && menu.length > 0 && addItems}
       onBack={() => props.onPage(null)}
     >
       {costingView ? (
@@ -775,10 +776,13 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
           )}
           {!menu.length && (
             <EmptyState
-              icon={<LayoutGrid size={22} strokeWidth={1.6} />}
+              pose="menu"
+              object="itemsSold"
               title="No items yet"
               text="Add what you sell, with a photo and a price. Sizes and add-ons come after."
-            />
+            >
+              {addItems}
+            </EmptyState>
           )}
           {menu.length > 0 && (
             <RecordSearch
@@ -1326,29 +1330,21 @@ export function CategoriesPage(props: RecipesProps) {
   const shown = list.filter((c) => matches(query, c.name, ...c.items.map((p) => p.name)));
   const loose = menu.filter((p) => !p.category.trim()).length;
   const select = useRecordSelect(list.map((c) => c.name));
+  const addCategory = !select.on && (
+    <AddButton blockedReason={!props.online && OFFLINE} onClick={() => setEditing("new")} />
+  );
   return (
     <SubPage
       title="Categories"
       action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={<p>Categories are the tabs on Sell, in this order. Changes go live on Sell right away. Items with no category show last.</p>}
       backLabel="Back to recipes"
-      sentence={
-        list.length ? (
-          <>
-            {plural(list.length, "category", "categories")} <span className="g">on the Sell screen.</span>
-          </>
-        ) : (
-          <>
-            No categories. <span className="g">Group items so they're quick to find.</span>
-          </>
-        )
-      }
-      sentenceAction={!select.on && (
-        <AddButton
-          blockedReason={!props.online ? OFFLINE : !menu.length && "Add a menu item first."}
-          onClick={() => setEditing("new")}
-        />
+      sentence={list.length > 0 && (
+        <>
+          {plural(list.length, "category", "categories")} <span className="g">on the Sell screen.</span>
+        </>
       )}
+      sentenceAction={list.length > 0 && addCategory}
       onBack={() => props.onPage(null)}
     >
       <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
@@ -1375,10 +1371,15 @@ export function CategoriesPage(props: RecipesProps) {
         </RecordGroup>
       ) : (
         <EmptyState
-          icon={<TagIcon size={22} strokeWidth={1.6} />}
+          pose="plan"
+          object={menu.length ? "categoryTag" : "itemsSold"}
           title={menu.length ? "No categories yet" : "Add menu items first"}
           text={menu.length ? "Like Drinks, Pastries or Bundles. Pick the items that go in each." : "Categories group the items on your menu."}
-        />
+        >
+          {menu.length ? addCategory : (
+            <button type="button" className="btn compact" onClick={() => props.onPage("menu")}>Go to menu items</button>
+          )}
+        </EmptyState>
       )}
       {select.on && (
         <RecordSelectBar
@@ -1597,17 +1598,11 @@ export function ChoicesPage(props: RecipesProps) {
         </>
       }
       backLabel="Back to recipes"
-      sentence={
-        list.length ? (
-          <>
-            {plural(list.length, "choice")} <span className="g">asked at checkout.</span>
-          </>
-        ) : (
-          <>
-            No choices. <span className="g">Add sizes, flavors or extras.</span>
-          </>
-        )
-      }
+      sentence={list.length > 0 && (
+        <>
+          {plural(list.length, "choice")} <span className="g">asked at checkout.</span>
+        </>
+      )}
       sentenceAction={inTab.length > 0 && addButton}
       onBack={() => props.onPage(null)}
     >
@@ -1646,7 +1641,8 @@ export function ChoicesPage(props: RecipesProps) {
       ))}
       {!inTab.length && (
         <EmptyState
-          icon={<ListPlus size={22} strokeWidth={1.6} />}
+          pose={activeKind?.required === false ? "sale" : "welcome"}
+          object={menu.length ? "choiceTiles" : "itemsSold"}
           title={menu.length ? activeKind?.empty ?? "No choices yet" : "Add menu items first"}
           text={
             !menu.length ? "Choices are asked when an item is added to the order."

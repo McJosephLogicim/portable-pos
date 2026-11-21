@@ -1,13 +1,10 @@
 import { useMemo, type ReactNode } from "react";
-import { CalendarDays } from "lucide-react";
 import { shiftTotals } from "@/lib/domain";
 import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
-import { Popo } from "./popo";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
 import { EmptyState, formatMoney, Money } from "./ui";
-import styles from "./operations.module.css";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -101,7 +98,7 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
   );
 }
 
-export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, emptyAction, illustrateEmpty }: {
+export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, emptyAction, showCalendarObject }: {
   entries: ShiftEntry[];
   state: RegisterState;
   filter?: ShiftFilter;
@@ -109,7 +106,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
   salesOf?: (booking: Booking) => number | undefined;
   onOpen: (id: string) => void;
   emptyAction?: ReactNode;
-  illustrateEmpty?: boolean;
+  showCalendarObject?: boolean;
 }) {
   const business = state.business!;
   const zone = business.timeZone;
@@ -145,17 +142,18 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
         })}
         {!entries.length && (
           <EmptyState
-            icon={<CalendarDays size={22} />}
-            illustration={illustrateEmpty ? <Popo pose="plan" motion="curiousPeek" size={123} className={styles.shiftsEmptyPopo} /> : undefined}
-            className={illustrateEmpty ? styles.shiftsEmpty : undefined}
+            key={filter}
+            pose={filter === "open" ? "connect" : filter === "mine" ? "team" : "plan"}
+            motion={filter === "day" ? "curiousPeek" : "idle"}
+            object={showCalendarObject ? "shiftCalendar" : undefined}
             title={filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
             text={filter === "day"
               ? state.me?.owner
                 ? "Add a shift for this day, or add a run of them for a bazaar."
                 : "Pick another day, or check open seats."
               : filter === "mine"
-                ? "Open seats are yours to join."
-                : "Every upcoming shift is full."}
+                ? "Shifts you join or are assigned to will show here."
+                : "Available seats will show here when there's a shift you can join."}
           >
             {emptyAction}
           </EmptyState>

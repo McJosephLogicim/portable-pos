@@ -1,5 +1,5 @@
 import { cashPhotos } from "./cash";
-import { appIcons, popoLoading, popoPoses } from "./app-brand";
+import { appIcons, emptyStateObjects, popoLoading, popoPoses } from "./app-brand";
 
 let preparing: Promise<boolean> | undefined;
 
@@ -17,6 +17,7 @@ async function prepare(): Promise<boolean> {
   const resources = [
     ...Object.values(appIcons),
     ...Object.values(popoPoses),
+    ...Object.values(emptyStateObjects),
     popoLoading.poster,
     ...(!matchMedia("(prefers-reduced-motion: reduce)").matches ? [popoLoading.wave] : []),
     "/manifest.webmanifest",

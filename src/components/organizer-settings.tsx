@@ -163,30 +163,25 @@ export function OrganizersPage(props: SettingsProps) {
     commit.run((pin) => props.onAction({ action: "organizers", organizers: next, pin }), label);
   const select = useRecordSelect(list.map((o) => o.id));
   const canEdit = props.online || Boolean(props.demo);
+  const addOrganizer = !select.on && (
+    <AddMenu
+      singleLabel="Add an organizer"
+      blockedReason={!canEdit ? OFFLINE : list.length >= 200 && "The list can hold up to 200 organizers."}
+      onSingle={() => setEditing("new")}
+      onBulk={() => setAddingBulk(true)}
+    />
+  );
   return (
     <SubPage
       title="Organizers"
       action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!canEdit} />}
       help={<p>The bazaars and markets you join, and their events. You pick them when you schedule a shift, and the leaderboard ranks them. Add or remove them here.</p>}
-      sentence={
-        list.length ? (
-          <>
-            {plural(list.length, "organizer")} <span className="g">running {plural(events, "event")}.</span>
-          </>
-        ) : (
-          <>
-            No organizers. <span className="g">Add the markets and bazaars you join.</span>
-          </>
-        )
-      }
-      sentenceAction={!select.on && (
-        <AddMenu
-          singleLabel="Add an organizer"
-          blockedReason={!canEdit ? OFFLINE : list.length >= 200 && "The list can hold up to 200 organizers."}
-          onSingle={() => setEditing("new")}
-          onBulk={() => setAddingBulk(true)}
-        />
+      sentence={list.length > 0 && (
+        <>
+          {plural(list.length, "organizer")} <span className="g">running {plural(events, "event")}.</span>
+        </>
       )}
+      sentenceAction={list.length > 0 && addOrganizer}
       onBack={() => props.onPage(null)}
     >
       <RecordSearch count={list.length} noun="organizers and events" query={query} onQuery={setQuery} />
@@ -213,10 +208,13 @@ export function OrganizersPage(props: SettingsProps) {
         </RecordGroup>
       ) : (
         <EmptyState
-          icon={<Ticket size={22} strokeWidth={1.6} />}
+          pose="welcome"
+          object="marketStall"
           title="No organizers yet"
           text="Add them here, or type a new one while scheduling a shift."
-        />
+        >
+          {addOrganizer}
+        </EmptyState>
       )}
       {select.on && (
         <RecordSelectBar

@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeft, Building2, CalendarDays, MapPin, Share2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, Building2, CalendarDays, ChevronDown, Crown, MapPin, Share } from "lucide-react";
+import { appIcons } from "@/lib/app-brand";
 import { leaderboard, leaderboardShareRows, leaderboardText, type Board, type LeaderboardShare, type Rank } from "@/lib/insights";
 import { leaderboardImage } from "@/lib/report-image";
 import { addDays, dayOf, weekday, zonedInstant } from "@/lib/team";
-import { leaderboardPalette } from "@/lib/theme";
+import { leaderboardColors } from "@/lib/theme";
 import type { RegisterState } from "@/lib/types";
 import { ImageShareSheet } from "./share";
 import { useBookingSales } from "./shift-list";
 import { Avatar } from "./team";
-import { buzz, formatMoney, useFaces } from "./ui";
+import { buzz, EmptyState, formatMoney, useFaces } from "./ui";
 import styles from "./leaderboard.module.css";
 
 const categories = [
@@ -29,6 +30,7 @@ const periods = [
 type Period = (typeof periods)[number]["value"];
 
 const icons = { organizer: Building2, event: CalendarDays, place: MapPin };
+const colors = Object.fromEntries(Object.entries(leaderboardColors).map(([name, value]) => [`--board-${name}`, value])) as CSSProperties;
 
 function leaderboardPeriod(range: Period, zone: string, now: number) {
   if (range === "all") return { since: 0, title: "All time" };
@@ -57,11 +59,10 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
   const [share, setShare] = useState<LeaderboardShare | null>(null);
   const buildShareImage = useMemo(() => share && (() => leaderboardImage(share)), [share]);
   const heading = useRef<HTMLHeadingElement>(null);
-  const stage = useRef<HTMLDivElement>(null);
+  const podiumList = useRef<HTMLOListElement>(null);
+  const myRow = useRef<HTMLLIElement>(null);
   const business = state.business!;
   const faces = useFaces();
-  const palette = leaderboardPalette(business.settings.brand);
-  const stageStyle = Object.fromEntries(Object.entries(palette).map(([name, value]) => [`--podium-${name}`, value])) as CSSProperties;
   const owner = Boolean(state.me?.owner);
   const now = Date.now();
   const salesOf = useBookingSales(state, demo);
@@ -69,6 +70,8 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
   const bookings = state.bookings ?? [];
   const rows = leaderboard(bookings, board, state.me, salesOf, since, now);
   const podium = rows.slice(0, 3);
+  const myIndex = rows.findIndex((rank) => rank.me);
+  const myRank = myIndex >= podium.length ? rows[myIndex] : undefined;
   const ranking = owner ? "Ranked by sales" : "Ranked by quotas hit, then shifts worked";
   const format = (amount: number) => formatMoney(amount, business.currency);
 
@@ -80,8 +83,8 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
     buzz.tap();
     const label = categories.find((option) => option.value === board)!.label;
     const category = board === "event" || board === "organizer" ? label + "s" : label;
-    const icon = stage.current?.querySelector("svg")?.cloneNode(true) as SVGSVGElement | undefined;
-    icon?.setAttribute("stroke", palette["portrait-ink"]);
+    const icon = podiumList.current?.querySelector(`.${styles.categoryIcon} svg`)?.cloneNode(true) as SVGSVGElement | undefined;
+    icon?.setAttribute("stroke", leaderboardColors.ink);
     setShare({
       business: { name: business.name, logo: business.settings.logo, brand: business.settings.brand },
       category,
@@ -106,90 +109,112 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
     return result;
   }
 
+  function jumpToMyRank() {
+    buzz.tap();
+    myRow.current?.focus({ preventScroll: true });
+    myRow.current?.scrollIntoView({ block: "center" });
+  }
+
   return (
-    <div className={`page ${styles.page}`}>
-      <header className="page-top">
-        <button type="button" className="round" aria-label="Back to shifts" onClick={onBack}>
-          <ArrowLeft size={19} aria-hidden="true" />
-        </button>
-        <h1 ref={heading} tabIndex={-1} className={`headline grow ${styles.heading}`}>Leaderboard</h1>
-        <button type="button" className={`btn secondary responsive-icon ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
-          <Share2 size={16} aria-hidden="true" /> <span className="button-label">Share</span>
-        </button>
-      </header>
+    <div className={styles.page} style={colors}>
+      <div className={styles.content} data-my-rank={myRank ? "" : undefined}>
+        <header className={styles.header}>
+          <button type="button" className={`round ${styles.back}`} aria-label="Back to shifts" onClick={onBack}>
+            <ArrowLeft size={19} aria-hidden="true" />
+          </button>
+          <img className={styles.appIcon} src={appIcons.small} width={44} height={44} alt="" />
+          <button type="button" className={`btn responsive-icon ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
+            <Share size={17} aria-hidden="true" /> <span className="button-label">Share</span>
+          </button>
+          <h1 ref={heading} tabIndex={-1} className={styles.heading}>Leaderboard</h1>
+        </header>
 
-      <div className={styles.filters}>
-        <select
-          className={`select ${styles.filter}`}
-          aria-label="Leaderboard category"
-          value={board}
-          onChange={(event) => {
-            buzz.tap();
-            setBoard(event.target.value as Board);
-          }}
-        >
-          {categories.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        <select
-          className={`select ${styles.filter}`}
-          aria-label="Date range"
-          value={range}
-          onChange={(event) => {
-            buzz.tap();
-            setRange(event.target.value as Period);
-          }}
-        >
-          {periods.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </div>
-
-      <div ref={stage} className={styles.stage} style={stageStyle}>
-        <div className={styles.stageHeader}>
-          <h2>{period}</h2>
-          <p>{ranking}</p>
+        <div className={styles.filters}>
+          <div className={styles.filterControl}>
+            <select
+              className={styles.filter}
+              aria-label="Leaderboard category"
+              value={board}
+              onChange={(event) => {
+                buzz.tap();
+                setBoard(event.target.value as Board);
+              }}
+            >
+              {categories.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <ChevronDown className={styles.filterChevron} size={15} aria-hidden="true" />
+          </div>
+          <div className={styles.filterControl}>
+            <select
+              className={styles.filter}
+              aria-label="Date range"
+              value={range}
+              onChange={(event) => {
+                buzz.tap();
+                setRange(event.target.value as Period);
+              }}
+            >
+              {periods.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <ChevronDown className={styles.filterChevron} size={15} aria-hidden="true" />
+          </div>
         </div>
-        {podium.length ? (
-          <ol className={styles.podium} data-count={podium.length} aria-label="Top ranks" role="list">
-            {podium.map((rank, i) => (
-              <li key={rank.key} className={styles.placement} data-place={i + 1}>
-                <div className={styles.portrait}><RankPortrait rank={rank} board={board} /></div>
-                <div className={styles.identity}>
-                  <p className={styles.name} title={rank.label}>{rank.label}{rank.me && <span className={styles.you}> · you</span>}</p>
-                  <p className={styles.score}>{score(rank)}</p>
-                </div>
-                <div className={styles.pedestal}>
-                  <span className={styles.position}><span className="sr-only">Rank </span>{i + 1}</span>
-                  <div className={styles.pedestalDetails}>
-                    {details(rank).map((detail) => <span key={detail}>{detail}</span>)}
+
+        {podium.length > 0 ? (
+          <>
+            <p className={styles.ranking}>{ranking}</p>
+            <ol ref={podiumList} className={styles.podium} data-count={podium.length} aria-label="Top ranks" role="list">
+              {podium.map((rank, i) => (
+                <li key={rank.key} className={styles.placement} data-place={i + 1}>
+                  <div className={styles.medal}>
+                    {i === 0 && <Crown className={styles.crown} aria-hidden="true" />}
+                    <div className={styles.portrait}><RankPortrait rank={rank} board={board} /></div>
+                    <span className={styles.position}><span className="sr-only">Rank </span>{i + 1}</span>
                   </div>
-                </div>
+                  <div className={styles.identity}>
+                    <p className={styles.name} title={rank.label}>{rank.label}{rank.me && <span className={styles.you}> · you</span>}</p>
+                    <p className={styles.score}>{score(rank)}</p>
+                    <div className={styles.details}>
+                      {details(rank).map((detail) => <span key={detail}>{detail}</span>)}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <EmptyState
+            pose="sale"
+            object="leaderboardTrophy"
+            title="No rankings yet"
+            text={bookings.some((booking) => Date.parse(booking.endsAt) <= now)
+              ? "Try another category or date range."
+              : "Rankings start once the first scheduled shift is over."}
+          />
+        )}
+
+        {rows.length > 3 && (
+          <ol start={4} className={styles.rankList} aria-label="Remaining ranks" role="list">
+            {rows.slice(3).map((rank, i) => (
+              <li className={styles.rankRow} key={rank.key} ref={rank.me ? myRow : undefined} tabIndex={rank.me ? -1 : undefined}>
+                <span className={styles.rowPosition}><span className="sr-only">Rank </span>{i + 4}</span>
+                <div className={styles.rowPortrait}><RankPortrait rank={rank} board={board} /></div>
+                <p className={styles.rowName}>{rank.label}{rank.me && <span className={styles.you}> · you</span>}</p>
+                <span className={styles.rowScore}>{score(rank)}</span>
+                <p className={styles.rowDetails}>{details(rank).join(" · ")}</p>
               </li>
             ))}
           </ol>
-        ) : (
-          <p className={styles.empty}>
-            {bookings.some((booking) => Date.parse(booking.endsAt) <= now)
-              ? "No rankings for this category and date range."
-              : "Rankings start once the first scheduled shift is over."}
-          </p>
+        )}
+
+        {myRank && (
+          <button type="button" className={styles.jump} aria-label={`Jump to your rank, number ${myIndex + 1}`} onClick={jumpToMyRank}>
+            <Avatar name={myRank.label} id={myRank.key} small />
+            You · #{myIndex + 1}
+            <ArrowDown size={15} aria-hidden="true" />
+          </button>
         )}
       </div>
-
-      {rows.length > 3 && (
-        <ol start={4} className={`card ${styles.rankList}`} aria-label="Remaining ranks" role="list">
-          {rows.slice(3).map((rank, i) => (
-            <li className={styles.rankRow} key={rank.key}>
-              <span className="rank-num"><span className="sr-only">Rank </span>{i + 4}</span>
-              <div className={styles.rowPortrait}><RankPortrait rank={rank} board={board} /></div>
-              <div className={styles.rowIdentity}>
-                <p className={styles.rowName}>{rank.label}{rank.me && <span className="g"> · you</span>}</p>
-                <p className="label">{details(rank).join(" · ")}</p>
-              </div>
-              <span className={styles.rowScore}>{score(rank)}</span>
-            </li>
-          ))}
-        </ol>
-      )}
 
       {share && buildShareImage && (
         <ImageShareSheet

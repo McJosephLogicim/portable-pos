@@ -3,7 +3,7 @@ import { APP_NAME, appIcons } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
 import { round, unitText } from "./stock";
-import { leaderboardPalette } from "./theme";
+import { leaderboardColors } from "./theme";
 
 type Format = (minor: number) => string;
 type Ctx = CanvasRenderingContext2D;
@@ -480,12 +480,12 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(Error("Couldn't draw the report."))), "image/png"));
 }
 
-/** Draw the filtered leaderboard as a branded podium followed by the remaining ranks. */
+/** Draw the filtered leaderboard with the POP POS podium and all ranked rows. */
 export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> {
   const css = getComputedStyle(document.documentElement);
   const color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const family = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
-  const palette = leaderboardPalette(report.business.brand);
+  const palette = leaderboardColors;
   const sources = [...new Set(report.rows.flatMap((row) => row.photo ? [row.photo] : []))];
   const [logo, icon, brandIcon, photos] = await Promise.all([
     report.business.logo ? loadImage(report.business.logo) : null,
@@ -495,24 +495,11 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
     document.fonts?.ready,
   ]);
   const portraits = new Map(photos);
-  const surface = color("--surface", "#fff");
-  const ink = color("--ink", "#0a0a0a");
-  const muted = color("--ink-secondary", "#6b6b6b");
-  const tile = color("--surface-muted", "#f2f2f2");
-  const line = color("--line", "#ebebeb");
-  const radius = (name: string, fallback: number) => parseFloat(color(name, String(fallback)));
-  const stageRadius = radius("--radius-xl", 28);
-  const portraitRadius = radius("--radius-md", 20);
-  const smallRadius = radius("--radius-xs", 10);
-
   const top = report.rows.slice(0, 3);
   const remaining = report.rows.slice(3);
-  const stageTop = 121;
-  const stageHeight = 402;
-  const stageBottom = stageTop + stageHeight;
-  const listTop = stageBottom + 14;
-  const rowHeight = 60;
-  const end = remaining.length ? listTop + remaining.length * rowHeight : stageBottom;
+  const listTop = top.length > 1 ? 535 : 411;
+  const rowHeight = 66;
+  const end = listTop + remaining.length * rowHeight;
   const brandTop = end + 18;
   const height = brandTop + BRAND_SIZE + G;
   // Bound the canvas on tall boards while keeping every rank in the PNG.
@@ -544,127 +531,110 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
     ctx.fillText(value, x, y);
   }
 
-  function drawPortrait(row: LeaderboardShare["rows"][number], x: number, y: number, size: number, fill: string, podium = false) {
-    const r = podium ? portraitRadius : smallRadius;
+  function glow(x: number, y: number, width: number, height: number, color: string) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(width, height);
+    const light = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+    light.addColorStop(0, color);
+    light.addColorStop(1, "transparent");
+    ctx.fillStyle = light;
+    ctx.fillRect(-1, -1, 2, 2);
+    ctx.restore();
+  }
+
+  function drawPortrait(row: LeaderboardShare["rows"][number], x: number, y: number, size: number, ring?: string) {
+    const stroke = ring ? Math.round(size * 0.04) : 0;
+    if (ring) box(x - stroke, y - stroke, size + stroke * 2, size + stroke * 2, size, ring);
     const photo = row.photo ? portraits.get(row.photo) : null;
-    if (podium) box(x - 1, y - 1, size + 2, size + 2, r + 1, palette["portrait-line"]);
     if (photo) {
-      cover(ctx, photo, x, y, size, size, r);
-      return;
-    }
-    box(x, y, size, size, r, fill);
-    if (icon) {
-      const glyph = Math.round(size * 0.47);
-      const padding = (size - glyph) / 2;
-      ctx.drawImage(icon, x + padding, y + padding, glyph, glyph);
+      cover(ctx, photo, x, y, size, size, size / 2);
     } else {
-      text(initials(row.name), x + size / 2, y + size / 2, size * 0.32, 600, podium ? palette["portrait-ink"] : muted, size - 6, "center");
+      box(x, y, size, size, size / 2, "#2a3e64");
+      if (icon) {
+        const glyph = Math.round(size * 0.46);
+        const inset = (size - glyph) / 2;
+        ctx.drawImage(icon, x + inset, y + inset, glyph, glyph);
+      } else {
+        text(initials(row.name), x + size / 2, y + size / 2, size * 0.32, 600, palette.ink, size - 6, "center");
+      }
     }
   }
 
-  ctx.fillStyle = color("--canvas", "#ededed");
+  ctx.fillStyle = palette.background;
   ctx.fillRect(0, 0, W, height);
+  glow(W / 2, 0, W * 0.72, 196, "#244992");
+
   if (logo) {
-    cover(ctx, logo, G, 22, 38, 38, smallRadius);
+    cover(ctx, logo, G, 22, 38, 38, 10);
   } else {
-    box(G, 22, 38, 38, smallRadius, color("--accent", "#0a0a0a"));
+    box(G, 22, 38, 38, 10, color("--accent", "#0a0a0a"));
     text(initials(report.business.name), G + 19, 41, 14, 600, color("--on-accent", "#fff"), 32, "center");
   }
-  text(report.business.name, G + 50, 41, 17, 600, ink, CARD - 50);
-  text(`${report.category} leaderboard`, G, 88, 32, 600, ink);
+  text(report.business.name, G + 50, 41, 17, 600, palette.ink, CARD - 50);
+  text(`${report.category} leaderboard`, W / 2, 93, 33, 650, palette.ink, CARD, "center");
+  text(`${report.period} · ${report.ranking}`, W / 2, 126, 15, 500, palette.muted, CARD, "center");
 
-  ctx.save();
-  rr(ctx, G, stageTop, CARD, stageHeight, stageRadius);
-  ctx.clip();
-  ctx.save();
-  ctx.translate(W / 2, stageTop);
-  ctx.scale(CARD / 2, stageHeight);
-  const backdrop = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.SQRT2);
-  backdrop.addColorStop(0, palette.glow);
-  backdrop.addColorStop(0.4, palette.tint);
-  backdrop.addColorStop(0.8, palette.base);
-  ctx.fillStyle = backdrop;
-  ctx.fillRect(-1, 0, 2, 1);
-  ctx.restore();
-
-  text(report.period, W / 2, stageTop + 31, 21, 600, "#fff", CARD - 32, "center");
-  text(report.ranking, W / 2, stageTop + 57, 14, 500, palette.muted, CARD - 32, "center");
-
-  const podiumWidth = top.length === 1 ? 196 : top.length === 2 ? 340 : CARD - 28;
-  const side = top.length === 1 ? 0 : podiumWidth / (top.length + 0.14);
-  const center = podiumWidth - side * (top.length - 1);
-  const start = (W - podiumWidth) / 2;
-  const fronts = [palette.first, palette.second, palette.third];
+  const centers = top.length === 2 ? [W * 0.68, W * 0.32] : [W / 2, W / 6 + 8, W * 5 / 6 - 8];
+  const winner = centers[0];
+  glow(winner, 233, 141, 113, "#2761af");
+  glow(winner, 321, 77, 182, palette.halo);
 
   top.forEach((row, i) => {
-    const x = i === 0 ? start + side : i === 1 ? start : start + side + center;
-    const width = i === 0 ? center : side;
-    const middle = x + width / 2;
-    const tall = [165, 141, 120][i];
-    const y = stageBottom - tall;
-    const face = i === 0 ? 72 : 62;
-    const portraitTop = y - 78 - face;
-    const nameWidth = width - 12;
+    const first = i === 0;
+    const center = centers[i];
+    const face = first ? 106 : 80;
+    const portraitTop = first ? 188 : 330;
+    const ring = [palette.first, palette.second, palette.third][i];
+    const badgeSize = first ? 30 : 24;
+    const portraitLeft = center - face / 2;
+    drawPortrait(row, portraitLeft, portraitTop, face, ring);
 
-    drawPortrait(row, middle - face / 2, portraitTop, face, i === 0 ? palette["portrait-first"] : palette.portrait, true);
-    ctx.font = `600 16px ${family}`;
-    const names: string[] = [];
-    for (const word of row.name.trim().split(/\s+/)) {
-      const last = names.at(-1);
-      if (!last || (names.length < 3 && ctx.measureText(last + " " + word).width > nameWidth)) names.push(word);
-      else names[names.length - 1] = last + " " + word;
+    if (first) {
+      const start = center - 19;
+      const y = portraitTop - 26;
+      ctx.beginPath();
+      ctx.moveTo(start, y + 6);
+      ctx.lineTo(start + 11, y + 12);
+      ctx.lineTo(center, y);
+      ctx.lineTo(center + 8, y + 12);
+      ctx.lineTo(center + 19, y + 6);
+      ctx.lineTo(center + 14, y + 25);
+      ctx.lineTo(start + 5, y + 25);
+      ctx.closePath();
+      ctx.fillStyle = "#559ee9";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#d8f6ff";
+      ctx.stroke();
     }
-    names.forEach((name, j) => text(name, middle, y - 48 - (names.length - 1) * 8.5 + j * 17, 16, 600, "#fff", nameWidth, "center"));
-    text(row.score, middle, y - 15, 14, 500, palette.muted, nameWidth, "center");
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(x + 12, y);
-    ctx.lineTo(x + width - 12, y);
-    ctx.lineTo(x + width, y + 12);
-    ctx.lineTo(x + width, stageBottom);
-    ctx.lineTo(x, stageBottom);
-    ctx.lineTo(x, y + 12);
-    ctx.closePath();
-    ctx.clip();
+    const badgeLeft = portraitLeft + face - badgeSize * 0.65;
+    const badgeTop = portraitTop + 2;
+    box(badgeLeft - 1.5, badgeTop - 1.5, badgeSize + 3, badgeSize + 3, badgeSize, ring);
+    box(badgeLeft, badgeTop, badgeSize, badgeSize, badgeSize, first ? "#2c5498" : "#2e3d5e");
+    text(String(i + 1), badgeLeft + badgeSize / 2, badgeTop + badgeSize / 2, first ? 17 : 14, 650, palette.ink, badgeSize, "center");
 
-    const front = ctx.createLinearGradient(0, y, 0, stageBottom);
-    front.addColorStop(0, fronts[i]);
-    front.addColorStop(0.65, palette.middle);
-    front.addColorStop(1, palette.base);
-    ctx.fillStyle = front;
-    ctx.fillRect(x, y, width, tall);
-    const edge = ctx.createLinearGradient(x, 0, x + width, 0);
-    edge.addColorStop(0, palette["edge-left"]);
-    edge.addColorStop(0.5, palette["edge-glint"]);
-    edge.addColorStop(1, palette["edge-right"]);
-    ctx.fillStyle = edge;
-    ctx.fillRect(x, y, width, 12);
-    ctx.restore();
-
-    text(String(i + 1), middle, y + 39, 48, 650, "#fff", nameWidth, "center");
-    row.details.forEach((detail, j) => text(detail, middle, y + 72 + j * 15, 12.5, 500, "#fff", nameWidth, "center"));
+    const width = top.length === 1 ? 260 : 150;
+    const labelTop = portraitTop + face + 19;
+    text(row.name, center, labelTop, first ? 20 : 17, 600, palette.ink, width, "center");
+    text(row.score, center, labelTop + 24, first ? 24 : 19, 700, palette.ink, width, "center");
+    row.details.forEach((detail, j) => text(detail, center, labelTop + 45 + j * 17, 13, 500, palette.muted, width, "center"));
   });
-  ctx.restore();
 
-  if (remaining.length) box(G, listTop, CARD, remaining.length * rowHeight, stageRadius, surface);
   remaining.forEach((row, i) => {
     const y = listTop + i * rowHeight;
-    if (i) {
-      ctx.fillStyle = line;
-      ctx.fillRect(G + 14, y, CARD - 28, 1);
-    }
-    box(G + 12, y + 15, 32, 30, smallRadius, tile);
-    text(String(i + 4), G + 28, y + 30, 13, 600, muted, 26, "center");
-    drawPortrait(row, G + 54, y + 12, 36, tile);
-    const nameX = G + 100;
-    ctx.font = `600 15px ${family}`;
-    const scoreWidth = Math.min(150, ctx.measureText(row.score).width);
-    text(row.name, nameX, y + 21, 16, 600, ink, R - nameX - scoreWidth - 12);
-    text(row.score, R, y + 21, 15, 600, ink, 150, "right");
-    text(row.details.join(" · "), nameX, y + 41, 13, 400, muted, R - nameX);
+    box(G, y, CARD, rowHeight - 7, 16, palette.surface);
+    text(String(i + 4), G + 23, y + 29, 16, 600, palette.muted, 32, "center");
+    drawPortrait(row, G + 43, y + 12, 36);
+    const nameX = G + 90;
+    ctx.font = `650 16px ${family}`;
+    const scoreWidth = Math.min(155, ctx.measureText(row.score).width);
+    text(row.name, nameX, y + 20, 16, 600, palette.ink, R - nameX - scoreWidth - 12);
+    text(row.score, R, y + 20, 16, 650, palette.ink, 155, "right");
+    text(row.details.join(" · "), nameX, y + 41, 13, 400, palette.muted, R - nameX);
   });
-  drawShareBrand(ctx, brandIcon, brandTop, family, muted);
+  drawShareBrand(ctx, brandIcon, brandTop, family, palette.muted);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(Error("Couldn't draw the leaderboard.")), "image/png");

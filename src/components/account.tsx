@@ -12,7 +12,7 @@ import { BusinessMark } from "./businesses";
 import { LiquidSegments } from "./liquid-segments";
 import { Popo } from "./popo";
 import { CurrencyOptions } from "./settings";
-import { errorText, Explain, Sheet } from "./ui";
+import { errorText, Explain, GlossyObject, Sheet } from "./ui";
 import styles from "./account.module.css";
 
 export type AccountEntry = {
@@ -611,10 +611,13 @@ export function Setup({
   const [busy, setBusy] = useState(false);
   return (
     <div className="page">
-      <h1 className="headline" style={{ paddingTop: 24 }}>
-        {adding ? "Add a business." : onboarding ? "Create your business" : "Set up your stall."}
-        {!onboarding && <span className="g"> {adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>}
-      </h1>
+      <div className={styles.setupHeading}>
+        <h1 className="headline">
+          {adding ? "Add a business." : onboarding ? "Create your business" : "Set up your stall."}
+          {!onboarding && <span className="g"> {adding ? "It gets its own menu, team and till." : "It takes a minute."}</span>}
+        </h1>
+        <GlossyObject className={styles.setupObject} object="marketStall" />
+      </div>
       <form
         className="card card-pad stack gap-14"
         onSubmit={async (e) => {

@@ -15,7 +15,6 @@ import { SetupDetails, SubPage, useCommit } from "./settings";
 import { RecordFilters } from "./filter-controls";
 import type { RecipesProps } from "./recipes";
 import { MergeLeftoversSheet, useMergeable } from "./merge-leftovers";
-import { Popo } from "./popo";
 import { buzz, EmptyState, Explain, formatMoney, MoneyField, Sheet } from "./ui";
 import {
   matches,
@@ -33,7 +32,6 @@ import {
   useRecordSelect,
 } from "./records";
 import { blocked, OFFLINE } from "@/lib/reject";
-import styles from "./operations.module.css";
 
 /** A stock item's details: its name and the unit it's counted in. */
 /** Units already used, then the usual ones, so a unit is picked once and reused. */
@@ -587,7 +585,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
     return { item, users, rate, facets, group, supplier, legacy };
   }
   const entries = [...rows.map((item) => entry(item)), ...legacy.map((item) => entry(item, true))];
-  const emptyPrep = prepOnly && entries.length === 0 && !tab;
   const inTab = tab ? entries.filter(({ group }) => group === tab) : entries;
   const searched = inTab.filter(({ item, users, group, supplier }) => matches(
     query, item.name, item.unit, item.details?.sku, group, supplier, ...users,
@@ -595,13 +592,9 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
   const shown = searched.filter(({ facets }) => matchesFilters(facets, filter));
   const shownRows = shown.filter((row) => !row.legacy);
   const shownLegacy = shown.filter((row) => row.legacy);
-  const sentence = prepOnly
-    ? count
-      ? <>{plural(count, "thing")} <span className="g">you make ahead, counted like stock.</span></>
-      : <>Make it once, <span className="g">cost it per cup.</span></>
-    : count
-      ? <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>
-      : <>Nothing counted yet. <span className="g">Add what runs out, like milk or ice.</span></>;
+  const sentence = count > 0 && (prepOnly
+    ? <>{plural(count, "thing")} <span className="g">you make ahead, counted like stock.</span></>
+    : <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>);
   const addButton = !select.on && (
     <AddButton
       blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
@@ -717,14 +710,9 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       )}
       {!inTab.length && (
         <EmptyState
-          icon={prepOnly ? <CookingPot size={22} strokeWidth={1.6} /> : <Package size={22} strokeWidth={1.6} />}
-          illustration={emptyPrep ? (
-            <span className={styles.prepArt} aria-hidden="true">
-              <Popo pose="connect" motion="curiousPeek" size={108} />
-              <CookingPot className={styles.prepPot} size={32} strokeWidth={1.6} />
-            </span>
-          ) : undefined}
-          className={emptyPrep ? styles.emptyPrep : undefined}
+          pose={prepOnly ? "connect" : "neutral"}
+          motion={prepOnly ? "curiousPeek" : "idle"}
+          object={prepOnly ? "mixingBowl" : "supplyBox"}
           title={tab ? `No ${itemNoun}s in ${tab}` : prepOnly ? "Nothing made ahead yet" : "No stock items yet"}
           text={tab ? undefined : prepOnly
             ? "Syrups, creams and sauces you make in batches. Enter what goes in and how much it makes, and you'll see what each unit costs."

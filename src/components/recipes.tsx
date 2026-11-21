@@ -32,7 +32,7 @@ export function RecipesScreen(props: RecipesProps) {
   if (page === "menu") {
     return preview ? (
       <SubPage title="Menu items" backLabel="Back to menu items" onBack={() => setPreview(false)}>
-        <MenuPreview state={state} />
+        <MenuPreview state={state} onEditMenu={() => setPreview(false)} />
       </SubPage>
     ) : <MenuPage key={page} {...props} onPreview={() => setPreview(true)} />;
   }

@@ -1159,6 +1159,47 @@ button.list-row:not(.sell-option):active {
   align-items: center;
   gap: 8px;
 }
+.empty-popo {
+  padding-block: 18px 24px;
+  background: radial-gradient(ellipse 115px 100px at 50% 72px, #e1ebff, transparent), var(--surface);
+}
+
+.empty-popo > .strong {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+
+.empty-popo-with-object {
+  display: grid;
+  grid-template-columns: 100px 36px;
+  align-items: end;
+}
+
+.empty-popo-object {
+  justify-self: end;
+  position: relative;
+  width: 54px;
+  height: auto;
+  max-width: none;
+}
+
+.action-object {
+  display: block;
+  flex: none;
+  width: 30px;
+  height: auto;
+}
+
+.empty-row-object {
+  display: block;
+  flex: none;
+  width: 44px;
+  height: auto;
+}
+
 .empty .well {
   width: 52px;
   height: 52px;

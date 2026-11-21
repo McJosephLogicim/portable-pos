@@ -289,7 +289,7 @@ export function ItemsSold({
       <p className="group-title">Items sold</p>
       <div className="card card-list">
         {!sellers.length && (
-          <EmptyRow title="No sales yet" detail="Each item adds up here as you sell." />
+          <EmptyRow object="itemsSold" title="No sales yet" detail="Each item adds up here as you sell." />
         )}
         {shown.map((s) => {
           const image = menu.find((p) => p.id === s.productId)?.image;

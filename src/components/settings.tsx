@@ -39,6 +39,7 @@ import { AddButton } from "./add-menu";
 import {
   buzz,
   ConfirmSheet,
+  EmptyState,
   errorText,
   formatMoney,
   MethodIcon,
@@ -1021,6 +1022,12 @@ function DiscountsPage(props: SettingsProps) {
   const set = (discounts: Discount[]) =>
     setDraft({ ...draft, settings: { ...draft.settings, discounts } });
   const on = list.filter((d) => d.on).length;
+  const addDiscount = (
+    <AddButton
+      blockedReason={list.length >= 24 && "You can add up to 24 discounts."}
+      onClick={() => setEditing("new")}
+    />
+  );
   return (
     <SubPage
       title="Discounts"
@@ -1030,26 +1037,22 @@ function DiscountsPage(props: SettingsProps) {
           <p>{applyNote(props.state)}</p>
         </>
       }
-      sentence={
-        on ? (
-          <>
-            {on} {on === 1 ? "discount" : "discounts"}{" "}
-            <span className="g">one tap away at checkout.</span>
-          </>
-        ) : (
-          <>
-            No discounts <span className="g">at checkout.</span>
-          </>
-        )
-      }
-      sentenceAction={
-        <AddButton
-          blockedReason={list.length >= 24 && "You can add up to 24 discounts."}
-          onClick={() => setEditing("new")}
-        />
-      }
+      sentence={list.length > 0 && (on ? (
+        <>
+          {on} {on === 1 ? "discount" : "discounts"}{" "}
+          <span className="g">one tap away at checkout.</span>
+        </>
+      ) : (
+        <>No discounts <span className="g">at checkout.</span></>
+      ))}
+      sentenceAction={list.length > 0 && addDiscount}
       onBack={() => props.onPage(null)}
     >
+      {!list.length && (
+        <EmptyState pose="sale" object="discountTag" title="No discounts yet" text="Add a discount to offer it at checkout.">
+          {addDiscount}
+        </EmptyState>
+      )}
       {list.length > 0 && (
         <div className="card card-list">
           {list.map((d) => (

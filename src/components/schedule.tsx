@@ -259,7 +259,7 @@ function PersonPicker({
           ))}
         </div>
       ) : (
-        <p className="label">Everyone on the team is already on this shift. Invite more people in Settings › Team.</p>
+        <EmptyState pose="team" title="Everyone is already assigned" text="Invite more people in Settings › Team." />
       )}
     </Sheet>
   );
@@ -1291,7 +1291,7 @@ function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, dele
         <ReportSheet shift={till} state={state} business={state.business!} onDismiss={() => setAction(null)} />
       ) : (
         <Sheet title={`${title} report`} onClose={() => setAction(null)}>
-          <p className="muted">No till report is available for this shift.</p>
+          <EmptyState pose="close" object="checklistClipboard" title="No till report is available for this shift." text="A report appears once a till is linked to the shift." />
         </Sheet>
       ))}
     </>
@@ -1322,7 +1322,7 @@ function ShareSchedule({
     <Sheet
       title="Share the schedule"
       onClose={onClose}
-      footer={<CopyButton text={text} onError={setError} />}
+      footer={shown.length > 0 && <CopyButton text={text} onError={setError} />}
     >
       <LiquidSegments
         label="Which shifts"
@@ -1339,7 +1339,7 @@ function ShareSchedule({
       {shown.length ? (
         <pre className="schedule-text">{text}</pre>
       ) : (
-        <EmptyState icon={<CalendarDays size={22} />} title="No shifts to share" text="Add shifts first, or pick the other range." />
+        <EmptyState pose="plan" object="shiftCalendar" title="No shifts to share" text="Add shifts first, or pick the other range." />
       )}
       {error && (
         <p className="alert" role="alert">
@@ -1404,6 +1404,7 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, practice = false
         <ShiftList
           entries={openShifts}
           state={state}
+          showCalendarObject
           onOpen={(bookingId) => setSelection({ bookingId, confirming: practice })}
           emptyAction={!practice && state.me?.owner ? <AddShiftMenu disabled={!online} onAdd={setAdding} /> : undefined}
         />
@@ -1572,6 +1573,7 @@ export function ScheduleScreen(props: ScheduleProps) {
   const monthNet = monthDone.reduce((sum, b) => sum + bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net, 0);
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
+  const addInEmptyState = me?.owner && list.length === 0 && (filter === "day" || (filter === "open" && upcoming.length === 0));
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const leaderboardButton = useRef<HTMLButtonElement>(null);
   const scheduleScroll = useRef<number | null>(null);
@@ -1635,7 +1637,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && (
+        {me?.owner && !addInEmptyState && (
           <AddShiftMenu
             disabled={!props.online}
             onAdd={setEditing}
@@ -1691,7 +1693,12 @@ export function ScheduleScreen(props: ScheduleProps) {
         entries={list}
         state={state}
         filter={filter}
-        illustrateEmpty={filter === "day"}
+        showCalendarObject
+        emptyAction={addInEmptyState
+          ? <AddShiftMenu disabled={!props.online} onAdd={setEditing} />
+          : filter !== "open" && openSeats.length > 0 && (
+            <button type="button" className="btn compact" onClick={() => setFilter("open")}>See open seats</button>
+          )}
         showDates={filter !== "day"}
         salesOf={salesOf}
         onOpen={setOpenId}

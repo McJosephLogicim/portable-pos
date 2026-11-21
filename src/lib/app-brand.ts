@@ -34,3 +34,22 @@ export const popoPoses = {
   close: "/mascots/popo/close.webp",
   team: "/mascots/popo/team.webp",
 };
+
+export const emptyStateObjects = {
+  expense: "/empty-states/expense.webp",
+  itemsSold: "/empty-states/items-sold.webp",
+  payment: "/empty-states/payment.webp",
+  salesReceipt: "/empty-states/sales-receipt.webp",
+  shiftCalendar: "/empty-states/shift-calendar.webp",
+  supplyBox: "/empty-states/supply-box.webp",
+  mixingBowl: "/empty-states/mixing-bowl.webp",
+  checklistClipboard: "/empty-states/checklist-clipboard.webp",
+  costingCalculator: "/empty-states/costing-calculator.webp",
+  inviteLink: "/empty-states/invite-link.webp",
+  leaderboardTrophy: "/empty-states/leaderboard-trophy.webp",
+  cashDrawer: "/empty-states/cash-drawer.webp",
+  discountTag: "/empty-states/discount-tag.webp",
+  marketStall: "/empty-states/market-stall.webp",
+  categoryTag: "/empty-states/category-tag.webp",
+  choiceTiles: "/empty-states/choice-tiles.webp",
+} as const;

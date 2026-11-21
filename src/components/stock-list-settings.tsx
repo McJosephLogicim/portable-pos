@@ -131,7 +131,7 @@ export function StockListsPage(props: RecipesProps) {
         setTab(null);
       }} />}
       {!activeField && !count && (
-        <EmptyState icon={<Tags size={22} />} title="No stock list entries yet">
+        <EmptyState pose="plan" object="supplyBox" title="No stock list entries yet" text="Add a category, stock type, or supplier to reuse it across items.">
           {addMenu()}
         </EmptyState>
       )}
@@ -139,7 +139,12 @@ export function StockListsPage(props: RecipesProps) {
         const { title } = stockListFields[field];
         if (activeField === field && !lists[field].length) {
           return (
-            <EmptyState key={field} icon={<Icon size={22} />} title={`No ${title.toLocaleLowerCase()} yet`}>
+            <EmptyState
+              key={field}
+              pose={field === "supplier" ? "team" : field === "kind" ? "neutral" : "connect"}
+              object={field === "category" ? "mixingBowl" : "supplyBox"}
+              title={`No ${title.toLocaleLowerCase()} yet`}
+            >
               {addMenu(field)}
             </EmptyState>
           );

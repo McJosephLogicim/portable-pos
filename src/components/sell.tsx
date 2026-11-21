@@ -36,6 +36,7 @@ import {
   ConfirmSheet,
   DoneCheck,
   EmptyState,
+  GlossyObject,
   ItemFaces,
   errorText,
   usePin,
@@ -550,7 +551,8 @@ function Checkout({
             <button className="btn block" onClick={onClose}>
               {practice ? "Continue" : "New sale"}
             </button>
-            <button className="btn ghost block compact" onClick={() => onReceipt(sale)}>
+            <button type="button" className="btn ghost block compact" onClick={() => onReceipt(sale)}>
+              <GlossyObject className="action-object" object="salesReceipt" />
               View receipt
             </button>
           </>
@@ -865,6 +867,7 @@ function Checkout({
 
 export interface SellProps {
   preview?: boolean;
+  onEditMenu?: () => void;
   onPracticeDone?: () => void;
   state: RegisterState;
   status: string;
@@ -921,6 +924,7 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
 
 export function SellScreen({
   preview = false,
+  onEditMenu,
   onPracticeDone,
   state,
   status,
@@ -1236,21 +1240,22 @@ export function SellScreen({
               </button>
             )}
           </div>
+        ) : menu.length ? (
+          <EmptyState
+            icon={<Search size={22} />}
+            title={query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
+            text="Try another name or category."
+          />
         ) : (
           <EmptyState
-            icon={menu.length ? <Search size={22} /> : <ShoppingBag size={22} />}
-            illustration={!menu.length ? <Popo pose="menu" motion="curiousPeek" size={108} /> : undefined}
-            className={!menu.length ? styles.emptyMenu : undefined}
-            title={!menu.length ? (preview ? "Your menu is empty" : "No items on this shift") : query.trim() ? `Nothing matches “${query.trim()}”` : "Nothing matches"}
-            text={menu.length
-              ? "Try another name or category."
-              : preview
-                ? "Add an item to your menu to try it here."
-                : canEdit
-                  ? "Add your first item. It goes on sale right away."
-                  : "Ask the owner to add items."}
+            pose="menu"
+            motion="curiousPeek"
+            object="itemsSold"
+            title={preview ? "Your menu is empty" : "No items on this shift"}
+            text={preview ? "Add an item to your menu to try it here." : canEdit ? "Add your first item. It goes on sale right away." : "Ask the owner to add items."}
           >
-            {canEdit && !menu.length && (
+            {onEditMenu && <button type="button" className="btn compact" onClick={onEditMenu}>Go to menu items</button>}
+            {canEdit && (
               <button
                 type="button"
                 className="btn compact"
@@ -1388,7 +1393,7 @@ export function SellScreen({
 
 
 /** The real Sell screen with a temporary till and no register writes. */
-export function MenuPreview({ state }: { state: RegisterState }) {
+export function MenuPreview({ state, onEditMenu }: { state: RegisterState; onEditMenu: () => void }) {
   const business = state.business!;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -1412,6 +1417,7 @@ export function MenuPreview({ state }: { state: RegisterState }) {
   return (
     <SellScreen
       preview
+      onEditMenu={onEditMenu}
       state={{ business, menu: state.menu, deviceId: shift.deviceId, shift, shifts: [shift], cart, sales, pending: [], soldOut: [] }}
       status="Online"
       online

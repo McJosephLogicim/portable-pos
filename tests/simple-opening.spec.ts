@@ -4,11 +4,11 @@ import type { RegisterState } from "../src/lib/types";
 // Run against a local demo: POS_TEST_APP_URL=http://localhost:3000 npx playwright test tests/simple-opening.spec.ts
 test.use({ viewport: { width: 390, height: 844 } });
 
-async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", requirements = false, scheduled = false) {
+async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", requirements = false, scheduled = false, emptyAsTeammate = false) {
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
   await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
-  await page.evaluate(async ({ mode, requirements, scheduled }) => {
+  await page.evaluate(async ({ mode, requirements, scheduled, emptyAsTeammate }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -23,6 +23,10 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
           state.business!.settings.stockItems = requirements ? [{ id: "milk", name: "Fresh milk", unit: "L", onHand: 6 }] : [];
           state.business!.settings.checklist = requirements ? [{ id: "qr", text: "Put out the QR stand" }] : [];
           state.menu = state.menu.filter((item) => item.name === "Espresso");
+          if (emptyAsTeammate) {
+            state.menu = [];
+            if (state.me) state.me.owner = false;
+          }
           state.shift = null;
           state.shifts = [];
           const booking = state.bookings?.[0];
@@ -44,14 +48,16 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { mode, requirements, scheduled });
+  }, { mode, requirements, scheduled, emptyAsTeammate });
   await page.reload();
 }
 
 for (const mode of ["simple", "advanced"] as const) {
   test(`${mode} requires a scheduled shift before opening the till`, async ({ page }) => {
     await closedTill(page, mode);
-    await expect(page.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
+    const closed = page.locator(".empty-popo").filter({ hasText: "Till closed" });
+    await expect(closed.getByRole("heading", { name: "Till closed", exact: true })).toBeVisible();
+    await expect(closed.locator('img[src$="/close.webp"]')).toBeAttached();
     await page.getByRole("button", { name: "Open till", exact: true }).click();
     await expect(page.getByRole("button", { name: "Till", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
@@ -95,3 +101,14 @@ for (const mode of ["simple", "advanced"] as const) {
     await expect(page.getByRole("textbox", { name: "Cash on hand", exact: true })).toBeVisible();
   });
 }
+
+
+test("Team members waiting for the first menu item see guidance without owner controls", async ({ page }) => {
+  await closedTill(page, "advanced", false, false, true);
+  await page.getByRole("button", { name: "Open till", exact: true }).click();
+  const empty = page.locator(".empty-popo");
+  await expect(empty.getByRole("heading", { name: "Waiting for the first menu item" })).toBeVisible();
+  await expect(empty.locator('img[src$="/team.webp"]')).toBeAttached();
+  await expect(empty.getByText(/Ask the owner to add the first menu item/)).toBeVisible();
+  await expect(empty.getByRole("button")).toHaveCount(0);
+});

@@ -97,27 +97,19 @@ function NoShift({
 }) {
   const zone = state.business!.timeZone;
   const [joining, setJoining] = useState<Shift | null>(null);
-  if (!state.menu.length)
+  if (!state.menu.length) {
     return (
-      <div className="stack gap-18">
-        <div className={styles.tillHeading}>
-          <h1 className="headline">
-            Add what you sell <span className="g">before the first shift.</span>
-          </h1>
-          <Popo pose="menu" size={68} className={styles.tillMascot} />
-        </div>
-        <div className="card card-pad stack gap-12">
-          {onGoMenu ? (
-            <>
-              <p className="muted">A name and a price is enough. Photos and options can come later.</p>
-              <button className="btn" onClick={onGoMenu}>Add menu items</button>
-            </>
-          ) : (
-            <p className="muted">Ask the owner to add the first menu item.</p>
-          )}
-        </div>
-      </div>
+      <EmptyState
+        heading="h1"
+        pose={onGoMenu ? "menu" : "team"}
+        object="itemsSold"
+        title={onGoMenu ? "Add what you sell before the first shift" : "Waiting for the first menu item"}
+        text={onGoMenu ? "A name and a price is enough. Photos and options can come later." : "Ask the owner to add the first menu item before you open the till."}
+      >
+        {onGoMenu && <button type="button" className="btn compact" onClick={onGoMenu}>Add menu items</button>}
+      </EmptyState>
     );
+  }
   // Booths other phones are running now. This phone can sell on one, or start its own.
   const running = new Map(state.shifts.flatMap((s) => (!s.closedAt && s.bookingId ? [[s.bookingId, s] as const] : [])));
   const list = upcomingBookings(state);
@@ -132,7 +124,7 @@ function NoShift({
     <div className="stack gap-18">
       <div className={styles.tillHeading}>
         <h1 className="headline">Open till</h1>
-        <Popo pose="connect" size={68} className={styles.tillMascot} />
+        {(list.length > 0 || running.size > 0) && <Popo pose="connect" size={68} className={styles.tillMascot} />}
       </div>
       {live.length > 0 && (
         <div className="stack gap-10">
@@ -190,14 +182,16 @@ function NoShift({
       )}
       {!list.length && !running.size ? (
         <EmptyState
-          icon={<CalendarDays size={22} />}
+          pose="plan"
+          object="shiftCalendar"
           title="Nothing scheduled"
-          text="Schedule a shift before opening the till."
-        />
-      ) : null}
-      <button className={"btn" + (list.length ? " ghost compact" : "")} onClick={onSchedule}>
-        {list.length ? "See all shifts" : "Add"}
-      </button>
+          text={state.me?.owner ? "Schedule a shift before opening the till." : "Ask the owner to schedule a shift before you open the till."}
+        >
+          <button type="button" className="btn compact" onClick={onSchedule}>Go to Shifts</button>
+        </EmptyState>
+      ) : (
+        <button type="button" className="btn ghost compact" onClick={onSchedule}>See all shifts</button>
+      )}
     </div>
   );
 }
@@ -687,7 +681,7 @@ export function ShiftScreen({
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
-              {!totals.count && <EmptyRow title="No sales yet" detail="Each payment method adds up here as you sell." />}
+              {!totals.count && <EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
               {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => (
                 <button
                   type="button"

@@ -13,7 +13,7 @@ import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } 
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { Onboarding } from "./onboarding";
-import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
+import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, EmptyState, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountsEnabled, api, authClient, authForUser, forgetAccount, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
@@ -864,10 +864,10 @@ export function Workspace() {
     );
   else if (view === "sell" && (!state.shift || state.shift.closedAt))
     screen = (
-      <div className="page stack gap-18">
-        <h1 className="headline">Till closed</h1>
-        <p className="muted">Open the till to start selling.</p>
-        <button className="btn" onClick={() => go("shift")}>Open till</button>
+      <div className="page">
+        <EmptyState heading="h1" pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
+          <button type="button" className="btn compact" onClick={() => go("shift")}>Open till</button>
+        </EmptyState>
       </div>
     );
   else if (view === "shift" || !sellable)

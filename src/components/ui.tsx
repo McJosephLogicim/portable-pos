@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { emptyStateObjects } from "@/lib/app-brand";
 import { friendlyError } from "@/lib/errors";
 import {
   createContext,
@@ -33,6 +35,7 @@ import { currencyDigits } from "@/lib/settings";
 import { clearSheetExit, collapseOnExit, exitSheet, fadeOnExit } from "@/lib/exit";
 import type { PaymentKind } from "@/lib/types";
 import { activeTextEntry } from "./input-experience";
+import { Popo, type PopoMotion, type PopoPose } from "./popo";
 
 /** Format minor units, dropping ".00" so counters read like price tags. */
 export function formatMoney(minor: number, currency: string) {
@@ -1145,32 +1148,48 @@ export function Toast({
   );
 }
 
-/**
- * The one empty state for a page or a whole list: an icon, what's missing, and the next
- * step. Lists that sit inside a card with other rows use EmptyRow instead.
- */
-export function EmptyState({ icon, illustration, title, text, children, className }: {
-  icon: ReactNode;
-  illustration?: ReactNode;
+type EmptyStateObject = keyof typeof emptyStateObjects;
+
+export function GlossyObject({ object, className }: { object: EmptyStateObject; className: string }) {
+  return <Image className={className} src={emptyStateObjects[object]} alt="" width={160} height={160} unoptimized />;
+}
+
+type EmptyStateArt =
+  | { pose: PopoPose; motion?: PopoMotion; object?: EmptyStateObject; icon?: never }
+  | { icon: ReactNode; pose?: never; motion?: never; object?: never };
+
+/** Page empties lead with Popo. Search and filter misses can use a utility icon. */
+export function EmptyState({ icon, pose, object, motion = "idle", title, text, children, heading = "h2" }: EmptyStateArt & {
   title: string;
   text?: string;
   children?: ReactNode;
-  className?: string;
+  heading?: "h1" | "h2";
 }) {
+  const Title = pose ? heading : "span";
   return (
-    <div className={className ? `card empty ${className}` : "card empty"}>
-      {illustration ?? <span className="well" aria-hidden="true">{icon}</span>}
-      <span className="strong">{title}</span>
+    <div className={pose ? "card empty empty-popo" : "card empty"}>
+      {pose ? (
+        <span className={object ? "empty-popo-with-object" : undefined} aria-hidden="true">
+          <Popo pose={pose} motion={motion} size={100} />
+          {object && (
+            <GlossyObject className="empty-popo-object" object={object} />
+          )}
+        </span>
+      ) : (
+        <span className="well" aria-hidden="true">{icon}</span>
+      )}
+      <Title className="strong">{title}</Title>
       {text && <span className="label empty-text">{text}</span>}
-      {children && <span className="empty-actions">{children}</span>}
+      {children && <div className="empty-actions">{children}</div>}
     </div>
   );
 }
 
 /** An empty list inside a card: what goes here, and how it fills up. */
-export function EmptyRow({ title, detail }: { title: string; detail?: string }) {
+export function EmptyRow({ object, title, detail }: { object: EmptyStateObject; title: string; detail?: string }) {
   return (
     <div className="list-row empty-row">
+      <GlossyObject className="empty-row-object" object={object} />
       <span className="grow stack gap-4">
         <span className="strong">{title}</span>
         {detail && <span className="label">{detail}</span>}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calculator, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import { amountText, parseMoney } from "@/lib/domain";
 import { catalogSku, menuCostingOverview, pricingRules, readTargetMargin } from "@/lib/stock";
 import type { Business, Product } from "@/lib/types";
@@ -84,8 +84,9 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
         </>
       ) : (
         <>
-          <EmptyState icon={<Calculator size={22} />} title="No menu items yet" text="Add a menu item to see its cost and margin here." />
-          <button type="button" className="btn" onClick={onMenu}>Go to menu items</button>
+          <EmptyState pose="close" object="costingCalculator" title="No menu items yet" text="Add a menu item to see its cost and margin here.">
+            <button type="button" className="btn compact" onClick={onMenu}>Go to menu items</button>
+          </EmptyState>
           {rulesRow}
         </>
       )}

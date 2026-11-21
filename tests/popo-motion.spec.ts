@@ -37,7 +37,7 @@ test("Popo plays the Masko frames when visible and uses a still pose for reduced
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(clip).toHaveCount(0);
-  await expect(drawerPopo.locator('img[src*="icon-512.png"]')).toBeVisible();
+  await expect(drawerPopo.locator('img[src$="/poster.png"]')).toBeVisible();
 });
 
 test("Sales, Shifts, and the invite sheet each play their assigned clip", async ({ page }) => {
@@ -55,6 +55,11 @@ test("Sales, Shifts, and the invite sheet each play their assigned clip", async 
   await page.getByRole("button", { name: "Previous month" }).click();
   const shifts = page.locator(".empty").filter({ hasText: "Nothing scheduled" });
   await expect(shifts.locator(peek)).toHaveAttribute("data-animating", "");
+  await expect(shifts.locator('img[src$="/plan.webp"]')).toBeHidden();
+  const frame = shifts.locator(".masko-player");
+  const firstFrame = await frame.screenshot();
+  await expect.poll(async () => !(await frame.screenshot()).equals(firstFrame)).toBe(true);
+  await expect(shifts.getByRole("button", { name: "Add", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Account and settings" }).click();
   await page.getByRole("button", { name: /^Team\b/ }).click();
@@ -89,7 +94,7 @@ test("Till keeps a still Popo if the clip cannot be loaded", async ({ page }) =>
   await blocked;
   const drawerPopo = page.locator(".hero").filter({ hasText: "Expected in the drawer" }).locator(peek);
   await expect(drawerPopo.locator(".masko-player")).toHaveCount(0);
-  await expect(drawerPopo.locator('img[src*="icon-512.png"]')).toBeVisible();
+  await expect(drawerPopo.locator('img[src$="/poster.png"]')).toBeVisible();
 });
 
 test("Popo appears beside the first actions in Sell and Prep", async ({ page }) => {

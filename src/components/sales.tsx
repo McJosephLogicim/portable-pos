@@ -21,7 +21,6 @@ import {
 } from "@/lib/sales-filter";
 import { ReceiptSheet, receiptNumber, shiftCurrency } from "./receipt";
 import { FilterBar, FilterChoices } from "./filter-controls";
-import { Popo } from "./popo";
 import { EmptyState, Money, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -238,27 +237,17 @@ export function SalesScreen({
             );
           })}
         </div>
-      ) : (
+      ) : q || (active > 0 && !onlyThisShift) ? (
         <EmptyState
           icon={<ReceiptText size={22} />}
-          illustration={!q && (!active || onlyThisShift) ? <Popo pose="sale" size={113} /> : undefined}
-          className={!q && (!active || onlyThisShift) ? styles.salesEmpty : undefined}
-          title={q || (active && !onlyThisShift) ? "No receipts match" : "No sales yet"}
-          text={q
-            ? "Try a receipt number like #3-012, an item, or GCash."
-            : active && !onlyThisShift
-              ? "Remove a filter above, or clear them all."
-              : "Every sale you ring up lands here with its receipt."}
+          title="No receipts match"
+          text={q ? "Try a receipt number like #3-012, an item, or GCash." : "Remove a filter above, or clear them all."}
         >
-          {!q && active > 0 && !onlyThisShift ? (
-            <button className="btn ghost compact" onClick={() => setFilter({})}>
-              Clear
-            </button>
-          ) : !q && mine && (
-            <button className="btn compact" onClick={onSell}>
-              Start selling
-            </button>
-          )}
+          {!q && <button className="btn ghost compact" onClick={() => setFilter({})}>Clear</button>}
+        </EmptyState>
+      ) : (
+        <EmptyState pose="sale" motion="wave" object="salesReceipt" title="No sales yet" text="Every sale you ring up lands here with its receipt.">
+          {mine && <button className="btn compact" onClick={onSell}>Start selling</button>}
         </EmptyState>
       )}
       {filtering && (

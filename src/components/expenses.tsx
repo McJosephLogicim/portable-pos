@@ -168,7 +168,7 @@ export function ExpensesSection({
           </div>
         ))}
         {!expenses.length && (
-          <EmptyRow title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
+          <EmptyRow object="expense" title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
         )}
         {expenses.length > 5 && (
           <button type="button" className="list-row" onClick={() => setAllExpenses((expanded) => !expanded)} aria-expanded={allExpenses}>

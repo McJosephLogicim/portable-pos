@@ -5,7 +5,12 @@ import type { Booking, RegisterState } from "../src/lib/types";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
-async function seedTill(page: Page, withShifts: boolean, withPastSale = false, { opening = false } = {}) {
+async function seedTill(
+  page: Page,
+  withShifts: boolean,
+  withPastSale = false,
+  { opening = false, rankedAs }: { opening?: boolean; rankedAs?: "owner" | "member" } = {},
+) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
   await page.getByRole("button", { name: "Try the demo" }).click();
@@ -17,7 +22,7 @@ async function seedTill(page: Page, withShifts: boolean, withPastSale = false, {
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, opening }) => {
+  await page.evaluate(async ({ withShifts, sales, opening, rankedAs }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -43,6 +48,17 @@ async function seedTill(page: Page, withShifts: boolean, withPastSale = false, {
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = opening ? null : shift;
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
+          if (rankedAs) {
+            const names = ["Mika Reyes", "Bea Cruz", "Paolo Tan", "Jules Lim", "Sam Flores", "Ana Cruz", "Tess Ong", "Lia Uy", "Marco Go", "Nico Lao"];
+            state.me = { memberId: "member-5", name: "Ana Cruz", roles: ["cashier"], owner: rankedAs === "owner" };
+            state.bookings = names.map((name, index) => ({
+              ...booking("Market " + index, "2026-11-11T01:00:00Z", "2026-11-11T03:00:00Z"),
+              staff: [{ memberId: "member-" + index, name, role: "cashier" }],
+              sales: (50_000 - index * 2500) * 100,
+              rent: 7000 * 100,
+              hit: index < 3,
+            }));
+          }
           state.shifts = opening ? [past, unscheduled] : withShifts ? [shift, past, unscheduled] : [shift];
           if (opening) {
             state.business!.settings.checklist = [];
@@ -56,7 +72,7 @@ async function seedTill(page: Page, withShifts: boolean, withPastSale = false, {
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, opening });
+  }, { withShifts, sales, opening, rankedAs });
   await page.reload();
 }
 
@@ -244,6 +260,48 @@ test("Leaderboard Share keeps its accessible name when the visible label collaps
   await sheet.getByRole("button", { name: "Close", exact: true }).click();
   await page.setViewportSize({ width: 768, height: 844 });
   await expect(label).toHaveCSS("clip-path", "none");
+});
+
+test("Blue Halo raises first place and can jump to your row on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 660 });
+  await seedTill(page, true, false, { rankedAs: "owner" });
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  await page.getByRole("button", { name: "Leaderboard", exact: true }).click();
+
+  const podium = page.getByRole("list", { name: "Top ranks" });
+  const top = podium.getByRole("listitem");
+  await expect(top).toHaveCount(3);
+  await expect(top.nth(0)).toContainText("Mika Reyes");
+  const [winner, second, third] = await Promise.all([0, 1, 2].map((index) => top.nth(index).boundingBox()));
+  expect(winner!.y).toBeLessThan(second!.y - 70);
+  expect(second!.x).toBeLessThan(winner!.x);
+  expect(third!.x).toBeGreaterThan(winner!.x);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeHidden();
+
+  const myRank = page.getByRole("list", { name: "Remaining ranks" }).getByRole("listitem").filter({ hasText: "Ana Cruz" });
+  await page.getByRole("button", { name: "Jump to your rank, number 6" }).click();
+  await expect(myRank).toBeFocused();
+  await expect(myRank).toBeInViewport();
+
+  await page.getByRole("combobox", { name: "Date range" }).selectOption("week");
+  await expect(page.getByRole("heading", { name: "No rankings yet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Share", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Jump to your rank/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to shifts" }).click();
+  await expect(page.getByRole("button", { name: "Leaderboard", exact: true })).toBeFocused();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+});
+
+test("Blue Halo displays quotas and shifts for team members", async ({ page }) => {
+  await seedTill(page, true, false, { rankedAs: "member" });
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  await page.getByRole("button", { name: "Leaderboard", exact: true }).click();
+
+  await expect(page.getByText("Ranked by quotas hit, then shifts worked")).toBeVisible();
+  const podium = page.getByRole("list", { name: "Top ranks" });
+  await expect(podium.getByText("1 quota hit", { exact: true })).toHaveCount(3);
+  await expect(page.getByRole("main")).not.toContainText(/₱|Profit|Loss/);
 });
 
 test("The Till Shifts sheet offers both Add actions in the empty state", async ({ page }) => {

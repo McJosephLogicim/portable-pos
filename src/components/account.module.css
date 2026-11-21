@@ -494,3 +494,16 @@
   --accent: var(--surface-muted);
   --on-accent: var(--ink);
 }
+
+.setupHeading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-block-start: 24px;
+}
+
+.setupObject {
+  width: clamp(60px, 18vw, 80px);
+  height: auto;
+}

@@ -9,6 +9,7 @@ export function CopyButton({
   text,
   disabled,
   label = "Copy",
+  icon,
   description,
   compactOnMobile,
   onError,
@@ -16,6 +17,7 @@ export function CopyButton({
   text: string;
   disabled?: boolean;
   label?: string;
+  icon?: ReactNode;
   description?: string;
   compactOnMobile?: boolean;
   onError: (message: string) => void;
@@ -50,7 +52,8 @@ export function CopyButton({
         aria-description={description}
         onClick={() => void copy()}
       >
-        <Icon size={17} aria-hidden="true" /> <span className="button-label">{copied ? "Copied" : label}</span>
+        {copied || !icon ? <Icon size={17} aria-hidden="true" /> : icon}
+        <span className="button-label">{copied ? "Copied" : label}</span>
       </button>
       <span className="sr-only" role="status">{copied ? "Copied to clipboard" : ""}</span>
     </>
