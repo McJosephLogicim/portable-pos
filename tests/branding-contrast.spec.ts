@@ -91,7 +91,10 @@ test("A light text color previews, saves, and follows the business theme", async
   await expect(cream).toHaveAttribute("aria-pressed", "true");
 
   await page.getByLabel("Pick any brand color").fill("#f9b9d4");
-  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", "rgb(0, 0, 0)");
+  await expect(page.locator(".brand-preview .strong")).toHaveCSS("color", creamRgb);
+  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", creamRgb);
+  await expectTextContrast(page.locator(".brand-preview .strong"), ".brand-preview", ".brand-preview .label");
+  await expectTextContrast(page.locator(".brand-sample .btn").first(), ".brand-sample .btn", ".brand-sample .btn");
   const navy = page.getByRole("button", { name: "Text color #1e2a4a", exact: true });
   await navy.click();
   await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", "rgb(30, 42, 74)");

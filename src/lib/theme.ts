@@ -38,13 +38,9 @@ function luminance(hex: string) {
 const hexColor = /^#[0-9a-f]{6}$/i;
 const textContrast = 4.5;
 
-/** Use the chosen text color where it is readable, with an automatic fallback. */
-export function onColor(hex: string, preferred?: string) {
+/** Pick the higher-contrast automatic text color for a surface. */
+export function onColor(hex: string) {
   const lightness = luminance(hex) + 0.05;
-  if (preferred && hexColor.test(preferred)) {
-    const foreground = luminance(preferred) + 0.05;
-    if (Math.max(lightness, foreground) / Math.min(lightness, foreground) >= textContrast) return preferred;
-  }
   const blackContrast = lightness / 0.05;
   const whiteContrast = 1.05 / lightness;
   return blackContrast >= whiteContrast ? "#000000" : "#ffffff";
@@ -57,6 +53,21 @@ function mixHex(from: string, to: string, amount: number) {
     return Math.round(start + (end - start) * amount).toString(16).padStart(2, "0");
   });
   return "#" + channels.join("");
+}
+
+/** Keep the chosen text color readable by tinting its background as needed. */
+export function brandColors(brand: string, ink?: string) {
+  if (!ink || !hexColor.test(ink)) return { background: brand, color: onColor(brand) };
+
+  const foreground = luminance(ink) + 0.05;
+  const shade = onColor(ink);
+  let background = brand;
+  for (let percent = 1; percent <= 100; percent++) {
+    const surface = luminance(background) + 0.05;
+    if (Math.max(surface, foreground) / Math.min(surface, foreground) >= textContrast) break;
+    background = mixHex(brand, shade, percent / 100);
+  }
+  return { background, color: ink };
 }
 
 /** POP POS colors shared by the leaderboard and the share image. */
@@ -86,19 +97,19 @@ export function applyTheme(settings: Pick<Settings, "brand" | "font" | "radius" 
   const ink = settings.ink && hexColor.test(settings.ink) ? settings.ink : undefined;
   const accent = brand ?? defaultBrand;
   if (brand || ink) {
-    const on = onColor(accent, ink);
-    const lightText = luminance(on) > luminance(accent);
+    const { background, color } = brandColors(accent, ink);
+    const lightText = luminance(color) > luminance(background);
     const shade = lightText ? "#000" : "#fff";
-    const gloss = `color-mix(in srgb, ${accent} 82%, ${shade})`;
-    const glossStops = lightText ? `${accent}, ${gloss}` : `${gloss}, ${accent}`;
-    set("--on-accent", on);
-    set("--accent-pressed", `color-mix(in srgb, ${accent} 88%, ${shade})`);
+    const gloss = `color-mix(in srgb, ${background} 82%, ${shade})`;
+    const glossStops = lightText ? `${background}, ${gloss}` : `${gloss}, ${background}`;
+    set("--accent", background);
+    set("--on-accent", color);
+    set("--accent-pressed", `color-mix(in srgb, ${background} 88%, ${shade})`);
     set("--glossy", `linear-gradient(180deg in srgb, ${glossStops})`);
   }
   let brightestHero = luminance("#333333");
   if (brand) {
     set("--brand", brand);
-    set("--accent", brand);
     set("--accent-ring", brand);
     // Bright brands need a darker tint for white text across the hero gradient.
     const start = mixHex("#000000", brand, onColor(brand) === "#ffffff" ? 0.88 : 0.45);

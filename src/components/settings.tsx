@@ -33,7 +33,7 @@ import { ChecklistPage, TeamPage } from "./team";
 import { OrganizersPage } from "./organizer-settings";
 import { plural, useRecordSave } from "./records";
 import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
-import { applyTheme, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
+import { applyTheme, brandColors, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import { AddButton } from "./add-menu";
 import {
@@ -418,7 +418,7 @@ function BusinessPage(props: SettingsProps) {
   );
   const brand = draft.settings.brand ?? defaultBrand;
   const ink = draft.settings.ink?.toLowerCase();
-  const brandText = onColor(brand, ink);
+  const brandPreview = brandColors(brand, ink);
   const saved = props.state.business!.settings;
   // Preview the theme on the whole app while editing; go back to the saved one on leaving.
   const look = JSON.stringify([draft.settings.brand, draft.settings.font, draft.settings.radius, draft.settings.ink]);
@@ -466,7 +466,7 @@ function BusinessPage(props: SettingsProps) {
           />
         </label>
       </div>
-      <div className="brand-preview" style={{ background: brand, color: brandText }}>
+      <div className="brand-preview" style={brandPreview}>
         <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} ink={ink} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="strong ellipsis">{draft.name || "Your stall"}</span>
@@ -585,9 +585,7 @@ function BusinessPage(props: SettingsProps) {
                 ))}
               </div>
               <span className="label">
-                {ink && ink !== brandText
-                  ? "Your brand color uses automatic text for contrast."
-                  : "Your text color applies wherever it has enough contrast."}
+                Branded buttons and highlights adjust their shade to keep your text readable.
               </span>
             </div>
             <div className="row gap-8 brand-sample" aria-hidden="true">

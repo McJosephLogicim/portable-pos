@@ -59,7 +59,7 @@
     opacity: 1;
   }
 
-  .art[data-animating] .poster {
+  .art:not([data-popo-motion="idle"]) .poster {
     visibility: hidden;
   }
 }

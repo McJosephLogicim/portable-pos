@@ -84,17 +84,30 @@ test("Victory Hop plays on the completed sale", async ({ page }) => {
   await expect(success.getByRole("button", { name: "View receipt" })).toBeVisible();
 });
 
-test("Till keeps a still Popo if the clip cannot be loaded", async ({ page }) => {
+test("Till leaves the mascot hidden while its clip is loading or unavailable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.route("**/mascots/popo/curious-peek.*", (route) => route.abort());
-  await page.goto(appUrl);
-  await page.getByRole("button", { name: "Try the demo" }).click();
-  const blocked = page.waitForEvent("requestfailed", (request) => request.url().includes("/curious-peek."));
-  await page.getByRole("button", { name: "Till", exact: true }).click();
-  await blocked;
-  const drawerPopo = page.locator(".hero").filter({ hasText: "Expected in the drawer" }).locator(peek);
-  await expect(drawerPopo.locator(".masko-player")).toHaveCount(0);
-  await expect(drawerPopo.locator('img[src$="/poster.png"]')).toBeVisible();
+  const clipResponse = Promise.withResolvers<void>();
+  await page.route("**/mascots/popo/curious-peek.*", async (route) => {
+    await clipResponse.promise;
+    await route.abort();
+  });
+  try {
+    await page.goto(appUrl);
+    await page.getByRole("button", { name: "Try the demo" }).click();
+    const request = page.waitForRequest("**/mascots/popo/curious-peek.*");
+    await page.getByRole("button", { name: "Till", exact: true }).click();
+    await request;
+    const drawerPopo = page.locator(".hero").filter({ hasText: "Expected in the drawer" }).locator(peek);
+    const poster = drawerPopo.locator('img[src$="/poster.png"]');
+    await expect(poster).toBeHidden();
+    const failed = page.waitForEvent("requestfailed", (request) => request.url().includes("/curious-peek."));
+    clipResponse.resolve();
+    await failed;
+    await expect(drawerPopo.locator(".masko-player")).toHaveCount(0);
+    await expect(poster).toBeHidden();
+  } finally {
+    clipResponse.resolve();
+  }
 });
 
 test("Popo appears beside the first actions in Sell and Prep", async ({ page }) => {
