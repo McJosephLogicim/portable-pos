@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>POP POS share image</title>
+  <style>
+    @font-face {
+      font-family: "Geist Variable";
+      src: url("../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+
+    :root {
+      --paper: #f8f8f6;
+      --ink: #0a0a0a;
+      --muted: #4c4c49;
+      --store-blue: #267ff6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      width: 1200px;
+      height: 630px;
+      margin: 0;
+      overflow: hidden;
+      position: relative;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Geist Variable", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .copy {
+      position: absolute;
+      inset: 76px auto auto 84px;
+    }
+
+    .wordmark {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 25px;
+      font-weight: 760;
+      letter-spacing: -0.025em;
+    }
+
+    .wordmark img {
+      width: 42px;
+      height: 42px;
+      border-radius: 11px;
+    }
+
+    h1 {
+      margin: 105px 0 22px;
+      font-size: 78px;
+      font-weight: 740;
+      line-height: 0.99;
+      letter-spacing: -0.037em;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 23px;
+      font-weight: 450;
+      line-height: 1.4;
+    }
+
+    .visual {
+      position: absolute;
+      inset: 0 0 0 680px;
+      margin: 0;
+      overflow: hidden;
+      background: var(--store-blue);
+    }
+
+    .device {
+      position: absolute;
+      top: 65px;
+      left: 50%;
+      width: 348px;
+      transform: translateX(-50%);
+      overflow: hidden;
+      border: 7px solid #17181b;
+      border-radius: 37px 37px 0 0;
+      background: #ededed;
+    }
+
+    .device img {
+      display: block;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="copy">
+      <div class="wordmark">
+        <img src="../public/icon-192.png" alt="">
+        <span>POP POS</span>
+      </div>
+      <h1 data-headline>Your counter.<br>In your pocket.</h1>
+      <p class="sub">The portable POS for cafés, markets, and pop-ups.</p>
+    </div>
+    <figure class="visual" data-bleed>
+      <div class="device">
+        <img src="../docs/screenshots/sell.jpg" alt="The POP POS register showing a café menu and an open order">
+      </div>
+    </figure>
+  </main>
+</body>
+</html>

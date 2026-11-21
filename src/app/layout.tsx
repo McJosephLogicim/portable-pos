@@ -5,6 +5,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: APP_NAME,
   description: "A mobile register for food, drinks, and pop-up counters.",
+  metadataBase: process.env.POS_APP_URL ? new URL(process.env.POS_APP_URL) : undefined,
+  openGraph: { type: "website" },
+  twitter: { card: "summary_large_image" },
   appleWebApp: {
     capable: true,
     title: APP_NAME,
