@@ -1281,8 +1281,8 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={props.onBusinesses}
         />
       </div>
-      <h2 className="group-title">Checkout</h2>
       <ModeCard {...props} />
+      <h2 className="group-title">Checkout</h2>
       <div className="card card-list">
         <Row
           icon={<Coins size={18} strokeWidth={1.8} />}
