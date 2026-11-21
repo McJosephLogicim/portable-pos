@@ -52,7 +52,7 @@ import {
   usePin,
 } from "./ui";
 import styles from "./settings.module.css";
-import { blocked } from "@/lib/reject";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 export type SettingsInput = {
   name: string;
@@ -390,7 +390,12 @@ function loadFontSamples() {
 }
 
 function BusinessPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props);
+  const { draft, setDraft, bar, business } = useDraft(props);
+  const withPin = usePin();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const primaryOwner = !props.demo && props.state.team?.some((member) =>
+    member.id === props.state.me?.memberId && member.primaryOwner
+  );
   const setBrand = (patch: Partial<Settings>) => {
     const settings = { ...draft.settings, ...patch };
     if (!settings.logo) delete settings.logo;
@@ -605,6 +610,30 @@ function BusinessPage(props: SettingsProps) {
           )}
         </div>
       </div>
+      {primaryOwner && (
+        <div className="stack gap-10">
+          <h2 className="group-title">Danger zone</h2>
+          <div className="card card-list">
+            <button type="button" className="list-row danger" {...blocked(!props.online && OFFLINE)} onClick={() => setConfirmDelete(true)}>
+              <span className="well" aria-hidden="true"><Trash2 size={18} strokeWidth={1.8} /></span>
+              <span className="grow row-title">Delete business</span>
+              <ChevronRight size={18} className="chev" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmDelete && primaryOwner && (
+        <ConfirmSheet
+          title={`Delete ${business.name}?`}
+          detail="This permanently deletes the business, including its sales, shifts and menu. Everyone on the team will lose access."
+          confirmLabel="Delete business"
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={() => withPin(
+            (pin) => props.onAction({ action: "deleteBusiness", businessId: business.id, pin }),
+            { fresh: true },
+          )}
+        />
+      )}
       {bar}
     </SubPage>
   );
@@ -1254,6 +1283,7 @@ export function SettingsScreen(props: SettingsProps) {
     window.scrollTo(0, 0);
   }, [page]);
   const me = state.me;
+  if (page === "team") return <TeamPage {...props} />;
   if (me && !me.owner)
     return (
       <div className="page">
@@ -1265,6 +1295,7 @@ export function SettingsScreen(props: SettingsProps) {
         </div>
         <ProfileCard {...props} />
         <div className="card card-list">
+          <Row icon={<Users size={18} strokeWidth={1.8} />} title="Team" onClick={() => onPage("team")} />
           <Row
             icon={<Repeat size={18} strokeWidth={1.8} />}
             title={businessList(state).length > 1 ? "Switch business" : "Start your own business"}
@@ -1284,7 +1315,6 @@ export function SettingsScreen(props: SettingsProps) {
   if (page === "currency") return <CurrencyPage {...props} />;
   if (page === "organizers") return <OrganizersPage {...props} />;
   if (page === "checklist") return <ChecklistPage {...props} />;
-  if (page === "team") return <TeamPage {...props} />;
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;

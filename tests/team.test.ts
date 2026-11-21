@@ -144,6 +144,124 @@ test("counted items sell down to zero and come back on reversal", () => {
   assert.equal(stockLeft(added, []).ube, 6);
 });
 
+test("leaving a team frees future seats and preserves other business access", {
+  skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database.",
+}, async () => {
+  process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+  const ownerUser = { id: randomUUID() };
+  const teammate = { id: randomUUID() };
+  const coOwner = { id: randomUUID() };
+  const pin = "4321";
+  const setup = { action: "setup", currency: "PHP", timeZone: "UTC", pin };
+  const primary = await runCommand(ownerUser, { ...setup, name: "Team to leave" });
+  const other = await runCommand(teammate, { ...setup, name: "Other business" });
+  const businessId = primary.business!.id;
+  const invited = await runCommand(ownerUser, { action: "invite", name: "Teammate", email: "", rate: 0, pin });
+  const { id: memberId, inviteCode } = invited.team!.find((m) => !m.joined)!;
+  await runCommand(teammate, { action: "acceptInvite", code: inviteCode });
+  const coOwnerInvite = await runCommand(ownerUser, { action: "invite", name: "Co-owner", email: "", rate: 50000, pin });
+  const coOwnerRow = coOwnerInvite.team!.find((m) => !m.joined)!;
+  await runCommand(coOwner, { action: "acceptInvite", code: coOwnerRow.inviteCode });
+  await runCommand(ownerUser, { action: "member", memberId: coOwnerRow.id, name: coOwnerRow.name, rate: coOwnerRow.rate, owner: true, pin });
+  await runCommand(ownerUser, { action: "invite", name: "Pending invite", email: "", rate: 0, pin });
+
+  const asMember = await runCommand({ ...teammate, businessId }, { action: "bootstrap" });
+  assert.deepEqual(asMember.team, []);
+  assert.deepEqual(asMember.teamRoster, [
+    { id: primary.me!.memberId, name: primary.me!.name, owner: true, primaryOwner: true },
+    { id: coOwnerRow.id, name: "Co-owner", owner: true, primaryOwner: false },
+    { id: memberId, name: "Teammate", owner: false, primaryOwner: false },
+  ]);
+  const seat = { memberId, name: "Teammate", role: "server" };
+  const shift = async (offsetHours: number) => {
+    const id = randomUUID();
+    const at = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString();
+    await runCommand(ownerUser, { action: "booking", pin, booking: {
+      ...booking, id, startsAt: at(offsetHours), endsAt: at(offsetHours + 1), staff: [seat],
+    } });
+    return id;
+  };
+  const pastId = await shift(-2);
+  const futureId = await shift(2);
+
+  const leave = { action: "leaveTeam", businessId, memberId };
+  await assert.rejects(runCommand(teammate, { ...leave, memberId: primary.me!.memberId }), { status: 409 });
+  await assert.rejects(runCommand(ownerUser, { ...leave, memberId: primary.me!.memberId }), /original owner/);
+  const left = await runCommand(teammate, leave);
+  assert.equal(left.business, null);
+  assert.deepEqual(left.businesses?.map((b) => b.id), [other.business!.id]);
+  assert.equal((await runCommand({ ...teammate, businessId }, { action: "bootstrap" })).business, null);
+  assert.equal((await runCommand(teammate, leave)).business, null);
+  assert.equal((await runCommand(teammate, { action: "bootstrap" })).business?.id, other.business!.id);
+  assert.equal((await runCommand(coOwner, { ...leave, memberId: coOwnerRow.id })).business, null);
+
+  const after = await runCommand(ownerUser, { action: "bootstrap" });
+  assert.ok(after.team!.every((m) => m.id !== memberId && m.id !== coOwnerRow.id));
+  assert.equal(after.bookings!.find((b) => b.id === pastId)?.staff[0].memberId, memberId);
+  assert.deepEqual(after.bookings!.find((b) => b.id === futureId)?.staff, []);
+});
+
+test("only the primary owner can delete a business with a valid PIN and closed tills", {
+  skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database.",
+}, async () => {
+  process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+  const owner = { id: randomUUID() };
+  const coOwner = { id: randomUUID() };
+  const teammate = { id: randomUUID() };
+  const pin = "4321";
+  const setup = { action: "setup", currency: "PHP", timeZone: "UTC", pin };
+  const { business } = await runCommand(owner, { ...setup, name: "Delete this business" });
+  const businessId = business!.id;
+  const other = await runCommand(owner, { ...setup, id: randomUUID(), name: "Keep this business" });
+  const onBusiness = (input: object) => runCommand({ ...owner, businessId }, input);
+  const invite = async (actor: typeof coOwner, name: string) => {
+    const { team } = await onBusiness({ action: "invite", name, email: "", rate: 0, pin });
+    const row = team!.find((member) => member.name === name)!;
+    await runCommand(actor, { action: "acceptInvite", code: row.inviteCode });
+    return row;
+  };
+  const coOwnerRow = await invite(coOwner, "Co-owner");
+  await invite(teammate, "Team member");
+  await onBusiness({ action: "member", memberId: coOwnerRow.id, name: coOwnerRow.name, rate: 0, owner: true, pin });
+  const deleteInput = { action: "deleteBusiness", businessId, pin };
+  await assert.rejects(runCommand(teammate, deleteInput), { status: 403 });
+  await assert.rejects(runCommand(coOwner, deleteInput), { status: 403 });
+  await assert.rejects(runCommand(owner, { ...deleteInput, pin: "9999" }), /Incorrect owner PIN/);
+
+  const item: Product = { id: "bread", name: "Pandesal", category: "", price: 1000, groups: [] };
+  await onBusiness({ action: "menu", menu: [item], pin });
+  const bookingId = await shiftNow(onBusiness, pin);
+  const deviceId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const opened = await onBusiness({
+    action: "open", deviceId, bookingId, openingCash: 0,
+    expenses: [{ id: randomUUID(), createdAt, label: "Supplies", amount: 50, source: "pocket" }],
+  });
+  const shift = opened.shift!;
+  const sale = makeSale({
+    id: randomUUID(), shift, sequence: 1, cart: [{ productId: item.id, optionIds: [], quantity: 1 }],
+    soldOut: [], tender: "cash", received: 1000, createdAt,
+  });
+  await onBusiness({ action: "sync", deviceId, events: [{ type: "sale", id: sale.id, shiftId: shift.id, sale }] });
+  const photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]);
+  const imageId = (await saveImage({ ...owner, businessId }, "image/jpeg", photo)).split("/").pop()!;
+  const otherImageId = (await saveImage({ ...owner, businessId: other.business!.id }, "image/jpeg", photo)).split("/").pop()!;
+  await assert.rejects(runCommand(owner, deleteInput), /Close all open tills/);
+  assert.equal((await onBusiness({ action: "bootstrap" })).sales[0].id, sale.id);
+  await onBusiness({ action: "close", deviceId, shiftId: shift.id, countedCash: 1000, pin });
+
+  const results = await Promise.all([runCommand(owner, deleteInput), runCommand(owner, deleteInput)]);
+  for (const result of results) {
+    assert.equal(result.business, null);
+    assert.deepEqual(result.businesses?.map((b) => b.id), [other.business!.id]);
+  }
+  assert.equal((await runCommand(owner, { action: "bootstrap" })).business?.id, other.business!.id);
+  assert.equal((await runCommand({ ...coOwner, businessId }, { action: "bootstrap" })).business, null);
+  assert.equal((await runCommand({ ...teammate, businessId }, { action: "bootstrap" })).business, null);
+  assert.equal(await readImage(imageId), null);
+  assert.ok(await readImage(otherImageId));
+});
+
 test(
   "a real Postgres team: invites by email, roles, schedule, and profit",
   {

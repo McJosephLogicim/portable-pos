@@ -141,6 +141,7 @@ export interface Closing {
 }
 export type OwnerAction =
   | { action: "completeOnboarding" }
+  | { action: "deleteBusiness"; businessId: string; pin: string }
   | ({ action: "open" } & Opening)
   | { action: "link"; newShift: WalkIn }
   | { action: "linkBooking"; shiftId: string; bookingId: string }
@@ -176,6 +177,8 @@ export function demoAction(
   if ("pin" in input && input.pin !== undefined && input.pin !== DEMO_PIN)
     throw new RequestFailure(403, "Wrong PIN. The demo PIN is 1234.");
   switch (input.action) {
+    case "deleteBusiness":
+      throw Error("Sign in to delete a business.");
     case "open": {
       if (state.shift) throw Error("A shift is already open.");
       const business = state.business!;
@@ -388,6 +391,8 @@ export function demoAction(
         shifts: state.shifts.map((s) => (input.shiftIds.includes(s.id) ? { ...s, mergedAt } : s)),
       };
     }
+    case "leaveTeam":
+      throw Error("Sign in to leave a team.");
     case "setup":
     case "completeOnboarding":
       throw Error("Create a live account to set up a business.");

@@ -33,6 +33,7 @@ export type PlanCommand =
   | { action: "invite"; name: string; email: string; rate: number }
   | { action: "member"; memberId: string; name: string; rate: number; owner?: boolean }
   | { action: "removeMember"; memberId: string }
+  | { action: "leaveTeam"; businessId: string; memberId: string }
   | { action: "organizers"; organizers: Organizer[] }
   | { action: "booking"; booking: BookingInput }
   | { action: "restoreBooking"; booking: BookingInput }
@@ -54,6 +55,7 @@ export const planActions = [
   "invite",
   "member",
   "removeMember",
+  "leaveTeam",
   "organizers",
   "booking",
   "restoreBooking",
@@ -64,9 +66,9 @@ export const planActions = [
   "join",
   "role",
 ] as const;
-/** Everything except joining, leaving or switching roles on your own shift needs the owner. */
+/** People manage their own membership and shift seats without owner access. */
 export const ownerPlanActions = planActions.filter(
-  (a) => a !== "join" && a !== "leave" && a !== "role",
+  (a) => a !== "join" && a !== "leave" && a !== "role" && a !== "leaveTeam",
 );
 
 export class PlanError extends Error {
@@ -199,11 +201,15 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
         })),
       };
     }
-    case "removeMember": {
+    case "removeMember":
+    case "leaveTeam": {
+      if (cmd.action === "leaveTeam")
+        check(cmd.memberId === me.memberId, "This membership is no longer yours.", 409);
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person already left the team.", 404);
       check(!member.primaryOwner, "The original owner stays on the team.");
-      check(!member.owner, "Change their access to Team member before removing them.");
+      if (cmd.action === "removeMember")
+        check(!member.owner, "Change their access to Team member before removing them.");
       // Shifts that haven't started open their seat again. Past shifts keep the name for the books.
       return {
         ...plan,

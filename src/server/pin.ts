@@ -1,7 +1,7 @@
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { eq } from "drizzle-orm";
-import { getDb } from "./db";
+import { getDb, type Transaction } from "./db";
 import { businesses } from "./schema";
 import { ensure, RegisterError } from "./errors";
 
@@ -14,15 +14,23 @@ export async function hashPin(pin: string) {
   return [salt, value.toString("hex")].join(".");
 }
 
-// Commit the attempt counter even when the subsequent owner operation is refused.
-export async function verifyPin(businessId: string, pin: string) {
+// Commit failed attempts. A primary-owner action can run under the same business lock.
+export async function verifyPin(
+  businessId: string,
+  pin: string,
+  primaryAction?: { userId: string; run: (tx: Transaction) => Promise<void> },
+) {
   const result = await getDb().transaction(async (tx) => {
     const [business] = await tx
       .select()
       .from(businesses)
       .where(eq(businesses.id, businessId))
       .for("update");
+    // Another request may have finished deleting this business already.
+    if (!business && primaryAction) return "ok";
     ensure(business, "Create your business first.", 404);
+    if (primaryAction)
+      ensure(business.ownerId === primaryAction.userId, "Only the primary owner can delete this business.", 403);
     const recentFailure =
       business.lastFailedAt &&
       Date.now() - Date.parse(business.lastFailedAt) < cooldown;
@@ -39,6 +47,7 @@ export async function verifyPin(businessId: string, pin: string) {
         lastFailedAt: matches ? null : new Date().toISOString(),
       })
       .where(eq(businesses.id, business.id));
+    if (matches && primaryAction) await primaryAction.run(tx);
     return matches ? "ok" : "invalid";
   });
   if (result === "locked")

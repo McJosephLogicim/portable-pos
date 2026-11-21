@@ -1,4 +1,4 @@
-import { and, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
+import { and, asc, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
 import { legacyStockUses } from "../lib/domain";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
 import { stockModel, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
@@ -243,6 +243,17 @@ export async function snapshot(
       ? (await tx.select().from(members).where(eq(members.businessId, business.id)))
           .map((member) => presentMember(member, business.ownerId))
       : [],
+    teamRoster: me.owner
+      ? undefined
+      : await tx.select({
+          id: members.id,
+          name: members.name,
+          owner: members.owner,
+          primaryOwner: eq(members.userId, business.ownerId).mapWith(Boolean),
+        })
+          .from(members)
+          .where(and(eq(members.businessId, business.id), isNotNull(members.userId)))
+          .orderBy(desc(eq(members.userId, business.ownerId)), desc(members.owner), asc(members.name)),
     organizers: me.owner ? business.organizers : [],
     bookings: bookingRows.map((row) =>
       redactBooking({ ...presentBooking(row), sales: takings.get(row.id) ?? 0 }, me),

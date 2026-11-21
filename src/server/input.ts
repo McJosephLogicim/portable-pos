@@ -249,6 +249,7 @@ export const planCommand = z.discriminatedUnion("action", [
     pin: ownerPin,
   }),
   z.object({ action: z.literal("removeMember"), memberId: z.uuid(), pin: ownerPin }),
+  z.object({ action: z.literal("leaveTeam"), businessId: z.uuid(), memberId: z.uuid() }),
   z.object({
     action: z.literal("organizers"),
     organizers: z.array(tag.extend({ events: z.array(tag).max(200) })).max(200),
@@ -288,6 +289,7 @@ export const planCommand = z.discriminatedUnion("action", [
 
 const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
+  z.object({ action: z.literal("deleteBusiness"), businessId: z.uuid(), pin }),
   z.object({ action: z.literal("completeOnboarding") }),
   z.object({ action: z.literal("acceptInvite"), code: z.string().regex(/^[0-9A-Za-z]{8}$/) }),
   z.object({

@@ -880,7 +880,7 @@ export function MoneyField({
 
 /* ---------- owner PIN ---------- */
 
-type PinRequest = (run: (pin: string) => Promise<void>) => Promise<boolean>;
+type PinRequest = (run: (pin: string) => Promise<void>, options?: { fresh?: boolean }) => Promise<boolean>;
 const PinContext = createContext<PinRequest>(async () => false);
 
 /** Owner actions ask for the PIN once, then reuse it for five minutes on this screen. */
@@ -921,12 +921,12 @@ export function PinProvider({
     [],
   );
   const request = useCallback<PinRequest>(
-    async (run) => {
-      const fresh =
-        cached.current && Date.now() - cached.current.at < PIN_TTL
+    async (run, options) => {
+      const cachedPin =
+        !options?.fresh && cached.current && Date.now() - cached.current.at < PIN_TTL
           ? cached.current.pin
           : null;
-      let pin = fresh ?? (await prompt());
+      let pin = cachedPin ?? (await prompt());
       for (;;) {
         if (pin === null) return false;
         try {

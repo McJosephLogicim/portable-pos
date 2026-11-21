@@ -16,13 +16,29 @@ import { ensure } from "./errors";
 import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
-import { bookings, businesses, completedOnboarding, members, sales, shifts } from "./schema";
+import { bookings, businesses, completedOnboarding, expenses, images, members, sales, shifts, syncedEvents } from "./schema";
 import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const ownerActions = ["menu", "removeMenuItem", "restoreMenuItem", "settings", "mode", "mergeStock", ...ownerPlanActions];
 const pinActions = ["reverse", "close", ...ownerActions];
+
+async function deleteBusiness(tx: Transaction, businessId: string) {
+  const [open] = await tx.select({ id: shifts.id }).from(shifts)
+    .where(and(eq(shifts.businessId, businessId), isNull(shifts.closedAt))).limit(1);
+  ensure(!open, "Close all open tills before deleting this business.", 409);
+
+  const shiftIds = tx.select({ id: shifts.id }).from(shifts).where(eq(shifts.businessId, businessId));
+  await tx.delete(sales).where(inArray(sales.shiftId, shiftIds));
+  await tx.delete(expenses).where(inArray(expenses.shiftId, shiftIds));
+  await tx.delete(syncedEvents).where(inArray(syncedEvents.shiftId, shiftIds));
+  await tx.delete(shifts).where(eq(shifts.businessId, businessId));
+  await tx.delete(bookings).where(eq(bookings.businessId, businessId));
+  await tx.delete(images).where(eq(images.businessId, businessId));
+  await tx.delete(members).where(eq(members.businessId, businessId));
+  await tx.delete(businesses).where(eq(businesses.id, businessId));
+}
 
 async function addWalkIn(
   tx: Transaction,
@@ -53,6 +69,12 @@ export async function runCommand(
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
   const cmd = parseCommand(input);
   const view = readTill(input);
+  if (cmd.action === "deleteBusiness") {
+    await verifyPin(cmd.businessId, cmd.pin, {
+      userId: actor.id,
+      run: (tx) => deleteBusiness(tx, cmd.businessId),
+    });
+  }
   const selfAction = cmd.action === "leave" || cmd.action === "role" || cmd.action === "profile";
   if (pinActions.includes(cmd.action) || selfAction) {
     // Joining by invite happens here too, so the PIN is checked against the right business.
@@ -78,6 +100,7 @@ export async function runCommand(
         onboardingComplete: Boolean(completion),
       };
     };
+    if (cmd.action === "deleteBusiness") return snapshot(null);
     if (cmd.action === "setup") {
       if (cmd.id) {
         // Another business: the new one is what the app works in from now on.
@@ -108,11 +131,16 @@ export async function runCommand(
       }
     }
     if (cmd.action === "acceptInvite") await acceptInvite(tx, actor, cmd.code);
+    if (cmd.action === "leaveTeam") actor.businessId = cmd.businessId;
     // The business is the write lock for its register. Independent sellers never
     // block each other. Snapshots are taken while the same lock is still held.
     const access = await resolveAccess(tx, actor);
     if (cmd.action === "bootstrap" || cmd.action === "setup" || cmd.action === "acceptInvite")
       return snapshot(access);
+    if (cmd.action === "leaveTeam") {
+      if (access) await runPlan(tx, access.business, presentMe(access.member), cmd);
+      return snapshot(null);
+    }
     ensure(access, "Create your business first.", 404);
     const { business, member } = access;
     const me = presentMe(member);

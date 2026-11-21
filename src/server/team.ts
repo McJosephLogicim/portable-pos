@@ -215,7 +215,7 @@ export async function runPlan(
           .from(bookings)
           .where(and(eq(bookings.businessId, business.id), inArray(bookings.id, ids)))
       : []),
-    ...(cmd.action === "removeMember"
+    ...(cmd.action === "removeMember" || cmd.action === "leaveTeam"
       ? await tx
           .select()
           .from(bookings)

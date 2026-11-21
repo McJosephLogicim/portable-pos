@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { APP_NAME } from "@/lib/app-brand";
 import { inviteLink } from "@/lib/join-link";
 import { Banknote, ChevronRight, HandPlatter, Trash2, UserPlus } from "lucide-react";
-import type { Member, Role } from "@/lib/types";
+import type { Member, Role, TeamRosterMember } from "@/lib/types";
 import { amountText, parseMoney } from "@/lib/domain";
 import { roleNames } from "@/lib/team";
 import type { SettingsProps } from "./settings";
@@ -165,14 +165,13 @@ function MemberSheet({
           >
             {busy ? "Saving…" : member ? "Save" : email.trim() ? "Invite" : "Create"}
           </button>
+          {link && <CopyButton text={link} label="Copy invite link" disabled={busy} onError={setCopyError} />}
           {onResend && (
             <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
               Resend
             </button>
           )}
-          {!onResend && removeButton}
-          {link && <CopyButton text={link} label="Copy invite link" disabled={busy} onError={setCopyError} />}
-          {onResend && removeButton}
+          {removeButton}
         </>
       }
     >
@@ -273,9 +272,19 @@ function MemberSheet({
   );
 }
 
+function memberAccessLabel({ primaryOwner, owner }: TeamRosterMember, demo = false) {
+  if (primaryOwner || (demo && owner)) return "Owner";
+  return owner ? "Co-owner" : "Team member";
+}
+
 export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onPage"> & { startAdding?: boolean }) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
+  const me = props.state.me;
+  const roster = props.state.teamRoster ?? [];
+  const canManage = !me || me.owner;
+  const canLeave = !props.demo && me && (!me.owner || team.some((m) => m.id === me.memberId && !m.primaryOwner));
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [editing, setEditing] = useState<Member | "new" | null>(props.startAdding ? "new" : null);
   // After an invite, open the new person so their link is ready to share.
   const invited = useRef<Set<string> | null>(null);
@@ -288,7 +297,11 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
     }
   }, [team]);
   const withPin = usePin();
-  const sorted = [...team].sort((a, b) => Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name));
+  const sorted = [...team].sort((a, b) =>
+    Number(Boolean(b.primaryOwner)) - Number(Boolean(a.primaryOwner)) ||
+    Number(b.owner) - Number(a.owner) ||
+    a.name.localeCompare(b.name)
+  );
   const waiting = sorted.filter((m) => !m.joined);
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
@@ -309,90 +322,125 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
     <SubPage
       title="Team"
       help={<p>Owners invite people, plan shifts and see pay. Everyone picks cashier or server on each shift they work.</p>}
-      sentence={
+      sentence={canManage ? (
         <>
           {team.length} {team.length === 1 ? "person" : "people"}{" "}
           <span className="g">{waiting.length ? `on the team, ${waiting.length} yet to sign in.` : "on the team."}</span>
         </>
-      }
+      ) : business.name}
       onBack={() => props.onPage(null)}
     >
-      {inTab.length > 0 && invite}
-      <RecordSearch
-        count={team.length}
-        noun="people"
-        query={query}
-        onQuery={setQuery}
-        filters={{ label: "Team members", options: [PENDING], value: pending ? PENDING : null, onChange: (v) => setPending(v === PENDING) }}
-      />
-      {!inTab.length && (
-        <EmptyState icon={<UserPlus size={22} />} title={pending ? "No pending invites" : "No team members yet"}>
-          {invite}
-        </EmptyState>
+      {canManage && (
+        <>
+          {inTab.length > 0 && invite}
+          <RecordSearch
+            count={team.length}
+            noun="people"
+            query={query}
+            onQuery={setQuery}
+            filters={{ label: "Team members", options: [PENDING], value: pending ? PENDING : null, onChange: (v) => setPending(v === PENDING) }}
+          />
+          {!inTab.length && (
+            <EmptyState icon={<UserPlus size={22} />} title={pending ? "No pending invites" : "No team members yet"}>
+              {invite}
+            </EmptyState>
+          )}
+          {inTab.length > 0 && !shown.length && (
+            <RecordNoMatch
+              query={query}
+              onClear={() => {
+                setQuery("");
+                setPending(false);
+              }}
+            />
+          )}
+          {shown.length > 0 && (
+            <div className="card card-list">
+              {shown.map((m) => (
+                <button key={m.id} className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing(m)}>
+                  <Avatar id={m.id} name={m.name} dim={!m.joined} />
+                  <span className="grow stack">
+                    <span className="ellipsis">
+                      {m.name}
+                    </span>
+                    <span className="label ellipsis">
+                      {m.joined
+                        ? (!m.owner && m.email) || memberAccessLabel(m, props.demo)
+                        : m.email ? "Invite pending for " + m.email : "Invite link not used yet"}
+                    </span>
+                  </span>
+                  {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
+                  <ChevronRight size={18} className="chev" />
+                </button>
+              ))}
+            </div>
+          )}
+          {editing && (
+            <MemberSheet
+              key={editing === "new" ? "new" : editing.id}
+              member={editing === "new" ? undefined : editing}
+              canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
+              link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
+              currency={business.currency}
+              onClose={() => setEditing((current) => (current === editing ? null : current))}
+              onSave={(input) =>
+                editing === "new"
+                  ? ((invited.current = new Set(team.map((m) => m.id))),
+                    act({ action: "invite", ...input }).then((done) => {
+                      if (!done) invited.current = null;
+                      return done;
+                    }))
+                  : act(
+                      { action: "member", memberId: editing.id, name: input.name, rate: input.rate, owner: input.owner },
+                      "Saved " + input.name,
+                    ).then(
+                      async (done) =>
+                        done &&
+                        (input.photo === undefined ||
+                          (await act({ action: "profile", memberId: editing.id, photo: input.photo }, "Saved " + input.name))),
+                    )
+              }
+              onResend={
+                editing === "new" || editing.joined || !editing.email || props.demo
+                  ? undefined
+                  : () => act({ action: "invite", name: editing.name, email: editing.email, rate: editing.rate })
+              }
+              onRemove={
+                editing === "new" || editing.owner
+                  ? undefined
+                  : () => act({ action: "removeMember", memberId: editing.id }, "Removed " + editing.name)
+              }
+            />
+          )}
+        </>
       )}
-      {inTab.length > 0 && !shown.length && (
-        <RecordNoMatch
-          query={query}
-          onClear={() => {
-            setQuery("");
-            setPending(false);
-          }}
-        />
-      )}
-      {shown.length > 0 && (
-        <div className="card card-list">
-          {shown.map((m) => (
-            <button key={m.id} className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing(m)}>
-              <Avatar id={m.id} name={m.name} dim={!m.joined} />
+      {!canManage && roster.length > 0 && (
+        <div className="card card-list" role="list" aria-label="Team roster">
+          {roster.map((person) => (
+            <div className="list-row" role="listitem" key={person.id}>
+              <Avatar id={person.id} name={person.name} />
               <span className="grow stack">
                 <span className="ellipsis">
-                  {m.name}
+                  {person.name}{person.id === me.memberId && <span className="label"> (you)</span>}
                 </span>
-                <span className="label ellipsis">
-                  {m.joined ? (m.owner ? "Owner" : m.email) : m.email ? "Invite pending for " + m.email : "Invite link not used yet"}
-                </span>
+                <span className="label">{memberAccessLabel(person)}</span>
               </span>
-              {m.rate > 0 && <span className="label end">{formatMoney(m.rate, business.currency)}</span>}
-              <ChevronRight size={18} className="chev" />
-            </button>
+            </div>
           ))}
         </div>
       )}
-      {editing && (
-        <MemberSheet
-          key={editing === "new" ? "new" : editing.id}
-          member={editing === "new" ? undefined : editing}
-          canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
-          link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
-          currency={business.currency}
-          onClose={() => setEditing((current) => (current === editing ? null : current))}
-          onSave={(input) =>
-            editing === "new"
-              ? ((invited.current = new Set(team.map((m) => m.id))),
-                act({ action: "invite", ...input }).then((done) => {
-                  if (!done) invited.current = null;
-                  return done;
-                }))
-              : act(
-                  { action: "member", memberId: editing.id, name: input.name, rate: input.rate, owner: input.owner },
-                  "Saved " + input.name,
-                ).then(
-                  async (done) =>
-                    done &&
-                    (input.photo === undefined ||
-                      (await act({ action: "profile", memberId: editing.id, photo: input.photo }, "Saved " + input.name))),
-                )
-          }
-          onResend={
-            editing === "new" || editing.joined || !editing.email || props.demo
-              ? undefined
-              : () => act({ action: "invite", name: editing.name, email: editing.email, rate: editing.rate })
-          }
-          onRemove={
-            editing === "new" || editing.owner
-              ? undefined
-              : () => act({ action: "removeMember", memberId: editing.id }, "Removed " + editing.name)
-          }
+      {canLeave && (
+        <button type="button" className="btn destructive block" {...blocked(!props.online && OFFLINE)} onClick={() => setConfirmLeave(true)}>
+          Leave team
+        </button>
+      )}
+      {confirmLeave && canLeave && (
+        <ConfirmSheet
+          title="Leave this team?"
+          detail={`You’ll lose access to ${business.name} and be removed from shifts that haven’t started. You’ll need a new invite to rejoin.`}
+          confirmLabel="Leave team"
+          onClose={() => setConfirmLeave(false)}
+          onConfirm={() => props.onAction({ action: "leaveTeam", businessId: business.id, memberId: me.memberId })}
         />
       )}
     </SubPage>

@@ -458,10 +458,16 @@ export function Workspace() {
       throw Error(
         "Could not prepare offline storage. Reload while online and try again.",
       );
-    await locked("write-" + key, async () => {
+    const exitsBusiness = input.action === "leaveTeam" || input.action === "deleteBusiness";
+    const remainingBusinesses = await locked("write-" + key, async () => {
       await syncRegister(key);
-      await locked("sync-" + key, async () => {
+      return locked("sync-" + key, async () => {
         const s = await loadRegister(key);
+        if (exitsBusiness) {
+          if (s.business?.id !== input.businessId) throw Error("This business is no longer open.");
+          if (s.cart.length)
+            throw Error("Finish or clear the current order before continuing.");
+        }
         const closingId = input.action === "close" ? s.shift?.id : undefined;
         if (closingId) closingHere.current = true;
         if (closingId) show(key, await beginClose(key, closingId));
@@ -506,6 +512,7 @@ export function Workspace() {
                 : "Invitation saved. Email delivery could not be confirmed. Open the pending invite to retry or share its link.",
             );
           }
+          if (exitsBusiness) return snapshot.businesses;
         } catch (error) {
           closingHere.current = false;
           // A timeout can follow a successful commit. Keep the till locked until a retry confirms the close.
@@ -523,6 +530,17 @@ export function Workspace() {
         }
       });
     });
+    if (exitsBusiness && active.current === key) {
+      const { userId } = parseKey(key);
+      const nextBusiness = remainingBusinesses?.[0];
+      const next = nextBusiness ? await keyForBusiness(userId, nextBusiness.id) : userId;
+      if (active.current !== key) return;
+      rememberAccount({ id: userId, register: next, business: nextBusiness?.name });
+      setSettingsPage(null);
+      setRecipesPage(null);
+      await connect(next);
+      setToast(input.action === "leaveTeam" ? "You left the team" : "Business deleted");
+    }
     if (input.action === "open") setTab("sell");
     if (input.action === "setup") openMenu();
   }

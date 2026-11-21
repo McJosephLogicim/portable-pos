@@ -274,6 +274,8 @@ export interface Member {
   inviteCode?: string;
   photo?: string;
 }
+/** The joined teammates visible to everyone in the business. */
+export type TeamRosterMember = Pick<Member, "id" | "name" | "owner" | "primaryOwner">;
 /** Who is using this register. */
 export interface Me {
   memberId: string;
@@ -339,6 +341,7 @@ export interface Bootstrap {
   business: Business | null;
   me?: Me | null;
   team?: Member[];
+  teamRoster?: TeamRosterMember[];
   organizers?: Organizer[];
   bookings?: Booking[];
   menu: Product[];
