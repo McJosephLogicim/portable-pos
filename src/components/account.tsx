@@ -3,7 +3,7 @@ import { Check, ChevronRight, Eye, EyeOff, UserRound, UserRoundPlus } from "luci
 import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import { APP_NAME, appIcons } from "@/lib/app-brand";
-import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
 import { onColor } from "@/lib/theme";
@@ -14,6 +14,7 @@ import { Popo } from "./popo";
 import { CurrencyOptions } from "./settings";
 import { errorText, Explain, GlossyObject, Sheet } from "./ui";
 import styles from "./account.module.css";
+import { captureScreen, restoreScreen } from "./screen-history";
 
 export type AccountEntry = {
   kind: "register" | "invite" | "business" | "shift";
@@ -232,6 +233,16 @@ export function Account(props: AccountProps) {
   const [slot] = useState(() => crypto.randomUUID());
   const passwordId = useId();
   const codeInput = useRef<HTMLInputElement>(null);
+  const entryRoot = useRef<HTMLElement>(null);
+  const signInPosition = useRef<ReturnType<typeof captureScreen>>(undefined);
+  useLayoutEffect(() => {
+    if (!entryRoot.current) return;
+    if (mode === "create" && signInPosition.current) restoreScreen();
+    if (mode === "signin" && signInPosition.current) {
+      restoreScreen(signInPosition.current);
+      signInPosition.current = undefined;
+    }
+  }, [mode]);
   const busy = request !== null;
   const signInOnly = !page && props.signInOnly;
   const emailOptions = { emailRedirectTo: entry?.returnTo };
@@ -241,6 +252,9 @@ export function Account(props: AccountProps) {
   }, [sentTo]);
 
   function switchMode(next: Mode) {
+    if (mode === "signin" && next === "create" && entryRoot.current) {
+      signInPosition.current = captureScreen(entryRoot.current);
+    }
     setMode(next);
     setShowPassword(false);
     setPassword("");
@@ -447,7 +461,7 @@ export function Account(props: AccountProps) {
 
   if (kind === "register") {
     return (
-      <main className={styles.entry}>
+      <main className={styles.entry} ref={entryRoot}>
         <section className={styles.entryShell} aria-labelledby="entry-title">
           <AppMark />
           <div className={styles.entryIntro}>

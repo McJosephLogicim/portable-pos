@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
 import { isSimpleMode } from "@/lib/settings";
 import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
@@ -10,32 +9,27 @@ import { StockListsPage } from "./stock-list-settings";
 import { MenuPreview } from "./sell";
 import { PricingRulesPage } from "./recipe-costing";
 
-export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing";
+export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing" | "preview";
 
 export interface RecipesProps extends EditorProps {
   onRemoveMenuItem: (productId: string, pin: string) => Promise<void>;
   /** Add up finished shifts' leftovers into what each shift starts with. */
   onMergeStock?: (shiftIds: string[], pin: string) => Promise<void>;
   page: RecipesPage | null;
-  onPage: (page: RecipesPage | null) => void;
+  onPage: (page: RecipesPage) => void;
+  onBack: () => void;
+  backLabel: string;
 }
 
 export function RecipesScreen(props: RecipesProps) {
   const { page, onPage, state } = props;
   const simple = isSimpleMode(state.business?.settings);
-  const [preview, setPreview] = useState(false);
-  useEffect(() => {
-    if (page !== "menu") setPreview(false);
-    window.scrollTo(0, 0);
-  }, [page, preview]);
-
-  if (page === "menu") {
-    return preview ? (
-      <SubPage title="Menu items" backLabel="Back to menu items" onBack={() => setPreview(false)}>
-        <MenuPreview state={state} onEditMenu={() => setPreview(false)} />
-      </SubPage>
-    ) : <MenuPage key={page} {...props} onPreview={() => setPreview(true)} />;
-  }
+  if (page === "preview") return (
+    <SubPage title="Menu items" backLabel={props.backLabel} onBack={props.onBack}>
+      <MenuPreview state={state} onEditMenu={props.onBack} />
+    </SubPage>
+  );
+  if (page === "menu") return <MenuPage {...props} onPreview={() => onPage("preview")} />;
   if (page === "categories") return <CategoriesPage {...props} />;
   if (page === "choices") return <ChoicesPage {...props} />;
   if (!simple) {

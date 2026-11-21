@@ -89,7 +89,9 @@ export interface SettingsProps extends EditorProps {
   onSignIn: () => void;
   onSignOut: () => void;
   page: SettingsPage | null;
-  onPage: (page: SettingsPage | null) => void;
+  onPage: (page: SettingsPage) => void;
+  onBack: () => void;
+  backLabel: string;
   /** Opens the list of businesses to switch to or add. */
   onBusinesses: () => void;
   onAccounts?: () => void;
@@ -435,7 +437,8 @@ function BusinessPage(props: SettingsProps) {
           {draft.name || "Your stall"} <span className="g">on every receipt.</span>
         </>
       }
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       <div className="card card-pad stack gap-14">
         <label className="field">
@@ -785,7 +788,8 @@ function PaymentsPage(props: SettingsProps) {
           onClick={() => setEditing("new")}
         />
       }
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       <div className="card card-list">
         {list.map((m) => (
@@ -1046,7 +1050,8 @@ function DiscountsPage(props: SettingsProps) {
         <>No discounts <span className="g">at checkout.</span></>
       ))}
       sentenceAction={list.length > 0 && addDiscount}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       {!list.length && (
         <EmptyState pose="sale" object="discountTag" title="No discounts yet" text="Add a discount to offer it at checkout.">
@@ -1158,7 +1163,8 @@ function CurrencyPage(props: SettingsProps) {
           <span className="g">is how prices will look.</span>
         </>
       }
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       <div className="card card-pad stack gap-14">
         <label className="field">
@@ -1282,9 +1288,6 @@ export function SettingsScreen(props: SettingsProps) {
   const { state, page, onPage, demo } = props;
   const business = state.business!;
   const s = business.settings;
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [page]);
   const me = state.me;
   if (page === "team") return <TeamPage {...props} />;
   if (me && !me.owner)

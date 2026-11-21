@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { APP_NAME, appIcons } from "@/lib/app-brand";
 import { ArrowRight, ChevronLeft } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { PRACTICE, type OwnerAction } from "@/lib/demo";
 import { saveMenuItem, shiftTotals } from "@/lib/domain";
 import {
@@ -23,6 +23,7 @@ import { CloseSheet } from "./shift";
 import { TeamPage } from "./team";
 import { errorText, Notice, PracticePinProvider, usePin } from "./ui";
 import styles from "./onboarding.module.css";
+import { captureScreen, restoreScreen } from "./screen-history";
 
 const steps = [
   { id: "menu", title: "Add menu items", text: "Add a name and price for something you sell. It goes on your business menu.", button: "Add an item", image: "01-menu-items", pose: "menu" },
@@ -62,6 +63,14 @@ export function Onboarding({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const guide = useRef<HTMLElement>(null);
+  const previous = useRef<ReturnType<typeof captureScreen>>(undefined);
+  const fullPage = action === "sell" || action === "team";
+
+  useLayoutEffect(() => {
+    if (fullPage || previous.current) restoreScreen(fullPage ? undefined : previous.current);
+    if (!fullPage) previous.current = undefined;
+  }, [fullPage]);
   const withPin = usePin();
 
   useEffect(() => {
@@ -94,7 +103,7 @@ export function Onboarding({
   const index = steps.indexOf(step);
   const hasTeammate = live.team?.some((member) => member.id !== live.me?.memberId);
   const practiceStep = step.id === "sell" || step.id === "link" || step.id === "close";
-  const finish = () => { setAction(null); window.scrollTo(0, 0); };
+  const finish = () => setAction(null);
   const saveLocal = async (input: OwnerAction) => {
     setPractice(await savePracticeAction(practiceKey, input));
   };
@@ -111,8 +120,8 @@ export function Onboarding({
   }
   async function start() {
     if (practiceStep) setPractice(await openPracticeRegister(practiceKey, live));
+    if (step.id === "sell" || step.id === "team") previous.current = captureScreen(guide.current);
     setAction(step.id);
-    window.scrollTo(0, 0);
   }
 
   const liveSchedule: ScheduleProps = {
@@ -181,7 +190,8 @@ export function Onboarding({
       break;
   }
 
-  if (action === "sell" && till) return (
+  let actionPage: ReactNode = null;
+  if (action === "sell" && till) actionPage = (
     <main className="page">
       <button type="button" className="btn ghost compact" onClick={finish}>
         <ChevronLeft size={17} aria-hidden /> Setup guide
@@ -204,10 +214,10 @@ export function Onboarding({
     </main>
   );
 
-  if (action === "team") return (
+  if (action === "team") actionPage = (
     <main>
       <TeamPage startAdding state={live} online={online} demo={false}
-        onAction={onAction} onSaved={onSaved} onPage={finish} />
+        onAction={onAction} onSaved={onSaved} onBack={finish} backLabel="Back to setup guide" />
       {hasTeammate && (
         <div className="page">
           {error && <Notice tone="danger">{error}</Notice>}
@@ -221,38 +231,40 @@ export function Onboarding({
 
   return (
     <>
-      <main className={styles.page}>
-        <header className={styles.header}>
-          <div className={styles.brand}>
-            <Image src={appIcons.small} width={28} height={28} alt="" unoptimized />
-            {APP_NAME}
+      <Activity mode={fullPage ? "hidden" : "visible"}>
+        <main className={styles.page} ref={guide}>
+          <header className={styles.header}>
+            <div className={styles.brand}>
+              <Image src={appIcons.small} width={28} height={28} alt="" unoptimized />
+              {APP_NAME}
+            </div>
+            <button type="button" className={styles.exit} onClick={onLater}>Finish later</button>
+          </header>
+          <div className={styles.content}>
+            <div className={styles.preview} aria-hidden="true">
+              <Image src={`/onboarding/${step.image}.webp`} className={styles.previewCard} alt="" width={780} height={880} unoptimized />
+              <Popo key={step.id} pose={step.pose} size={120} className={styles.previewPopo} />
+            </div>
+            <h1 ref={heading} tabIndex={-1}>{step.title}</h1>
+            <p className={styles.description}>{step.text}</p>
           </div>
-          <button type="button" className={styles.exit} onClick={onLater}>Finish later</button>
-        </header>
-        <div className={styles.content}>
-          <div className={styles.preview} aria-hidden="true">
-            <Image src={`/onboarding/${step.image}.webp`} className={styles.previewCard} alt="" width={780} height={880} unoptimized />
-            <Popo key={step.id} pose={step.pose} size={120} className={styles.previewPopo} />
-          </div>
-          <h1 ref={heading} tabIndex={-1}>{step.title}</h1>
-          <p className={styles.description}>{step.text}</p>
-        </div>
-        <footer className={styles.footer}>
-          <div className={styles.progress} role="progressbar" aria-label="Onboarding progress" aria-valuemin={1} aria-valuemax={7} aria-valuenow={index + 2}>
-            <span data-status="complete" />
-            {steps.map((entry, i) => <span key={entry.id} data-status={i === index ? "current" : i < index ? "complete" : undefined} />)}
-          </div>
-          {error && <Notice tone="danger">{error}</Notice>}
-          <button type="button" className={`btn block ${styles.cta}`} disabled={busy || (!practiceStep && !online)} onClick={() => void run(start)}>
-            {step.button} <ArrowRight size={18} aria-hidden />
-          </button>
-          {step.id === "team" && hasTeammate && (
-            <button type="button" className="btn ghost block" disabled={!online || busy} onClick={() => void run(onFinish)}>Finish setup</button>
-          )}
-          {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
-        </footer>
-      </main>
-      {form}
+          <footer className={styles.footer}>
+            <div className={styles.progress} role="progressbar" aria-label="Onboarding progress" aria-valuemin={1} aria-valuemax={7} aria-valuenow={index + 2}>
+              <span data-status="complete" />
+              {steps.map((entry, i) => <span key={entry.id} data-status={i === index ? "current" : i < index ? "complete" : undefined} />)}
+            </div>
+            {error && <Notice tone="danger">{error}</Notice>}
+            <button type="button" className={`btn block ${styles.cta}`} disabled={busy || (!practiceStep && !online)} onClick={() => void run(start)}>
+              {step.button} <ArrowRight size={18} aria-hidden />
+            </button>
+            {step.id === "team" && hasTeammate && (
+              <button type="button" className="btn ghost block" disabled={!online || busy} onClick={() => void run(onFinish)}>Finish setup</button>
+            )}
+            {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
+          </footer>
+        </main>
+      </Activity>
+      {actionPage ?? form}
     </>
   );
 }

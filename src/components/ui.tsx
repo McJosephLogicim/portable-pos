@@ -412,6 +412,18 @@ type SheetDrag = {
 };
 
 /** Bottom sheet at every screen size. Uses the native dialog for focus. */
+let sheetOrder = 0;
+const returningSheets = new Map<number, () => void>();
+
+function restoreSheet(order: number, show: () => void) {
+  if (!returningSheets.size) queueMicrotask(() => {
+    const pending = [...returningSheets].sort(([a], [b]) => a - b);
+    returningSheets.clear();
+    for (const [, open] of pending) open();
+  });
+  returningSheets.set(order, show);
+}
+
 export function Sheet({
   title,
   onClose,
@@ -436,6 +448,8 @@ export function Sheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
+  const scrolls = useRef(new Map<Element, { left: number; top: number }>());
+  const order = useRef<number>(undefined);
   const backdropPressed = useRef(false);
   const drag = useRef<SheetDrag | null>(null);
   const rebound = useRef<Animation | null>(null);
@@ -452,15 +466,31 @@ export function Sheet({
   }, []);
   useEffect(() => {
     const node = ref.current;
-    const trigger = document.activeElement;
-    clearSheetExit();
-    node?.showModal();
-    // showModal focuses the first button (often Edit or Close), and Safari rings it. Focus the
-    // sheet itself instead, so nothing looks selected; Tab still moves into it from there.
-    node?.focus({ preventScroll: true });
+    if (!node) return;
+    let trigger: Element | null = null;
+    const show = () => {
+      if (!node.isConnected) return;
+      trigger = document.activeElement;
+      clearSheetExit();
+      node.showModal();
+      // Focus the sheet without scrolling an input or making the Close button look selected.
+      node.focus({ preventScroll: true });
+      for (const [element, { left, top }] of scrolls.current) {
+        if (node.contains(element)) element.scrollTo({ left, top, behavior: "instant" });
+        else scrolls.current.delete(element);
+      }
+    };
+    if (order.current === undefined) {
+      order.current = ++sheetOrder;
+      show();
+    } else {
+      // A returning screen can contain several open sheets. Reopen the parent before the child.
+      restoreSheet(order.current, show);
+    }
+    const number = order.current;
     return () => {
-      node?.close();
-      // Hand focus back only to keyboard users; after a tap it would ring the button behind.
+      returningSheets.delete(number);
+      node.close();
       if (usingKeyboard && trigger instanceof HTMLElement && trigger.isConnected)
         trigger.focus({ preventScroll: true });
     };
@@ -531,6 +561,14 @@ export function Sheet({
       tabIndex={-1}
       aria-labelledby={id}
       aria-describedby={describedBy}
+      onScrollCapture={(event) => {
+        const element = event.target;
+        if (element instanceof Element && element.closest("dialog") === ref.current) {
+          const { scrollLeft: left, scrollTop: top } = element;
+          if (left || top) scrolls.current.set(element, { left, top });
+          else scrolls.current.delete(element);
+        }
+      }}
       onCancel={(event) => {
         if (event.target !== ref.current) return;
         event.preventDefault();

@@ -119,13 +119,7 @@ export function ShiftSales({
           title={title}
           currency={currency}
           onClose={() => setPicked(null)}
-          onSales={
-            onSales &&
-            (() => {
-              setPicked(null);
-              onSales(picked);
-            })
-          }
+          onSales={onSales && (() => onSales(picked))}
         />
       )}
     </div>

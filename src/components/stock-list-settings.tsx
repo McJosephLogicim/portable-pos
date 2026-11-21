@@ -107,11 +107,11 @@ export function StockListsPage(props: RecipesProps) {
   return (
     <SubPage
       title="Stock lists"
-      backLabel="Back to recipes"
+      backLabel={props.backLabel}
       sentence={<>Reuse prep categories, <span className="g">stock types and suppliers.</span></>}
       sentenceAction={hasEntries && addMenu(activeField)}
       help={<p>Add names here or type a new one when you save a prep or stock item. To remove a name, first change any items using it.</p>}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
     >
       <RecordSearch
         count={count}

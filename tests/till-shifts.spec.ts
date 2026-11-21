@@ -345,3 +345,50 @@ test("The Till Shifts sheet offers both Add actions in the empty state", async (
   await page.getByRole("menuitem", { name: "Add bulk" }).click();
   await expect(page.getByRole("dialog", { name: "Add many shifts", exact: true })).toBeVisible();
 });
+
+test("Back from Sales restores the item sheet, then each underlying shift view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 620 });
+  await seedTill(page, true, true);
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /^Past shifts/ }).click();
+  const past = page.getByRole("dialog", { name: "Past shifts" });
+  await past.getByRole("button", { name: /Closed market/ }).click();
+  const details = page.getByRole("dialog", { name: "Closed market", exact: true });
+  const seller = details.getByRole("button", { name: /Espresso.*1 sold/ });
+  await seller.scrollIntoViewIfNeeded();
+  const body = details.locator(".sheet-body").first();
+  const scroll = await body.evaluate((node) => node.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await details.getByRole("button", { name: "Edit", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit shift", exact: true });
+  await edit.getByRole("button", { name: "Close", exact: true }).click();
+  await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBe(scroll);
+  await seller.click();
+  const item = page.getByRole("dialog", { name: "Espresso", exact: true });
+  await item.getByRole("button", { name: "See in Sales" }).click();
+  await expect(page.getByRole("button", { name: /Remove item Espresso/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to till" }).click();
+  await expect(item).toBeFocused();
+  await item.getByRole("button", { name: "Close", exact: true }).click();
+  await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBe(scroll);
+  await details.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(past).toBeVisible();
+  await past.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Back to selling" })).toBeVisible();
+});
+
+test("Change from till opening restores the same spot in the shift list", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 480 });
+  await seedTill(page, true, false, { opening: true });
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  const shift = page.getByRole("button", { name: /Atrium/ });
+  await shift.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, 40));
+  const scroll = await page.evaluate(() => window.scrollY);
+  expect(scroll).toBeGreaterThan(0);
+  await shift.click();
+  await expect(page.getByRole("heading", { name: "Open till" })).toBeVisible();
+  await page.getByRole("button", { name: "Change", exact: true }).click();
+  await expect(shift).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+});

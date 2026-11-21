@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ChevronRight, CloudOff, ReceiptText, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, CloudOff, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -35,12 +35,16 @@ export function SalesScreen({
   onReverse,
   onSell,
   focus,
+  onBack,
+  backLabel,
 }: {
   state: RegisterState;
   online: boolean;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
   onSell: () => void;
   focus: SalesFocus | null;
+  onBack?: () => void;
+  backLabel: string;
 }) {
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
@@ -120,6 +124,9 @@ export function SalesScreen({
   return (
     <div className="page">
       <div className="page-top">
+        {onBack && <button type="button" className="round" aria-label={backLabel} onClick={onBack}>
+          <ArrowLeft size={19} aria-hidden />
+        </button>}
         <h1 className="headline grow">
           {picked.length && live.length ? (
             <>

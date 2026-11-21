@@ -182,7 +182,8 @@ export function OrganizersPage(props: SettingsProps) {
         </>
       )}
       sentenceAction={list.length > 0 && addOrganizer}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       <RecordSearch count={list.length} noun="organizers and events" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (

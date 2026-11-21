@@ -616,10 +616,10 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           <p>Counting at opening or closing is optional and updates the amounts. Things you make ahead are in Prep.</p>
         </>
       )}
-      backLabel="Back to recipes"
+      backLabel={props.backLabel}
       sentence={sentence}
       sentenceAction={inTab.length > 0 && addButton}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
     >
       {!select.on && (
         <div className="row">

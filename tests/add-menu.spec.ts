@@ -321,5 +321,89 @@ test("menu preview uses the Sell checkout and leaves the live order and sales al
   await expect(page.getByRole("button", { name: "See menu in action" })).toBeVisible();
   await page.getByRole("button", { name: "Sell", exact: true }).click();
   await expect(liveOrder).toBeVisible();
-  await expect(page.getByText(/Shift .* · 0 sales/)).toBeVisible();
+  await expect(page.getByRole("main").getByText(/Shift .* · 0 sales/)).toBeVisible();
+});
+
+test("recipe back buttons restore each source page and its filters", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 620 });
+  await startDemo(page);
+  await page.getByRole("button", { name: "Recipes", exact: true }).click();
+  const main = page.getByRole("main");
+  await main.getByRole("button", { name: /^Menu costing/ }).click();
+  const bakery = main.getByRole("group", { name: "Menu categories" }).getByRole("button", { name: "Bakery", exact: true });
+  await bakery.click();
+  await main.getByRole("button", { name: /^Pricing rules/ }).scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo(0, 170));
+  const costingScroll = await page.evaluate(() => window.scrollY);
+  expect(costingScroll).toBeGreaterThan(0);
+  await main.getByRole("button", { name: /^Pricing rules/ }).click();
+  await expect(main.getByRole("heading", { name: "Pricing rules", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await main.getByRole("button", { name: "Back to menu costing" }).click();
+  await expect(bakery).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(costingScroll);
+  await main.getByRole("button", { name: "Back to recipes" }).click();
+  await expect(main.getByRole("heading", { name: "Recipes", exact: true })).toBeVisible();
+
+  await main.getByRole("button", { name: /^Stock items What you buy/ }).click();
+  const search = main.getByRole("searchbox", { name: "Search stock items" });
+  await search.fill("milk");
+  await main.getByRole("button", { name: "Stock lists", exact: true }).click();
+  await main.getByRole("button", { name: "Back to stock items", exact: true }).click();
+  await expect(search).toHaveValue("milk");
+  await main.getByRole("button", { name: "Back to recipes" }).click();
+  await main.getByRole("button", { name: /^Menu items What you sell/ }).click();
+
+  const menuSearch = main.getByRole("searchbox", { name: "Search items" });
+  const coffee = main.getByRole("group", { name: "Categories" }).getByRole("button", { name: "Coffee", exact: true });
+  await coffee.click();
+  await menuSearch.fill("latte");
+  await main.getByRole("button", { name: "See menu in action" }).click();
+  await expect(main.getByRole("button", { name: /^Add Caffè Latte/ })).toBeVisible();
+  await page.goBack();
+  await expect(menuSearch).toHaveValue("latte");
+  await expect(coffee).toHaveAttribute("aria-pressed", "true");
+  await page.goForward();
+  await main.getByRole("button", { name: "Back to menu items", exact: true }).click();
+  await expect(menuSearch).toHaveValue("latte");
+  await expect(coffee).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the settings back button restores the page at the same scroll offset", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 620 });
+  await startDemo(page);
+  const organizers = page.getByRole("button", { name: /^Organizers/ });
+  await organizers.scrollIntoViewIfNeeded();
+  const scroll = await page.evaluate(() => window.scrollY);
+  expect(scroll).toBeGreaterThan(0);
+  await organizers.click();
+  await page.getByRole("button", { name: "Back to settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+});
+
+test("checkout Back restores the payment step at the same scroll offset", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await startDemo(page);
+  await page.getByRole("button", { name: "Sell", exact: true }).click();
+  await page.getByRole("button", { name: /^Add Butter Croissant/ }).click();
+  await page.getByRole("button", { name: /^Charge .* for 1 item/ }).click();
+  const charge = page.getByRole("dialog", { name: "Charge", exact: true });
+  await charge.locator("summary").filter({ hasText: "Discount" }).click();
+  await charge.getByRole("textbox", { name: "Other amount" }).fill("200");
+  await page.keyboard.press("Tab");
+  const next = charge.getByRole("button", { name: /^Next · change/ });
+  const body = charge.locator(".sheet-body");
+  await body.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  const scroll = await body.evaluate((node) => node.scrollTop);
+  expect(scroll).toBeGreaterThan(0);
+  await next.click();
+  const review = page.getByRole("dialog", { name: "Confirm sale", exact: true });
+  await review.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(charge.getByRole("textbox", { name: "Other amount" })).toHaveValue("200");
+  await expect(charge.getByRole("group", { name: "Discount", exact: true })).toBeVisible();
+  await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBe(scroll);
+  await next.click();
+  await review.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(charge).toBeVisible();
 });

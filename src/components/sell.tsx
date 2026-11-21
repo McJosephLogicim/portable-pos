@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
 import type {
   CartLine,
@@ -474,10 +474,22 @@ function Checkout({
   const stage = done ? "done" : review !== null && chosen ? "review" : "charge";
   const previousStage = useRef(stage);
   const stageTarget = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  const discountDetails = useRef<HTMLDetailsElement>(null);
+  const discountChoices = useRef<HTMLDivElement>(null);
+  const chargePosition = useRef({ top: 0, discountOpen: false, discountLeft: 0 });
+  useLayoutEffect(() => {
     if (previousStage.current === stage) return;
     previousStage.current = stage;
-    stageTarget.current?.focus();
+    const target = stageTarget.current;
+    if (stage === "charge") {
+      const { top, discountOpen, discountLeft } = chargePosition.current;
+      if (discountDetails.current) discountDetails.current.open = discountOpen;
+      if (discountChoices.current) discountChoices.current.scrollLeft = discountLeft;
+      target?.closest(".sheet-body")?.scrollTo({ top, behavior: "instant" });
+    } else {
+      target?.closest(".sheet-body")?.scrollTo({ top: 0, behavior: "instant" });
+    }
+    target?.focus({ preventScroll: true });
   }, [stage]);
   const order = lines.length ? priceOrder(shift, lines, discountId) : null;
   const total = order?.total ?? 0;
@@ -507,9 +519,19 @@ function Checkout({
 
   function ask(received: number) {
     if (!chosen || !canPay) return;
+    chargePosition.current = {
+      top: stageTarget.current?.closest(".sheet-body")?.scrollTop ?? 0,
+      discountOpen: discountDetails.current?.open ?? false,
+      discountLeft: discountChoices.current?.scrollLeft ?? 0,
+    };
     setError("");
     buzz.tap();
     setReview(received);
+  }
+
+  function backToCharge() {
+    setReview(null);
+    setError("");
   }
 
   async function pay(received: number) {
@@ -558,7 +580,7 @@ function Checkout({
           </>
         }
       >
-        <div className="confirm-sale">
+        <div key="done" className="confirm-sale">
           <div
             className={`hero sale-hero ${styles.stageFocus} ${styles.resultHero}`}
             ref={stageTarget}
@@ -600,7 +622,7 @@ function Checkout({
     return (
       <Sheet
         title={preview ? "Confirm test sale" : "Confirm sale"}
-        onClose={onClose}
+        onClose={backToCharge}
         busy={busy}
         footer={
           <>
@@ -615,17 +637,14 @@ function Checkout({
             <button
               className="btn ghost block compact"
               disabled={busy}
-              onClick={() => {
-                setReview(null);
-                setError("");
-              }}
+              onClick={backToCharge}
             >
               Back
             </button>
           </>
         }
       >
-        <div className="confirm-sale">
+        <div key="review" className="confirm-sale">
           <div className={`stack gap-8 confirm-main ${styles.stageFocus}`} ref={stageTarget} tabIndex={-1}>
             <p className="headline">
               <Money value={isCash && change > 0 ? change : total} currency={currency} />{" "}
@@ -711,7 +730,7 @@ function Checkout({
         ) : undefined
       }
     >
-      <div>
+      <div key="charge">
         <OrderLines
           lines={lines}
           currency={currency}
@@ -738,12 +757,12 @@ function Checkout({
         <Money value={total} currency={currency} />
       </div>
       {discounts.length > 0 && (
-        <details className={styles.discount}>
+        <details className={styles.discount} ref={discountDetails}>
           <summary>
             {discount ? `Discount · ${discount.name}` : "Discount"}
             <ChevronDown size={16} aria-hidden="true" />
           </summary>
-          <div className={`chips ${styles.discountChoices}`} role="group" aria-label="Discount">
+          <div className={`chips ${styles.discountChoices}`} ref={discountChoices} role="group" aria-label="Discount">
             <button
               type="button"
               aria-pressed={!discountId}

@@ -1,10 +1,10 @@
 /* The leaderboard is a full-screen drill-down from Shifts. */
-:global(.account-bar):has(~ main > .page),
-main:has(> .page) ~ :global(.tabbar) {
+:global(.account-bar):has(~ main[data-active-screen] > .page),
+main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
   display: none;
 }
 
-:global(body):has(main > .page) {
+:global(body):has(main[data-active-screen] > .page) {
   background: #080e1e;
 }
 

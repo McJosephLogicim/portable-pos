@@ -510,8 +510,10 @@ export function ShiftScreen({
   onSell,
   onGoMenu,
   onSchedule,
-  onShift,
-  compact,
+  onStart,
+  onBack,
+  openingId,
+  sellLabel,
   ...schedule
 }: ScheduleProps & {
   onOpen: (opening: Opening) => Promise<void>;
@@ -522,13 +524,14 @@ export function ShiftScreen({
   onSell: () => void;
   onGoMenu?: () => void;
   onSchedule: () => void;
-  onShift: (bookingId: string) => void;
-  /** On Sell: just the shift, without the past ones. */
-  compact?: boolean;
+  onStart: (bookingId: string) => void;
+  onBack: () => void;
+  openingId?: string;
+  sellLabel: string;
 }) {
   const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
-  const [starting, setStarting] = useState<string | null>(null);
+  const [bookingId, setBookingId] = useState<string | null>(null);
   const [closedId, setClosedId] = useState<string | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
   const [pastTillId, setPastTillId] = useState<string | null>(null);
@@ -540,7 +543,7 @@ export function ShiftScreen({
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
-  const startingBooking = starting ? upcomingBookings(state).find((b) => b.id === starting) : undefined;
+  const startingBooking = openingId ? upcomingBookings(state).find((b) => b.id === openingId) : undefined;
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const replay = shift ? stockReplay(shift, state.sales) : undefined;
@@ -577,16 +580,16 @@ export function ShiftScreen({
       {state.closingShiftId && (
         <Notice tone="danger">Closing is waiting for the server. Reconnect and close again to finish.</Notice>
       )}
-      {(shift || (history.length > 0 && !compact && !startingBooking)) && (
+      {(shift || (history.length > 0 && !startingBooking)) && (
         <div className="stack gap-8">
           {shift && (
             <ShiftStrip
               state={state}
               onTillPage
-              onTill={activeBooking ? () => onShift(activeBooking.id) : () => setLinking(shift.id)}
+              onTill={activeBooking ? () => setBookingId(activeBooking.id) : () => setLinking(shift.id)}
             />
           )}
-          {history.length > 0 && !compact && !startingBooking && (
+          {history.length > 0 && !startingBooking && (
             <button type="button" className="shift-strip" onClick={() => setPastShifts(true)} aria-haspopup="dialog">
               <Wallet size={16} strokeWidth={1.9} />
               <span className="grow">Past shifts</span>
@@ -604,7 +607,7 @@ export function ShiftScreen({
               sold since {time.format(new Date(shift.openedAt))}.
             </span>
           </h1>
-          <div className={compact ? "hero" : `hero ${styles.tillDrawer}`}>
+          <div className={`hero ${styles.tillDrawer}`}>
             <div className={`stack gap-10 ${styles.tillDrawerTotal}`}>
               <span className="hero-label">Expected in the drawer</span>
               <Money value={totals.expectedCash} currency={currency} className="big-num" />
@@ -613,10 +616,10 @@ export function ShiftScreen({
                 {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
               </span>
             </div>
-            {!compact && <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />}
+            <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />
           </div>
-          {!compact && !state.closingShiftId && (
-            <button className="btn block" onClick={onSell}>Back to selling</button>
+          {!state.closingShiftId && (
+            <button className="btn block" onClick={onSell}>{sellLabel}</button>
           )}
           <div className="grid-2">
             <div className="tile">
@@ -722,7 +725,6 @@ export function ShiftScreen({
                 onClose={() => setMethod(null)}
                 onSales={() => {
                   onSales({ filter: { shift: [shiftKey(shift)], payment: [method] } });
-                  setMethod(null);
                 }}
               />
             )}
@@ -753,16 +755,14 @@ export function ShiftScreen({
             state={state}
             booking={startingBooking}
             online={online}
-            onOpen={async (input) => {
-              await onOpen(input);
-              setStarting(null);
-            }}
-            onBack={() => setStarting(null)}
+            onOpen={onOpen}
+            onBack={onBack}
           />
         ) : (
-          <NoShift state={state} onStart={setStarting} onJoin={onJoin} onSchedule={onSchedule} onGoMenu={onGoMenu} />
+          <NoShift state={state} onStart={onStart} onJoin={onJoin} onSchedule={onSchedule} onGoMenu={onGoMenu} />
         )
       )}
+      {bookingId && <ShiftDetailsSheet {...schedule} bookingId={bookingId} onClose={() => setBookingId(null)} />}
       {pastShifts && (
         <Sheet title="Past shifts" onClose={() => setPastShifts(false)}>
           <ShiftList entries={history} state={state} showDates onOpen={setPastTillId} />

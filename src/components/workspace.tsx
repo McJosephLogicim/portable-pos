@@ -1,14 +1,16 @@
 "use client";
 
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Activity, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { BookOpen, CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
-import { SettingsScreen, type SettingsPage } from "./settings";
+import { SettingsScreen, type SettingsPage, type EditorProps } from "./settings";
 import { RecipesScreen, type RecipesPage } from "./recipes";
-import { ScheduleScreen, ShiftDetailsSheet } from "./schedule";
+import { ScheduleScreen } from "./schedule";
+import { LeaderboardPage } from "./leaderboard";
+import { captureScreen, HistoryScreen, restoreScreen, useScreenHistory } from "./screen-history";
 import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } from "./account";
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
@@ -46,6 +48,51 @@ const tabs = [
   { id: "recipes", name: "Recipes", icon: BookOpen },
 ] as const;
 type Tab = (typeof tabs)[number]["id"] | "settings";
+type Screen =
+  | { tab: "sell" | "add-business" }
+  | { tab: "shift"; openingId?: string }
+  | { tab: "sales"; focus?: SalesFocus }
+  | { tab: "schedule"; leaderboard?: boolean; shared?: { bookingId: string | null } }
+  | { tab: "settings"; page?: SettingsPage }
+  | { tab: "recipes"; page?: RecipesPage };
+
+const SELL: Screen = { tab: "sell" };
+
+function isTabHome(screen: Screen) {
+  switch (screen.tab) {
+    case "recipes":
+    case "settings":
+      return !screen.page;
+    case "shift":
+      return !screen.openingId;
+    case "schedule":
+      return !screen.leaderboard && !screen.shared;
+    case "sales":
+      return !screen.focus;
+    case "sell":
+      return true;
+    case "add-business":
+      return false;
+  }
+}
+
+function screenName(screen?: Screen) {
+  if (!screen) return undefined;
+  if (screen.tab === "settings" || screen.tab === "recipes") {
+    const titles = {
+      business: "business settings", checklist: "opening checklist", currency: "currency and time",
+      discounts: "discounts", organizers: "organizers", payments: "payment methods", team: "team",
+      menu: "menu items", categories: "categories", choices: "choices", stock: "stock items",
+      prep: "prep", "stock-lists": "stock lists", costing: "menu costing", pricing: "pricing rules",
+      preview: "menu preview",
+    } as const;
+    return screen.page ? titles[screen.page] : screen.tab;
+  }
+  if (screen.tab === "schedule") return screen.leaderboard ? "leaderboard" : "shifts";
+  if (screen.tab === "shift") return screen.openingId ? "open till" : "till";
+  if (screen.tab === "add-business") return "add a business";
+  return screen.tab === "sell" ? "selling" : "sales";
+}
 type UndoNotice = {
   id: string;
   text: string;
@@ -132,26 +179,21 @@ async function syncRegister(
 }
 export function Workspace() {
   const [key, setKey] = useState<string | null>(null),
-    [state, setState] = useState<RegisterState | null>(null),
-    [tab, setTab] = useState<Tab>("sell");
+    [state, setState] = useState<RegisterState | null>(null);
+  const navigation = useScreenHistory<Screen>(SELL);
+  const resetNavigation = navigation.reset;
   const [online, setOnline] = useState(true),
     [notice, setNotice] = useState(""),
     [syncErr, setSyncErr] = useState(""),
     [ready, setReady] = useState(false);
   const [account, setAccount] = useState(false),
-    [tillBooking, setTillBooking] = useState<string | null>(null),
     [pending, setPending] = useState(false),
     [bootError, setBootError] = useState(""),
-    [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null),
-    [recipesPage, setRecipesPage] = useState<RecipesPage | null>(null),
-    [sharedSchedule, setSharedSchedule] = useState<{ bookingId: string | null } | null>(null),
-    [salesFocus, setSalesFocus] = useState<SalesFocus | null>(null),
     [toast, setToast] = useState(""),
     [toastStamp, setToastStamp] = useState(0),
     [undoNotices, setUndoNotices] = useState<UndoNotice[]>([]),
     [confirmSignOut, setConfirmSignOut] = useState(false),
-    [adding, setAdding] = useState(false),
-    [switching, setSwitching] = useState(false);
+    [switching, setSwitching] = useState<string | null>(null);
   const [pickingAccount, setPickingAccount] = useState(false);
   const [deferredOnboarding, setDeferredOnboarding] = useState<string | null>(null);
   const [signingInto, setSigningInto] = useState<SavedAccount | "new" | null>(null);
@@ -162,6 +204,12 @@ export function Workspace() {
     syncBusy = useRef(false),
     joinTarget = useRef<JoinTarget | null>(null),
     inviteTarget = useRef<string | null>(null);
+  const demoEntry = useRef<ReturnType<typeof captureScreen>>(undefined);
+  useLayoutEffect(() => {
+    if (key || !entry || !demoEntry.current) return;
+    restoreScreen(demoEntry.current);
+    demoEntry.current = undefined;
+  }, [key, entry]);
   // Toasts sit in the top layer, above any open sheet, so a refused tap inside a sheet still
   // shows its reason. Re-raised on each new toast, in case a sheet opened since the last one.
   const toastLayer = useRef<HTMLDivElement>(null);
@@ -195,9 +243,8 @@ export function Workspace() {
       setSyncErr("");
       setBootError("");
       setUndoNotices([]);
-      setTillBooking(null);
-      setSharedSchedule(null);
-      setTab("sell");
+      resetNavigation(SELL);
+      setSwitching(null);
       const { userId } = parseKey(id);
       const invite = id !== DEMO ? inviteTarget.current : null;
       const linked = id !== DEMO && (invite || joinTarget.current);
@@ -282,8 +329,7 @@ export function Workspace() {
               clearLinkParams("shifts", "shift", "j");
               setEntry(REGISTER_ENTRY);
               setLinkProblem(null);
-              setSharedSchedule({ bookingId: booking?.id ?? null });
-              setTab("schedule");
+              resetNavigation({ tab: "schedule", shared: { bookingId: booking?.id ?? null } });
             }
           }
         }
@@ -294,7 +340,7 @@ export function Workspace() {
         if (active.current === id) setResolvingLink(false);
       }
     },
-    [show],
+    [show, resetNavigation],
   );
   useEffect(() => {
     let alive = true;
@@ -536,13 +582,13 @@ export function Workspace() {
       const next = nextBusiness ? await keyForBusiness(userId, nextBusiness.id) : userId;
       if (active.current !== key) return;
       rememberAccount({ id: userId, register: next, business: nextBusiness?.name });
-      setSettingsPage(null);
-      setRecipesPage(null);
       await connect(next);
       setToast(input.action === "leaveTeam" ? "You left the team" : "Business deleted");
     }
-    if (input.action === "open") setTab("sell");
-    if (input.action === "setup") openMenu();
+    if (input.action === "setup" && active.current === key) {
+      resetNavigation({ tab: "recipes" });
+      navigation.open({ tab: "recipes", page: "menu" });
+    }
   }
   async function cart(next: CartLine[]) {
     if (!state || !key) throw Error("Register unavailable.");
@@ -611,6 +657,7 @@ export function Workspace() {
     setNotice("");
     setSyncErr("");
     setLinkProblem(null);
+    resetNavigation(SELL);
     window.scrollTo(0, 0);
   }
   async function signOut() {
@@ -628,14 +675,14 @@ export function Workspace() {
     });
     localStorage.removeItem(ACTIVE);
     setDeferredOnboarding(null);
-    setSettingsPage(null);
-    setRecipesPage(null);
     openLogin();
   }
   const demo = key === DEMO;
   const userId = key && !demo ? parseKey(key).userId : null;
+  const current = navigation.current.screen;
   const showOnboarding = Boolean(userId && state?.business && state.me?.owner && state.onboardingComplete === false &&
-    deferredOnboarding !== userId && !sharedSchedule && !bootError && !adding);
+    deferredOnboarding !== userId && !(current.tab === "schedule" && current.shared) &&
+    !bootError && current.tab !== "add-business");
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
   const status = state?.pending.length
@@ -646,22 +693,19 @@ export function Workspace() {
         ? "Online"
         : "Offline";
   const canManageRecipes = !state?.me || state.me.owner;
-  const view: Tab = tab === "recipes" && !canManageRecipes ? "sell" : tab;
+  const view = current.tab === "recipes" && !canManageRecipes ? "sell" : current.tab;
   const navTabs = canManageRecipes ? tabs : tabs.filter((item) => item.id !== "recipes");
   const activeTabIndex = navTabs.findIndex((item) => item.id === view);
-  const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
-  const go = (t: Tab) => {
-    if (t !== tab) buzz.tap();
-    setTab(t);
-    if (t !== "schedule") setSharedSchedule(null);
-    if (t === "settings") setSettingsPage(null);
-    if (t === "recipes") setRecipesPage(null);
-    window.scrollTo(0, 0);
+  const go = (tab: Tab) => {
+    if (current.tab === tab && isTabHome(current)) return;
+    if (view !== tab) buzz.tap();
+    const previous = navigation.entries[navigation.index - 1]?.screen;
+    if (previous?.tab === tab && isTabHome(previous)) {
+      navigation.back(navigation.current.id);
+    } else {
+      navigation.open({ tab });
+    }
   };
-  function openMenu() {
-    go("recipes");
-    setRecipesPage("menu");
-  }
   async function upload(file: File, face = false) {
     const photo = await compressPhoto(file);
     if (!key || key === DEMO) return blobToDataUrl(photo);
@@ -674,8 +718,6 @@ export function Workspace() {
     const { userId } = parseKey(key);
     if (navigator.onLine) await flush();
     buzz.tick();
-    setSettingsPage(null);
-    setRecipesPage(null);
     await connect(await keyForBusiness(userId, businessId));
   }
   async function addBusiness(input: OwnerAction) {
@@ -688,16 +730,15 @@ export function Workspace() {
       const data = await api(next, { ...input, id });
       await mergeServer(next, data);
     });
-    setAdding(false);
     await connect(next);
-    openMenu();
+    resetNavigation({ tab: "recipes" });
+    navigation.open({ tab: "recipes", page: "menu" });
     setToast("Added " + input.name);
   }
   async function useSavedAccount(entry: SavedAccount) {
     const { data: { session } } = await authForUser(entry.id).auth.getSession();
     if (session?.user.id !== entry.id) {
       if (!navigator.onLine) throw Error("Connect to sign in to this account again.");
-      setPickingAccount(false);
       setSigningInto(entry);
       return;
     }
@@ -722,7 +763,7 @@ export function Workspace() {
           current={key ? parseKey(key).userId : undefined}
           online={online}
           onSelect={useSavedAccount}
-          onAdd={() => { setPickingAccount(false); setSigningInto("new"); }}
+          onAdd={() => setSigningInto("new")}
           onClose={() => setPickingAccount(false)}
         />
       )}
@@ -730,7 +771,7 @@ export function Workspace() {
         <Account
           signInOnly={signingInto !== "new"}
           initialEmail={signingInto === "new" ? undefined : signingInto.email}
-          onDismiss={() => { setSigningInto(null); setPickingAccount(true); }}
+          onDismiss={() => setSigningInto(null)}
           onSignedIn={openAccount}
         />
       )}
@@ -758,6 +799,7 @@ export function Workspace() {
           onChooseAccount={entry.kind === "register" && savedAccounts().length ? () => setPickingAccount(true) : undefined}
           onSignedIn={openAccount}
           onDemo={() => {
+            demoEntry.current = captureScreen();
             sessionStorage.setItem(DEMO_SESSION, "1");
             setNotice("");
             void connect(DEMO);
@@ -781,138 +823,129 @@ export function Workspace() {
       />
     );
 
-  let screen: React.ReactNode;
+  let content: React.ReactNode;
   if (bootError)
-    screen = (
-      <div className="page">
-        <h1 className="headline" style={{ paddingTop: 24 }}>
-          Can't open the register. <span className="g">{bootError}</span>
-        </h1>
-        <button className="btn" onClick={() => key && void connect(key)}>
-          Retry
-        </button>
-        <button className="link" onClick={demo ? openLogin : () => setAccount(true)}>
-          {demo ? "Back to sign in" : "Sign in"}
-        </button>
-      </div>
+    content = (
+      <main>
+        <div className="page">
+          <h1 className="headline" style={{ paddingTop: 24 }}>
+            Can't open the register. <span className="g">{bootError}</span>
+          </h1>
+          <button className="btn" onClick={() => key && void connect(key)}>
+            Retry
+          </button>
+          <button className="link" onClick={demo ? openLogin : () => setAccount(true)}>
+            {demo ? "Back to sign in" : "Sign in"}
+          </button>
+        </div>
+      </main>
     );
-  else if (adding)
-    screen = <Setup adding onSave={addBusiness} onSignOut={() => setAdding(false)} />;
-  else if (!state) screen = <LoadingScreen message="Getting your register ready…" />;
+  else if (!state) content = <main><LoadingScreen message="Getting your register ready…" /></main>;
   else if (!business)
-    screen = <Setup onboarding={state.onboardingComplete === false} onSave={owner} onSignOut={() => setConfirmSignOut(true)} />;
-  else if (view === "schedule")
-    screen = (
-      <ScheduleScreen
-        key={sharedSchedule?.bookingId ?? (sharedSchedule ? "open-seats" : "schedule")}
-        state={state}
-        online={online}
-        demo={demo}
-        sharedSchedule={sharedSchedule}
-        onAction={owner}
-        onSaved={setToast}
-        onSales={(focus: SalesFocus) => {
-          setSalesFocus(focus);
-          go("sales");
-        }}
-      />
-    );
-  else if (view === "settings")
-    screen = (
-      <SettingsScreen
-        state={state}
-        online={online}
-        demo={demo}
-        status={status}
-        offlineReady={ready}
-        page={settingsPage}
-        onPage={setSettingsPage}
-        onSaved={setToast}
-        onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
-        onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
-        onAction={owner}
-        onSignIn={openLogin}
-        onSignOut={() => setConfirmSignOut(true)}
-        onBusinesses={() => setSwitching(true)}
-        onAccounts={!demo && accountsEnabled ? () => setPickingAccount(true) : undefined}
-      />
-    );
-  else if (view === "recipes")
-    screen = (
-      <RecipesScreen
-        state={state}
-        online={online}
-        page={recipesPage}
-        onPage={setRecipesPage}
-        onSaved={setToast}
-        onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
-        onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
-        onRemoveMenuItem={(productId, pin) => owner({ action: "removeMenuItem", productId, pin })}
-        onMergeStock={(shiftIds, pin) => owner({ action: "mergeStock", shiftIds, pin })}
-      />
-    );
-  else if (view === "sales")
-    screen = (
-      <SalesScreen
-        key={salesFocus ? JSON.stringify(salesFocus.filter) : "sales"}
-        state={state}
-        online={online}
-        onReverse={reverse}
-        onSell={() => go("sell")}
-        focus={salesFocus}
-      />
-    );
-  else if (view === "sell" && (!state.shift || state.shift.closedAt))
-    screen = (
-      <div className="page">
-        <EmptyState heading="h1" pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
-          <button type="button" className="btn compact" onClick={() => go("shift")}>Open till</button>
-        </EmptyState>
-      </div>
-    );
-  else if (view === "shift" || !sellable)
-    screen = (
-        <ShiftScreen
-          key={view}
-          compact={view === "sell"}
-          state={state}
-          online={online}
-          onOpen={(opening: Opening) => owner({ action: "open", ...opening })}
-          onJoin={demo ? undefined : join}
-          onSchedule={() => go("schedule")}
-          onShift={setTillBooking}
-          demo={demo}
-          onSales={(focus: SalesFocus) => {
-            setSalesFocus(focus);
-            go("sales");
-          }}
-          onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
-          onExpense={expense}
-          onUnexpense={unexpense}
-          onAction={owner}
-          onSaved={setToast}
-          onSell={() => go("sell")}
-          onGoMenu={canManageRecipes ? openMenu : undefined}
-        />
-      );
-  else
-    screen = (
-      <div className="page">
-        <SellScreen
-          state={state}
-          status={status}
-          online={online}
-          pending={pending}
-          onCart={cart}
-          onCheckout={sell}
-          onAvailability={available}
-          onReverse={reverse}
-          onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
-          onSaved={setToast}
-          onTill={() => go("shift")}
-        />
-      </div>
-    );
+    content = <main><Setup onboarding={state.onboardingComplete === false} onSave={owner} onSignOut={() => setConfirmSignOut(true)} /></main>;
+  else {
+    const onMenu: EditorProps["onMenu"] = (menu, pin, stock) => owner({ action: "menu", menu, pin, stock });
+    const editor: EditorProps = {
+      state, online, onSaved: setToast, onMenu,
+      onSave: (input, pin) => owner({ action: "settings", ...input, pin }),
+    };
+    content = navigation.entries.map((entry, index) => {
+      const screen = entry.screen.tab === "recipes" && !canManageRecipes ? SELL : entry.screen;
+      const previous = navigation.entries[index - 1]?.screen;
+      const backLabel = "Back to " + (screenName(previous) ?? "register");
+      const back = () => navigation.back(entry.id);
+      const open = (next: Screen) => navigation.open(next, { from: entry.id });
+      const onSales = (focus: SalesFocus) => open({ tab: "sales", focus });
+      let page: React.ReactNode;
+      switch (screen.tab) {
+        case "add-business":
+          page = <Setup adding onSave={addBusiness} onSignOut={back} />;
+          break;
+        case "schedule":
+          page = screen.leaderboard ? <LeaderboardPage state={state} demo={demo} onBack={back} /> : (
+            <ScheduleScreen
+              state={state} online={online} demo={demo} sharedSchedule={screen.shared ?? null}
+              onAction={owner} onSaved={setToast} onSales={onSales}
+              onLeaderboard={() => open({ tab: "schedule", leaderboard: true })}
+            />
+          );
+          break;
+        case "settings":
+          page = (
+            <SettingsScreen
+              {...editor}
+              demo={demo}
+              status={status} offlineReady={ready} page={screen.page ?? null}
+              onPage={(page) => open({ tab: "settings", page })}
+              onBack={back} backLabel={backLabel}
+              onAction={owner} onSignIn={openLogin} onSignOut={() => setConfirmSignOut(true)}
+              onBusinesses={() => setSwitching(entry.id)}
+              onAccounts={!demo && accountsEnabled ? () => setPickingAccount(true) : undefined}
+            />
+          );
+          break;
+        case "recipes":
+          page = (
+            <RecipesScreen
+              {...editor}
+              page={screen.page ?? null} onPage={(page) => open({ tab: "recipes", page })}
+              onBack={back} backLabel={backLabel}
+              onRemoveMenuItem={(productId, pin) => owner({ action: "removeMenuItem", productId, pin })}
+              onMergeStock={(shiftIds, pin) => owner({ action: "mergeStock", shiftIds, pin })}
+            />
+          );
+          break;
+        case "sales":
+          page = (
+            <SalesScreen state={state} online={online} onReverse={reverse} onSell={() => go("sell")}
+              focus={screen.focus ?? null} onBack={screen.focus && previous ? back : undefined} backLabel={backLabel} />
+          );
+          break;
+        case "shift":
+          page = (
+            <ShiftScreen
+              state={state} online={online} demo={demo} openingId={screen.openingId}
+              onStart={(openingId) => open({ tab: "shift", openingId })}
+              onBack={back}
+              onOpen={async (opening: Opening) => {
+                await owner({ action: "open", ...opening });
+                navigation.open(SELL, { from: entry.id, replace: true });
+              }}
+              onJoin={demo ? undefined : join}
+              onSchedule={() => go("schedule")}
+              onSales={onSales}
+              onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
+              onExpense={expense}
+              onUnexpense={unexpense}
+              onAction={owner}
+              onSaved={setToast}
+              onSell={previous?.tab === "sell" ? back : () => go("sell")}
+              sellLabel={previous?.tab === "sell" ? "Back to selling" : "Go to Sell"}
+              onGoMenu={canManageRecipes ? () => open({ tab: "recipes", page: "menu" }) : undefined}
+            />
+          );
+          break;
+        case "sell":
+          page = (
+            <div className="page">
+              {state.shift && !state.shift.closedAt ? (
+                <SellScreen
+                  state={state} status={status} online={online} pending={pending} onCart={cart}
+                  onCheckout={sell} onAvailability={available} onReverse={reverse}
+                  onMenu={onMenu} onSaved={setToast} onTill={() => go("shift")}
+                />
+              ) : (
+                <EmptyState heading="h1" pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
+                  <button type="button" className="btn compact" onClick={() => go("shift")}>Open till</button>
+                </EmptyState>
+              )}
+            </div>
+          );
+          break;
+      }
+      return <HistoryScreen key={entry.id} entry={entry} active={index === navigation.index}>{page}</HistoryScreen>;
+    });
+  }
 
   return (
     <CelebrateProvider>
@@ -922,7 +955,7 @@ export function Workspace() {
     <PinProvider key={key} hint={demo ? "The demo PIN is 1234." : undefined}>
       {business && !showOnboarding && (
         <header className="account-bar">
-          <button type="button" className="grow sell-brand" onClick={() => setSwitching(true)} aria-label={"Switch business, now " + business.name}>
+          <button type="button" className="grow sell-brand" onClick={() => setSwitching(navigation.current.id)} aria-label={"Switch business, now " + business.name}>
             <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} ink={business.settings.ink} size={36} />
             <span className="strong ellipsis">{business.name}</span>
             <ChevronDown size={16} className="chev-down" aria-hidden="true" />
@@ -980,7 +1013,7 @@ export function Workspace() {
             go("sell");
           }}
         />
-      ) : <main>{screen}</main>}
+      ) : content}
       {business && !showOnboarding && (
         <nav
           className="tabbar"
@@ -996,10 +1029,7 @@ export function Workspace() {
               key={t.id}
               type="button"
               aria-current={view === t.id ? "page" : undefined}
-              onClick={() => {
-                setSalesFocus(null);
-                go(t.id);
-              }}
+              onClick={() => go(t.id)}
             >
               <t.icon size={20} strokeWidth={view === t.id ? 2.1 : 1.7} aria-hidden="true" />
               <span>{t.name}</span>
@@ -1036,37 +1066,19 @@ export function Workspace() {
         />
       )}
       {switching && state?.business && (
-        <BusinessSwitcher
-          state={state}
-          demo={demo}
-          online={online}
-          onClose={() => setSwitching(false)}
-          onAdd={() => {
-            setSwitching(false);
-            setAdding(true);
-          }}
-          onSwitch={(id) => {
-            setSwitching(false);
-            void switchBusiness(id).catch((e) => setNotice(message(e)));
-          }}
-        />
-      )}
-      {tillBooking && state?.business && (
-        <ShiftDetailsSheet
-          key={state.business.id + ":" + tillBooking}
-          bookingId={tillBooking}
-          state={state}
-          online={online}
-          demo={demo}
-          onAction={owner}
-          onSaved={setToast}
-          onClose={() => setTillBooking(null)}
-          onSales={(focus) => {
-            setTillBooking(null);
-            setSalesFocus(focus);
-            go("sales");
-          }}
-        />
+        <Activity mode={switching === navigation.current.id ? "visible" : "hidden"}>
+          <BusinessSwitcher
+            state={state}
+            demo={demo}
+            online={online}
+            onClose={() => setSwitching(null)}
+            onAdd={() => navigation.open({ tab: "add-business" }, { from: navigation.current.id })}
+            onSwitch={(id) => {
+              setSwitching(null);
+              void switchBusiness(id).catch((e) => setNotice(message(e)));
+            }}
+          />
+        </Activity>
       )}
       {accountSheets}
       {account && !demo && (

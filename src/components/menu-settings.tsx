@@ -749,14 +749,14 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
           <p>To change or remove several at once, tap Select, or hold an item.</p>
         </>
       )}
-      backLabel="Back to recipes"
+      backLabel={props.backLabel}
       sentence={!costingView && menu.length > 0 && (
         <>
           {plural(menu.length, "item")} <span className="g">for sale.</span>
         </>
       )}
       sentenceAction={!costingView && !selecting && menu.length > 0 && addItems}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
     >
       {costingView ? (
         <MenuCostingOverview
@@ -1338,14 +1338,14 @@ export function CategoriesPage(props: RecipesProps) {
       title="Categories"
       action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
       help={<p>Categories are the tabs on Sell, in this order. Changes go live on Sell right away. Items with no category show last.</p>}
-      backLabel="Back to recipes"
+      backLabel={props.backLabel}
       sentence={list.length > 0 && (
         <>
           {plural(list.length, "category", "categories")} <span className="g">on the Sell screen.</span>
         </>
       )}
       sentenceAction={list.length > 0 && addCategory}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
     >
       <RecordSearch count={list.length} noun="categories" query={query} onQuery={setQuery} />
       {list.length > 0 && !shown.length ? (
@@ -1597,14 +1597,14 @@ export function ChoicesPage(props: RecipesProps) {
           <p>Set a choice up once and pick the items that offer it. Changes go live on Sell right away.</p>
         </>
       }
-      backLabel="Back to recipes"
+      backLabel={props.backLabel}
       sentence={list.length > 0 && (
         <>
           {plural(list.length, "choice")} <span className="g">asked at checkout.</span>
         </>
       )}
       sentenceAction={inTab.length > 0 && addButton}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
     >
       <RecordSearch
         count={list.length}

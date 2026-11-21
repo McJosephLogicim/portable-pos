@@ -100,12 +100,12 @@ export function PricingRulesPage(props: RecipesProps) {
   const current = pricingRules(currency, business.settings.pricing);
   const [target, setTarget] = useState(String(current.targetMargin));
   const [increment, setIncrement] = useState(amountText(current.roundingIncrement, currency));
-  const back = () => props.onPage("costing");
+  const back = props.onBack;
   const { busy, error, run } = useRecordSave(back);
   const commit = useCommit(props);
   const dirty = target !== String(current.targetMargin) || increment !== amountText(current.roundingIncrement, currency);
   return (
-    <SubPage title="Pricing rules" backLabel="Back to menu costing" onBack={back}>
+    <SubPage title="Pricing rules" backLabel={props.backLabel} onBack={back}>
       <form className="stack gap-14" aria-busy={busy} onSubmit={(event) => {
         event.preventDefault();
         if (busy || !props.online || !dirty) return;

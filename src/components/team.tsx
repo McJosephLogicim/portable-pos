@@ -285,7 +285,7 @@ function memberAccessLabel({ primaryOwner, owner }: TeamRosterMember, demo = fal
   return owner ? "Co-owner" : "Team member";
 }
 
-export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onPage"> & { startAdding?: boolean }) {
+export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onBack" | "backLabel"> & { startAdding?: boolean }) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
   const me = props.state.me;
@@ -336,7 +336,8 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
           <span className="g">{waiting.length ? `on the team, ${waiting.length} yet to sign in.` : "on the team."}</span>
         </>
       ) : business.name}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       {canManage && (
         <>
@@ -537,7 +538,8 @@ export function ChecklistPage(props: SettingsProps) {
         </>
       )}
       sentenceAction={list.length > 0 && addStep}
-      onBack={() => props.onPage(null)}
+      onBack={props.onBack}
+      backLabel={props.backLabel}
     >
       {!list.length && (
         <EmptyState pose="plan" object="checklistClipboard" title="No checklist yet" text="Add what has to be ready before the first sale.">

@@ -117,6 +117,42 @@ test.describe("account-enabled link entry", () => {
     await expect(page.getByRole("textbox", { name: "Verification code" })).toBeVisible();
   });
 
+  test("canceling a new business returns to the switcher, then to the same register", async ({ page }) => {
+    await mockAuth(page);
+    await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    const trigger = page.getByRole("button", { name: /Switch business, now Market Counter/ });
+    await trigger.click();
+    const switcher = page.getByRole("dialog", { name: "Your businesses" });
+    await switcher.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Add a business/ })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(switcher).toBeVisible();
+    await switcher.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(trigger).toBeVisible();
+  });
+
+  test("practice Sell returns to the same place in the setup guide", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 390 });
+    await mockAuth(page);
+    await page.route("**/api/pos", (route) => route.fulfill({
+      json: { ...teamSnapshot(), onboardingComplete: false },
+    }));
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    const practice = page.getByRole("button", { name: "Try Sell", exact: true });
+    await practice.scrollIntoViewIfNeeded();
+    const scroll = await page.evaluate(() => window.scrollY);
+    expect(scroll).toBeGreaterThan(0);
+    await practice.click();
+    await page.getByRole("button", { name: "Setup guide", exact: true }).click();
+    await expect(practice).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+  });
+
   test("sign-in shows the branded loader until the register is ready", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -367,8 +403,13 @@ test("creates an account from Settings and switches without mixing saved registe
     await page.getByRole("button", { name: "Switch account", exact: true }).click();
     return page.getByRole("dialog", { name: "Switch account" });
   }
-  await (await picker()).getByRole("button", { name: "Add account", exact: true }).click();
+  const accounts = await picker();
+  const addAccount = accounts.getByRole("button", { name: "Add account", exact: true });
+  await addAccount.click();
   const add = page.getByRole("dialog", { name: "Add account" });
+  await add.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(accounts).toBeVisible();
+  await addAccount.click();
   await add.getByRole("group", { name: "Account" }).getByRole("button", { name: "Create account" }).click();
   await add.getByLabel("Email", { exact: true }).fill("secondary@example.test");
   await add.getByLabel("Password", { exact: true }).fill("fixture-password");

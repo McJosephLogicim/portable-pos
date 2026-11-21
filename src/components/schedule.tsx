@@ -55,7 +55,6 @@ import type {
 import { SuggestInput } from "./combobox";
 import { AddMenu } from "./add-menu";
 import { ShiftSales } from "./insights";
-import { LeaderboardPage } from "./leaderboard";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
@@ -582,7 +581,6 @@ function BookingSheet({
           currency={currency}
           title={bookingTitle(b)}
           onSales={(productId) => {
-            onClose();
             props.onSales({ filter: { shift: [b.id], ...(productId ? { item: [productId] } : {}) } });
           }}
         />
@@ -1454,23 +1452,26 @@ export function ShiftDetailsSheet({
   const till = state.shift && matchesTill(state.shift) ? state.shift : state.shifts.find(matchesTill);
   const booking = state.bookings?.find((b) => b.id === (bookingId ?? till?.bookingId));
   if (!booking) return till ? <TillDetailsSheet till={till} props={props} onClose={onClose} /> : null;
-  return editing ? (
-    <BookingEditor
-      booking={booking}
-      props={props}
-      defaultDay={dayOf(booking.startsAt, state.business!.timeZone)}
-      onClose={() => setEditing(false)}
-    />
-  ) : (
-    <BookingSheet
-      booking={booking}
-      props={props}
-      sales={salesOf(booking)}
-      till={till}
-      onLinkTill={onLinkTill}
-      onEdit={() => setEditing(true)}
-      onClose={onClose}
-    />
+  return (
+    <>
+      <BookingSheet
+        booking={booking}
+        props={props}
+        sales={salesOf(booking)}
+        till={till}
+        onLinkTill={onLinkTill}
+        onEdit={() => setEditing(true)}
+        onClose={onClose}
+      />
+      {editing && (
+        <BookingEditor
+          booking={booking}
+          props={props}
+          defaultDay={dayOf(booking.startsAt, state.business!.timeZone)}
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -1505,7 +1506,6 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
         currency={currency}
         title={title}
         onSales={(productId) => {
-          onClose();
           onSales({ filter: { shift: [shiftKey(till)], ...(productId ? { item: [productId] } : {}) } });
         }}
       />
@@ -1525,7 +1525,7 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
 
 type Filter = "day" | "open" | "mine";
 
-export function ScheduleScreen(props: ScheduleProps) {
+export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => void }) {
   const { state, demo, sharedSchedule } = props;
   const business = state.business!;
   const zone = business.timeZone;
@@ -1574,33 +1574,6 @@ export function ScheduleScreen(props: ScheduleProps) {
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
   const addInEmptyState = me?.owner && list.length === 0 && (filter === "day" || (filter === "open" && upcoming.length === 0));
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const leaderboardButton = useRef<HTMLButtonElement>(null);
-  const scheduleScroll = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    if (showLeaderboard) {
-      window.scrollTo(0, 0);
-    } else if (scheduleScroll.current !== null) {
-      window.scrollTo(0, scheduleScroll.current);
-      leaderboardButton.current?.focus({ preventScroll: true });
-      scheduleScroll.current = null;
-    }
-  }, [showLeaderboard]);
-
-  if (showLeaderboard) {
-    return (
-      <LeaderboardPage
-        state={state}
-        demo={demo}
-        onBack={() => {
-          buzz.tap();
-          setShowLeaderboard(false);
-        }}
-      />
-    );
-  }
-
   return (
     <div className="page">
       <div className={`page-top tight ${styles.scheduleHeader}`}>
@@ -1626,13 +1599,12 @@ export function ScheduleScreen(props: ScheduleProps) {
           <Share2 size={19} />
         </button>
         <button
-          ref={leaderboardButton}
           className="round"
           aria-label="Leaderboard"
-          onClick={() => {
+          onClick={(event) => {
             buzz.tap();
-            scheduleScroll.current = window.scrollY;
-            setShowLeaderboard(true);
+            event.currentTarget.focus({ preventScroll: true });
+            props.onLeaderboard();
           }}
         >
           <Trophy size={19} />
