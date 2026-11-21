@@ -95,17 +95,15 @@
 }
 
 .entryPopo {
+  --popo-wave-scale: 132%;
+  --popo-wave-start: -12.3%;
+  --popo-wave-top: -20%;
   position: absolute;
   inset: auto 0 6px auto;
   display: grid;
   place-items: end center;
   width: 138px;
   height: 126px;
-}
-
-.entryPopo img {
-  width: 118px;
-  height: auto;
 }
 
 .entry .form fieldset {
@@ -164,11 +162,8 @@
   }
 
   .entryPopo {
+    --popo-width: 96px;
     width: 112px;
-  }
-
-  .entryPopo img {
-    width: 96px;
   }
 }
 

@@ -50,8 +50,7 @@
 }
 
 .resultMascot {
-  width: clamp(46px, 17vw, 74px);
-  height: auto;
+  --popo-width: clamp(46px, 17vw, 74px);
 }
 
 .stageFocus:focus {

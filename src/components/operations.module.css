@@ -34,11 +34,13 @@
 }
 
 .drawerMascot {
+  --popo-width: var(--drawer-popo-size);
+  --popo-wave-scale: 106%;
+  --popo-wave-start: 0%;
+  --popo-wave-top: -6%;
   position: absolute;
   inset-inline-end: -10px;
   inset-block-end: -53px;
-  width: var(--drawer-popo-size);
-  height: auto;
 }
 
 @media (max-width: 350px) {
@@ -49,14 +51,65 @@
 }
 
 .tillMascot {
-  width: clamp(50px, 18vw, 74px);
-  height: auto;
+  --popo-width: clamp(50px, 18vw, 74px);
 }
 
 .reportMascot {
+  --popo-width: clamp(40px, 14vw, 64px);
   margin-inline-start: auto;
-  width: clamp(40px, 14vw, 64px);
-  height: auto;
+}
+
+.salesEmpty {
+  padding-block: 20px 28px;
+  background: radial-gradient(ellipse 115px 101px at 50% 78px, #dce8ff, rgb(220 232 255 / .35) 54%, transparent), var(--surface);
+}
+
+.salesEmpty > [aria-hidden="true"] {
+  margin-block-end: 5px;
+}
+
+.salesEmpty > :global(.strong),
+.shiftsEmpty > :global(.strong) {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -.03em;
+}
+
+.shiftsEmpty {
+  --empty-popo-size: clamp(94px, 31.5vw, 123px);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 126px;
+  padding: 20px calc(var(--empty-popo-size) + 10px) 20px 20px;
+  text-align: start;
+  background: radial-gradient(ellipse 128px 102px at calc(100% - 61px) calc(100% - 6px), #dce8ff, rgb(220 232 255 / .38) 52%, transparent), var(--surface);
+}
+
+.shiftsEmptyPopo {
+  --popo-width: var(--empty-popo-size);
+  position: absolute;
+  inset: auto 4px -19px auto;
+  z-index: -1;
+}
+
+.inviteSheet {
+  background: radial-gradient(ellipse 132px 105px at calc(100% - 98px) 62px, #d8e5fe, rgb(216 229 254 / .4) 52%, transparent), var(--canvas);
+}
+
+.inviteSheet :global(.sheet-head) {
+  min-height: 86px;
+}
+
+.inviteSheet :global(.sheet-head h2) {
+  padding-inline-end: 68px;
+}
+
+.invitePopo {
+  position: absolute;
+  inset: auto 56px 2px auto;
 }
 
 .scheduleHeader :global(.round) {

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     title: APP_NAME,
     statusBarStyle: "default",
   },
-  icons: { apple: appIcons.apple, icon: appIcons.small },
+  icons: { apple: appIcons.apple },
 };
 export const viewport: Viewport = {
   themeColor: "#f6f6f4",

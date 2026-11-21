@@ -418,6 +418,7 @@ export function Sheet({
   action,
   help,
   describedBy,
+  className,
 }: {
   title: string;
   onClose: () => void;
@@ -428,6 +429,7 @@ export function Sheet({
   /** How this sheet works, behind an (i) beside the title. */
   help?: ReactNode;
   describedBy?: string;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -522,7 +524,7 @@ export function Sheet({
   return (
     <dialog
       ref={setRef}
-      className="sheet"
+      className={className ? `sheet ${className}` : "sheet"}
       tabIndex={-1}
       aria-labelledby={id}
       aria-describedby={describedBy}
@@ -1147,10 +1149,17 @@ export function Toast({
  * The one empty state for a page or a whole list: an icon, what's missing, and the next
  * step. Lists that sit inside a card with other rows use EmptyRow instead.
  */
-export function EmptyState({ icon, title, text, children }: { icon: ReactNode; title: string; text?: string; children?: ReactNode }) {
+export function EmptyState({ icon, illustration, title, text, children, className }: {
+  icon: ReactNode;
+  illustration?: ReactNode;
+  title: string;
+  text?: string;
+  children?: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="card empty">
-      <span className="well" aria-hidden="true">{icon}</span>
+    <div className={className ? `card empty ${className}` : "card empty"}>
+      {illustration ?? <span className="well" aria-hidden="true">{icon}</span>}
       <span className="strong">{title}</span>
       {text && <span className="label empty-text">{text}</span>}
       {children && <span className="empty-actions">{children}</span>}

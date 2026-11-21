@@ -13,8 +13,10 @@ import { AddMenu } from "./add-menu";
 import { BulkNamesSheet } from "./bulk-add";
 import { matches, RecordNoMatch, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { CopyButton } from "./share";
+import { Popo } from "./popo";
 import { ConfirmSheet, EmptyState, errorText, Explain, formatMoney, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
 import { blocked, OFFLINE } from "@/lib/reject";
+import styles from "./operations.module.css";
 
 export function initials(name: string) {
   return (
@@ -140,6 +142,8 @@ function MemberSheet({
     <>
     <Sheet
       title={member ? member.name : "Invite someone"}
+      className={member ? undefined : styles.inviteSheet}
+      action={member ? undefined : <Popo pose="team" size={74} className={styles.invitePopo} />}
       onClose={onClose}
       busy={busy}
       footer={

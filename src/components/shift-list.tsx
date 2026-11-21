@@ -3,9 +3,11 @@ import { CalendarDays } from "lucide-react";
 import { shiftTotals } from "@/lib/domain";
 import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
+import { Popo } from "./popo";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
 import { EmptyState, formatMoney, Money } from "./ui";
+import styles from "./operations.module.css";
 
 export function useShiftFormats(timeZone: string) {
   return useMemo(
@@ -99,7 +101,7 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
   );
 }
 
-export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, emptyAction }: {
+export function ShiftList({ entries, state, filter = "day", showDates, salesOf, onOpen, emptyAction, illustrateEmpty }: {
   entries: ShiftEntry[];
   state: RegisterState;
   filter?: ShiftFilter;
@@ -107,6 +109,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
   salesOf?: (booking: Booking) => number | undefined;
   onOpen: (id: string) => void;
   emptyAction?: ReactNode;
+  illustrateEmpty?: boolean;
 }) {
   const business = state.business!;
   const zone = business.timeZone;
@@ -143,6 +146,8 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
         {!entries.length && (
           <EmptyState
             icon={<CalendarDays size={22} />}
+            illustration={illustrateEmpty ? <Popo pose="plan" size={123} className={styles.shiftsEmptyPopo} /> : undefined}
+            className={illustrateEmpty ? styles.shiftsEmpty : undefined}
             title={filter === "open" ? "No open seats" : filter === "mine" ? "You're not on any shifts yet" : "Nothing scheduled"}
             text={filter === "day"
               ? state.me?.owner

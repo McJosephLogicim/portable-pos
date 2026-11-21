@@ -66,11 +66,10 @@
 }
 
 .previewPopo {
+  --popo-width: clamp(75px, 27%, 112px);
   position: absolute;
   inset-block-start: 10%;
   inset-inline-end: 4%;
-  width: clamp(75px, 27%, 112px);
-  height: auto;
   filter: drop-shadow(0 6px 10px #526ba332);
 }
 

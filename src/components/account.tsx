@@ -452,7 +452,7 @@ export function Account(props: AccountProps) {
               {sentTo ? "Check your email" : create ? "Create your account" : "Sign in to your Pop-up"}
             </h1>
             <div aria-hidden="true" className={styles.entryPopo}>
-              <Popo pose="welcome" motion="greet" size={118} />
+              <Popo pose="welcome" size={118} />
             </div>
           </div>
           {sentTo ? <div className={styles.entryVerification}>{verification}</div> : (

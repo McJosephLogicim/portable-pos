@@ -1691,6 +1691,7 @@ export function ScheduleScreen(props: ScheduleProps) {
         entries={list}
         state={state}
         filter={filter}
+        illustrateEmpty={filter === "day"}
         showDates={filter !== "day"}
         salesOf={salesOf}
         onOpen={setOpenId}
