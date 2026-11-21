@@ -20,6 +20,7 @@
   --warn-dot: #e8a317;
   --success: #1e9e5a;
   --hero: radial-gradient(120% 160% at 0% 0%, #333333 0%, #111111 45%, #050505 100%);
+  --on-hero: #fff;
   --glossy: linear-gradient(180deg, #3a3a3a 0%, #0e0e0e 100%);
   --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius-xl: 28px;
@@ -235,7 +236,7 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
 }
 .hero {
   background: var(--hero);
-  color: #fff;
+  color: var(--on-hero);
   border-radius: var(--radius-lg);
   padding: 20px 22px;
 }
@@ -1205,7 +1206,7 @@ button.list-row:not(.sell-option):active {
   padding: 8px 8px 8px 18px;
   border-radius: var(--radius-pill);
   background: var(--hero);
-  color: #fff;
+  color: var(--on-hero);
   font-size: 14px;
 }
 .mode-bar .btn {
@@ -2772,9 +2773,6 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   object-fit: cover;
 }
 /* ---------- brand tint ---------- */
-.branded .hero {
-  background: radial-gradient(130% 150% at 0% 0% in srgb, color-mix(in srgb, var(--brand) var(--hero-brand-strength), #000) 0%, color-mix(in srgb, var(--brand) 35%, #0b0b0b) 55%, #060606 100%);
-}
 .branded .tab-selection {
   background: color-mix(in srgb, var(--brand) 10%, var(--canvas));
 }

@@ -23,11 +23,13 @@ export function BusinessMark({
   name,
   logo,
   brand,
+  ink,
   size = 40,
 }: {
   name: string;
   logo?: string;
   brand?: string;
+  ink?: string;
   size?: number;
 }) {
   return (
@@ -39,7 +41,7 @@ export function BusinessMark({
         height: size,
         borderRadius: Math.round(size * 0.3),
         fontSize: Math.round(size * 0.35),
-        ...(brand && !logo ? { background: brand, color: onColor(brand) } : {}),
+        ...(brand && !logo ? { background: brand, color: onColor(brand, ink) } : {}),
         ...(logo ? { background: "var(--surface)" } : {}),
       }}
     >
@@ -106,7 +108,7 @@ export function BusinessSwitcher({
             {...blocked(b.id !== current && !online && "Connect to the internet to switch business.")}
             onClick={() => (b.id === current ? onClose() : onSwitch(b.id))}
           >
-            <BusinessMark name={b.name} logo={b.logo} brand={b.brand} />
+            <BusinessMark name={b.name} logo={b.logo} brand={b.brand} ink={b.id === current ? state.business!.settings.ink : undefined} />
             <span className="grow stack">
               <span className="ellipsis strong-ish">{b.name}</span>
               <span className="label">{b.owner ? "Owner" : "On the team"}</span>

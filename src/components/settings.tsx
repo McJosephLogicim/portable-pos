@@ -33,7 +33,7 @@ import { ChecklistPage, TeamPage } from "./team";
 import { OrganizersPage } from "./organizer-settings";
 import { plural, useRecordSave } from "./records";
 import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
-import { applyTheme, fonts, inks, onColor, radii } from "@/lib/theme";
+import { applyTheme, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import { AddButton } from "./add-menu";
 import {
@@ -377,7 +377,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
 
 /* ---------- business ---------- */
 
-const brands = ["#0a0a0a", "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8", "#6d28d9", "#be185d"];
+const brands = [defaultBrand, "#c2410c", "#b45309", "#15803d", "#0f766e", "#1d4ed8", "#6d28d9", "#be185d"];
 
 function loadFontSamples() {
   const id = "brand-font-all";
@@ -397,7 +397,7 @@ function BusinessPage(props: SettingsProps) {
     if (!settings.brand) delete settings.brand;
     if (!settings.font || settings.font === "geist") delete settings.font;
     if (!settings.radius || settings.radius === "round") delete settings.radius;
-    if (!settings.ink || settings.ink === inks[0]) delete settings.ink;
+    if (!settings.ink) delete settings.ink;
     setDraft({ ...draft, settings });
   };
   const logoPicker = (
@@ -408,7 +408,9 @@ function BusinessPage(props: SettingsProps) {
       disabled={!props.online && !props.demo}
     />
   );
-  const brand = draft.settings.brand ?? brands[0];
+  const brand = draft.settings.brand ?? defaultBrand;
+  const ink = draft.settings.ink?.toLowerCase();
+  const brandText = onColor(brand, ink);
   const saved = props.state.business!.settings;
   // Preview the theme on the whole app while editing; go back to the saved one on leaving.
   const look = JSON.stringify([draft.settings.brand, draft.settings.font, draft.settings.radius, draft.settings.ink]);
@@ -455,8 +457,8 @@ function BusinessPage(props: SettingsProps) {
           />
         </label>
       </div>
-      <div className="brand-preview" style={{ background: brand, color: onColor(brand) }}>
-        <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} size={52} />
+      <div className="brand-preview" style={{ background: brand, color: brandText }}>
+        <BusinessMark name={draft.name || "Your stall"} logo={draft.settings.logo} brand={brand} ink={ink} size={52} />
         <span className="stack grow" style={{ minWidth: 0 }}>
           <span className="strong ellipsis">{draft.name || "Your stall"}</span>
           <span className="label">Buttons, highlights and cards take this look</span>
@@ -545,22 +547,39 @@ function BusinessPage(props: SettingsProps) {
             <div className="field">
               <span>Text color</span>
               <div className="swatches" role="group" aria-label="Text color">
+                <button
+                  type="button"
+                  aria-label="Automatic text color"
+                  aria-pressed={!ink}
+                  style={{ background: "var(--surface-muted)", color: "var(--ink)", fontSize: 12 }}
+                  onClick={() => {
+                    buzz.tap();
+                    setBrand({ ink: undefined });
+                  }}
+                >
+                  Auto
+                </button>
                 {inks.map((c) => (
                   <button
                     key={c}
                     type="button"
                     aria-label={"Text color " + c}
-                    aria-pressed={(draft.settings.ink ?? inks[0]) === c}
-                    style={{ background: c }}
+                    aria-pressed={ink === c}
+                    style={{ background: c, color: onColor(c) }}
                     onClick={() => {
                       buzz.tap();
                       setBrand({ ink: c });
                     }}
                   >
-                    {(draft.settings.ink ?? inks[0]) === c && <Check size={16} strokeWidth={2.6} />}
+                    {ink === c && <Check size={16} strokeWidth={2.6} />}
                   </button>
                 ))}
               </div>
+              <span className="label">
+                {ink && ink !== brandText
+                  ? "Your brand color uses automatic text for contrast."
+                  : "Your text color applies wherever it has enough contrast."}
+              </span>
             </div>
             <div className="row gap-8 brand-sample" aria-hidden="true">
               <span className="btn grow">Charge {formatMoney(170 * 10 ** currencyDigits(draft.currency), draft.currency)}</span>
@@ -1278,7 +1297,7 @@ export function SettingsScreen(props: SettingsProps) {
       <ProfileCard {...props} />
       <div className="card card-list">
         <button className="list-row" onClick={() => onPage("business")}>
-          <BusinessMark name={business.name} logo={s.logo} brand={s.brand} />
+          <BusinessMark name={business.name} logo={s.logo} brand={s.brand} ink={s.ink} />
           <span className="grow stack">
             <span className="strong ellipsis">{business.name}</span>
             <span className="label">{demo ? "Demo stall · sample menu" : "Name, logo and receipt"}</span>

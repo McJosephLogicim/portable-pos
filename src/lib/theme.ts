@@ -18,8 +18,11 @@ export const radii = [
   { id: "round", name: "Round", sizes: [28, 24, 20, 14, 10, 999] },
 ] as const;
 
-/** Text colors: near-black by default, or a dark shade that suits the brand. */
-export const inks = ["#0a0a0a", "#1f2937", "#3b2f2f", "#14342b", "#1e2a4a", "#3b1d4a"];
+export const inks = [
+  "#0a0a0a", "#1f2937", "#3b2f2f", "#14342b", "#1e2a4a", "#3b1d4a",
+  "#ffffff", "#fff2d9", "#ffe4ef", "#e5f7ed", "#e4eeff", "#efe5ff",
+];
+export const defaultBrand = "#0a0a0a";
 
 export type FontId = (typeof fonts)[number]["id"];
 export type RadiusId = (typeof radii)[number]["id"];
@@ -32,12 +35,28 @@ function luminance(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** White or black text, whichever reads better on the color. */
-export function onColor(hex: string) {
+const hexColor = /^#[0-9a-f]{6}$/i;
+const textContrast = 4.5;
+
+/** Use the chosen text color where it is readable, with an automatic fallback. */
+export function onColor(hex: string, preferred?: string) {
   const lightness = luminance(hex) + 0.05;
+  if (preferred && hexColor.test(preferred)) {
+    const foreground = luminance(preferred) + 0.05;
+    if (Math.max(lightness, foreground) / Math.min(lightness, foreground) >= textContrast) return preferred;
+  }
   const blackContrast = lightness / 0.05;
   const whiteContrast = 1.05 / lightness;
   return blackContrast >= whiteContrast ? "#000000" : "#ffffff";
+}
+
+function mixHex(from: string, to: string, amount: number) {
+  const channels = [1, 3, 5].map((i) => {
+    const start = parseInt(from.slice(i, i + 2), 16);
+    const end = parseInt(to.slice(i, i + 2), 16);
+    return Math.round(start + (end - start) * amount).toString(16).padStart(2, "0");
+  });
+  return "#" + channels.join("");
 }
 
 /** Shared by the on-screen leaderboard and its PNG export. */
@@ -71,34 +90,44 @@ export function leaderboardPalette(brand?: string) {
   };
 }
 
-const vars = ["--accent", "--accent-ring", "--accent-pressed", "--on-accent", "--hero-brand-strength", "--glossy", "--ink", "--font-sans", "--brand",
+const vars = ["--accent", "--accent-ring", "--accent-pressed", "--on-accent", "--hero", "--on-hero", "--glossy", "--ink", "--font-sans", "--brand",
   "--radius-xl", "--radius-lg", "--radius-md", "--radius-sm", "--radius-xs", "--radius-pill"];
 
 /** Theme the whole app from the business's branding: buttons, text, font and corners. */
 export function applyTheme(settings: Pick<Settings, "brand" | "font" | "radius" | "ink"> | undefined) {
   const root = document.documentElement;
   for (const v of vars) root.style.removeProperty(v);
-  root.classList.toggle("branded", Boolean(settings?.brand));
+  const brand = settings?.brand && hexColor.test(settings.brand) ? settings.brand : undefined;
+  root.classList.toggle("branded", Boolean(brand));
   if (!settings) return;
   const set = (k: string, v: string) => root.style.setProperty(k, v);
-  const { brand, ink } = settings;
-  if (brand && /^#[0-9a-f]{6}$/i.test(brand)) {
-    const on = onColor(brand);
-    const dark = on === "#ffffff";
-    const shade = dark ? "#000" : "#fff";
-    const gloss = `color-mix(in srgb, ${brand} 82%, ${shade})`;
-    const glossStops = dark ? `${brand}, ${gloss}` : `${gloss}, ${brand}`;
+  const ink = settings.ink && hexColor.test(settings.ink) ? settings.ink : undefined;
+  const accent = brand ?? defaultBrand;
+  if (brand || ink) {
+    const on = onColor(accent, ink);
+    const lightText = luminance(on) > luminance(accent);
+    const shade = lightText ? "#000" : "#fff";
+    const gloss = `color-mix(in srgb, ${accent} 82%, ${shade})`;
+    const glossStops = lightText ? `${accent}, ${gloss}` : `${gloss}, ${accent}`;
+    set("--on-accent", on);
+    set("--accent-pressed", `color-mix(in srgb, ${accent} 88%, ${shade})`);
+    set("--glossy", `linear-gradient(180deg in srgb, ${glossStops})`);
+  }
+  let brightestHero = luminance("#333333");
+  if (brand) {
     set("--brand", brand);
     set("--accent", brand);
     set("--accent-ring", brand);
-    set("--on-accent", on);
-    set("--accent-pressed", `color-mix(in srgb, ${brand} 88%, ${shade})`);
-    set("--glossy", `linear-gradient(180deg in srgb, ${glossStops})`);
     // Bright brands need a darker tint for white text across the hero gradient.
-    set("--hero-brand-strength", dark ? "88%" : "45%");
+    const start = mixHex("#000000", brand, onColor(brand) === "#ffffff" ? 0.88 : 0.45);
+    const middle = mixHex("#0b0b0b", brand, 0.35);
+    set("--hero", `radial-gradient(130% 150% at 0% 0% in srgb, ${start} 0%, ${middle} 55%, #060606 100%)`);
+    brightestHero = Math.max(luminance(start), luminance(middle), luminance("#060606"));
   }
-  if (ink && /^#[0-9a-f]{6}$/i.test(ink) && (luminance("#ededed") + 0.05) / (luminance(ink) + 0.05) >= 4.5) {
-    set("--ink", ink);
+  if (ink) {
+    const lightness = luminance(ink) + 0.05;
+    if (lightness / (brightestHero + 0.05) >= textContrast) set("--on-hero", ink);
+    if ((luminance("#ededed") + 0.05) / lightness >= textContrast) set("--ink", ink);
   }
   const font = fonts.find((f) => f.id === settings.font);
   if (font && font.google) {

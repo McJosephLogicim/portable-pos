@@ -63,6 +63,42 @@ async function expectTextContrast(text: Locator, surface: string, amount: string
   expect(color).toBe(amountColor);
 }
 
+test("A light text color previews, saves, and follows the business theme", async ({ page }) => {
+  await startBrandedDemo(page, "#be185d", "PHP");
+  const openBranding = async () => {
+    await page.getByRole("button", { name: "Account and settings" }).click();
+    await page.getByRole("button", { name: /^Sunday Supply.*Demo stall/ }).click();
+    await page.getByText("More appearance options", { exact: true }).click();
+  };
+  await openBranding();
+  const cream = page.getByRole("button", { name: "Text color #fff2d9", exact: true });
+  await cream.click();
+  const creamRgb = "rgb(255, 242, 217)";
+  await expect(page.locator(".brand-preview .strong")).toHaveCSS("color", creamRgb);
+  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", creamRgb);
+  await expect(page.locator(".brand-sample .btn.secondary")).toHaveCSS("color", "rgb(10, 10, 10)");
+  const pin = page.getByRole("dialog", { name: "Owner PIN" });
+  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
+  await pin.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.locator(".toast")).toContainText("Saved");
+
+  await page.reload();
+  await page.getByRole("button", { name: /^Add Espresso/ }).click();
+  const charge = page.locator(".charge-bar");
+  await expect(charge.locator(".unit")).toHaveCSS("color", creamRgb);
+  await expectTextContrast(charge.locator(".unit"), ".charge-bar", ".charge-bar .num");
+  await openBranding();
+  await expect(cream).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByLabel("Pick any brand color").fill("#f9b9d4");
+  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", "rgb(0, 0, 0)");
+  const navy = page.getByRole("button", { name: "Text color #1e2a4a", exact: true });
+  await navy.click();
+  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", "rgb(30, 42, 74)");
+  await page.getByRole("button", { name: "Automatic text color", exact: true }).click();
+  await expect(page.locator(".brand-sample .btn").first()).toHaveCSS("color", "rgb(0, 0, 0)");
+});
+
 for (const [brand, currency, sign] of [
   ["#be185d", "PHP", "₱"],
   ["#db5a91", "PHP", "₱"],
