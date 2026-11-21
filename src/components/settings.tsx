@@ -191,12 +191,11 @@ export function SubPage({
   );
 }
 
-/** Edits a copy of the settings and saves it with one tap, behind the owner PIN. */
-export function useDraft(
-  props: SettingsProps,
-  saveLabel = "Save changes",
-  savedLabel = "Saved",
-) {
+/**
+ * Edits a copy of the settings and saves each change on its own, behind the owner PIN.
+ * Text waits a moment for typing to pause; taps save straight away. Nothing needs a Save button.
+ */
+export function useDraft(props: SettingsProps, savedLabel = "Saved") {
   const business = props.state.business!;
   const initial: SettingsInput = {
     name: business.name,
@@ -207,43 +206,50 @@ export function useDraft(
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const saving = useRef(false);
   const withPin = usePin();
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  async function save() {
-    if (saving.current) return;
-    saving.current = true;
+  /** The last copy sent (or confirmed) so the same change is never saved twice. */
+  const sent = useRef(JSON.stringify(initial));
+  const current = useRef({ draft, initial });
+  current.current = { draft, initial };
+
+  async function commit() {
+    const { draft: copy, initial: saved } = current.current;
+    const key = JSON.stringify(copy);
+    if (key === sent.current) return;
+    sent.current = key;
     setBusy(true);
     setError("");
     try {
-      if (await withPin((pin) => props.onSave(draft, pin))) props.onSaved(savedLabel);
+      const ok = await withPin((pin) => props.onSave(copy, pin));
+      if (ok) props.onSaved(savedLabel);
+      else {
+        // The PIN prompt was cancelled: go back to what is saved.
+        sent.current = JSON.stringify(saved);
+        setDraft(saved);
+      }
     } catch (e) {
+      sent.current = "";
       setError(errorText(e));
     } finally {
-      saving.current = false;
       setBusy(false);
     }
   }
-  const bar =
-    dirty || error ? (
-      <div className="save-bar stack gap-8">
-        {error && (
-          <Notice tone="danger" live="assertive">
-            {error}
-          </Notice>
-        )}
-        <button
-          type="button"
-          className="btn"
-          aria-busy={busy}
-          aria-label={saveLabel}
-          disabled={!dirty || busy || !props.online}
-          onClick={() => void save()}
-        >
-          {busy ? "Saving…" : props.online ? "Save" : "Connect to save"}
-        </button>
-      </div>
-    ) : null;
+
+  useEffect(() => {
+    if (!dirty || busy || !props.online) return;
+    const timer = setTimeout(() => void commit(), 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, dirty, busy, props.online]);
+
+  const bar = error ? (
+    <Notice tone="danger" live="assertive" action={<button className="btn small" onClick={() => void commit()}>Try again</button>}>
+      {error}
+    </Notice>
+  ) : dirty && !props.online ? (
+    <Notice tone="warn">Changes save when you're back online.</Notice>
+  ) : null;
   return { draft, setDraft, bar, business };
 }
 
