@@ -13,7 +13,7 @@ export const popoLoading = {
 };
 
 export const popoPoses = {
-  neutral: appIcons.small,
+  neutral: appIcons.large,
   welcome: "/mascots/popo/welcome.webp",
   menu: "/mascots/popo/menu.webp",
   sale: "/mascots/popo/sale.webp",

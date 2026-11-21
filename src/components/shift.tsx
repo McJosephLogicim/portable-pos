@@ -603,8 +603,8 @@ export function ShiftScreen({
               sold since {time.format(new Date(shift.openedAt))}.
             </span>
           </h1>
-          <div className={`hero ${styles.tillDrawer}`}>
-            <div className="stack gap-10">
+          <div className={compact ? "hero" : `hero ${styles.tillDrawer}`}>
+            <div className={`stack gap-10 ${styles.tillDrawerTotal}`}>
               <span className="hero-label">Expected in the drawer</span>
               <Money value={totals.expectedCash} currency={currency} className="big-num" />
               <span className="hero-label">
@@ -612,7 +612,7 @@ export function ShiftScreen({
                 {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
               </span>
             </div>
-            {!compact && <Popo key={shift.id} size={74} className={styles.tillMascot} />}
+            {!compact && <Popo key={shift.id} size={212} className={styles.drawerMascot} />}
           </div>
           {!compact && !state.closingShiftId && (
             <button className="btn block" onClick={onSell}>Back to selling</button>
