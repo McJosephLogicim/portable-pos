@@ -19,7 +19,8 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--control-border);
   color: var(--on-accent);
 }
 

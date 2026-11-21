@@ -118,12 +118,6 @@
 .entry .form :global(.input) {
   min-height: 50px;
   border-radius: 12px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px #d9dde3;
-}
-
-.entry .form :global(.input:focus) {
-  box-shadow: inset 0 0 0 2px #738bb9;
 }
 
 .entry button[type="submit"] {
@@ -380,16 +374,6 @@
   gap: 4px;
 }
 
-.form :global(.input) {
-  background: var(--surface-muted);
-  box-shadow: none;
-}
-
-.form :global(.input:focus) {
-  background: var(--surface);
-  box-shadow: inset 0 0 0 2px var(--accent-ring);
-}
-
 .form button[type="submit"] {
   margin-block-start: 6px;
 }
@@ -483,10 +467,4 @@
 
 .demo:active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--surface-muted);
-}
-
-/* Only the submit button carries the color; the mode switch stays neutral. */
-.modes {
-  --accent: var(--surface-muted);
-  --on-accent: var(--ink);
 }
