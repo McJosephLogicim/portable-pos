@@ -10,7 +10,6 @@
   --ink-tertiary: #8c8c8c;
   --line: #ebebeb;
   --line-strong: #e5e5e5;
-  --control-border: #848484;
   --track: #eeeeee;
   --accent: #0a0a0a;
   --on-accent: #ffffff;
@@ -476,16 +475,16 @@ button.list-row:not(.sell-option):active {
 }
 .input,
 .select,
-.textarea,
-.inline-input {
+.textarea {
   min-height: 52px;
   width: 100%;
   padding: 0 16px;
-  border: 1px solid var(--control-border);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   font-size: 16px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
   -webkit-appearance: none;
   appearance: none;
 }
@@ -504,15 +503,11 @@ button.list-row:not(.sell-option):active {
   min-height: 88px;
   resize: vertical;
 }
-:is(.input, .select, .textarea, .inline-input):is(:disabled, [readonly], [aria-disabled="true"]) {
-  background-color: var(--surface-muted);
-  border-color: var(--line-strong);
-  color: var(--ink-secondary);
-}
-:is(.input, .select, .textarea, .inline-input):focus {
-  border-color: var(--accent-ring);
-  outline: 1px solid var(--accent-ring);
-  outline-offset: 0;
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-ring);
 }
 .input.big {
   min-height: 64px;
@@ -554,8 +549,7 @@ button.list-row:not(.sell-option):active {
   border: 0;
   padding: 0;
   border-radius: var(--radius-pill);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--control-border);
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
   transition: background var(--dur-base) var(--ease-out);
 }
 .switch::after {
@@ -566,7 +560,7 @@ button.list-row:not(.sell-option):active {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #fff;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
   pointer-events: none;
   transition: transform var(--dur-base) var(--ease-move);
@@ -578,15 +572,9 @@ button.list-row:not(.sell-option):active {
 }
 .switch[aria-checked="true"] {
   background: var(--accent);
-  box-shadow: none;
 }
 .switch[aria-checked="true"]::after {
-  background: var(--on-accent);
   transform: translateX(20px);
-}
-.switch:disabled,
-.switch[aria-disabled="true"] {
-  opacity: 0.5;
 }
 .switch-hit {
   display: grid;
@@ -612,7 +600,7 @@ button.list-row:not(.sell-option):active {
   border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--ink);
+  color: var(--ink-secondary);
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1642,8 +1630,7 @@ button.list-row:not(.sell-option):active {
   display: grid;
   place-items: center;
   color: var(--on-accent);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1.5px var(--control-border);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
   transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 .tick svg {
@@ -1680,9 +1667,15 @@ button.list-row:not(.sell-option):active {
   font-weight: 600;
 }
 .inline-input {
-  min-width: 0;
+  border: 0;
+  background: none;
+  font-size: 16px;
   min-height: 40px;
-  padding-inline: 10px;
+  color: var(--ink);
+  padding: 0;
+}
+.inline-input:focus {
+  outline: none;
 }
 .thumb {
   border-radius: 12px;
@@ -1957,6 +1950,7 @@ button.booking-body:active {
 }
 .search-field .input {
   padding-left: 44px;
+  background: var(--surface);
 }
 .record-search .input {
   padding-right: 44px;
@@ -2080,14 +2074,12 @@ button.booking-body:active {
   min-height: 44px;
   border: 0;
   border-radius: 50%;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--control-border);
-  color: var(--ink);
+  background: var(--surface-muted);
+  color: var(--ink-secondary);
   font-weight: 500;
 }
 .weekdays button[aria-pressed="true"] {
   background: var(--ink);
-  box-shadow: none;
   color: #fff;
 }
 .money-input.salary {
@@ -2327,9 +2319,9 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   display: grid;
   place-items: center;
   overflow: hidden;
-  border: 1.5px dashed var(--control-border);
-  background: var(--surface);
-  color: var(--ink-secondary);
+  border: 1.5px dashed var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--ink-tertiary);
   border-radius: var(--radius-sm);
   padding: 0;
   transition: transform var(--dur-fast) var(--ease-out);
@@ -2428,12 +2420,12 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   padding: 0;
 }
 .chips.wrap > button {
-  box-shadow: inset 0 0 0 1px var(--control-border);
+  background: var(--surface-muted);
   min-height: 36px;
   padding: 0 14px;
 }
 .chips.wrap > button[aria-pressed="true"] {
-  box-shadow: none;
+  background: var(--accent);
 }
 
 /* ---------- sales filters ---------- */
@@ -2451,12 +2443,17 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   font-weight: 400;
 }
 .filter-chips > .filter-open {
-  box-shadow: inset 0 0 0 1px var(--control-border);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--ink-secondary);
 }
 .filter-count {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   opacity: 0.55;
+}
+.sheet .chips.wrap > button:not([aria-pressed="true"]) {
+  background: var(--surface);
 }
 .chips.wrap.picker-options > button {
   min-width: 0;
@@ -2467,6 +2464,9 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   overflow-wrap: anywhere;
   text-align: left;
 }
+.sheet .chips.wrap.picker-options > button[aria-pressed="false"] {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
 .picker-note {
   flex: none;
   font-size: 12px;
@@ -2475,7 +2475,9 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
 .sheet .chips.wrap.picker-pills > button {
   min-height: 44px;
   max-width: 100%;
+  background: var(--surface-muted);
   color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .picker-pills svg {
   flex: none;
@@ -2484,9 +2486,9 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
 .picker-pills .picker-thumbnail {
   border-radius: 50%;
 }
-.chips.wrap > button.link {
+.chips.wrap > button.link,
+.sheet .chips.wrap > button.link {
   background: none;
-  box-shadow: none;
   padding: 0 6px;
 }
 
@@ -2716,8 +2718,8 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   height: 48px;
   flex: none;
   border-radius: 12px;
-  border: 1.5px dashed var(--control-border);
-  background: var(--surface);
+  border: 1.5px dashed var(--line-strong);
+  background: var(--surface-muted);
   color: var(--ink-secondary);
   display: grid;
   place-items: center;
@@ -2884,7 +2886,7 @@ html {
   width: 36px;
   height: 36px;
   min-height: 36px;
-  background: var(--surface);
+  background: var(--surface-muted);
 }
 .stepper .round:disabled, .stepper .round[aria-disabled="true"] {
   opacity: 0.35;
@@ -3267,14 +3269,12 @@ html {
   padding: 10px 12px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--control-border);
+  background: var(--surface-muted);
   color: var(--ink);
   text-align: left;
 }
 .font-grid button[aria-pressed="true"] {
   background: var(--accent);
-  box-shadow: none;
   color: var(--on-accent);
 }
 .font-sample {

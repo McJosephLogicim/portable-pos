@@ -395,7 +395,9 @@ export function Account(props: AccountProps) {
   );
 
   const modes = accountsEnabled && !signInOnly && (
-    <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
+    <div className={styles.modes}>
+      <LiquidSegments label="Account" options={MODES} value={mode} disabled={busy} onChange={switchMode} />
+    </div>
   );
 
   const verification = (
