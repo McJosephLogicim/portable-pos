@@ -2,7 +2,7 @@
 
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronDown, ReceiptText, ShoppingBag, UserRound, Wallet, X } from "lucide-react";
 import { SellScreen } from "./sell";
 import { SalesScreen, type SalesFocus } from "./sales";
 import { ShiftScreen } from "./shift";
@@ -43,8 +43,9 @@ const tabs = [
   { id: "sales", name: "Sales", icon: ReceiptText },
   { id: "shift", name: "Till", icon: Wallet },
   { id: "schedule", name: "Shifts", icon: CalendarDays },
+  { id: "recipes", name: "Recipes", icon: BookOpen },
 ] as const;
-type Tab = (typeof tabs)[number]["id"] | "settings" | "recipes";
+type Tab = (typeof tabs)[number]["id"] | "settings";
 type UndoNotice = {
   id: string;
   text: string;
@@ -623,7 +624,8 @@ export function Workspace() {
         : "Offline";
   const canManageRecipes = !state?.me || state.me.owner;
   const view: Tab = tab === "recipes" && !canManageRecipes ? "sell" : tab;
-  const activeTabIndex = tabs.findIndex((item) => item.id === view);
+  const navTabs = canManageRecipes ? tabs : tabs.filter((item) => item.id !== "recipes");
+  const activeTabIndex = navTabs.findIndex((item) => item.id === view);
   const sellable = Boolean(state?.shift && !state.shift.closedAt && !state.closingShiftId);
   const go = (t: Tab) => {
     if (t !== tab) buzz.tap();
@@ -766,7 +768,6 @@ export function Workspace() {
         onSignIn={openLogin}
         onSignOut={() => setConfirmSignOut(true)}
         onBusinesses={() => setSwitching(true)}
-        onRecipes={() => go("recipes")}
       />
     );
   else if (view === "recipes")
@@ -776,7 +777,6 @@ export function Workspace() {
         online={online}
         page={recipesPage}
         onPage={setRecipesPage}
-        onBack={() => go("settings")}
         onSaved={setToast}
         onSave={(input, pin) => owner({ action: "settings", ...input, pin })}
         onMenu={(menu, pin, stock) => owner({ action: "menu", menu, pin, stock })}
@@ -864,7 +864,7 @@ export function Workspace() {
             type="button"
             className="account-button"
             aria-label="Account and settings"
-            aria-current={view === "settings" || view === "recipes" ? "page" : undefined}
+            aria-current={view === "settings" ? "page" : undefined}
             aria-description={syncErr ? "Sync paused" : !online ? "Offline" : undefined}
             onClick={() => go("settings")}
           >
@@ -905,12 +905,12 @@ export function Workspace() {
           className="tabbar"
           aria-label="Main"
           style={{
-            "--tab-count": tabs.length,
+            "--tab-count": navTabs.length,
             "--tab-offset": `${Math.max(0, activeTabIndex) * 100}%`,
           } as CSSProperties}
         >
           {activeTabIndex >= 0 && <span className="tab-selection" aria-hidden="true" />}
-          {tabs.map((t) => (
+          {navTabs.map((t) => (
             <button
               key={t.id}
               type="button"

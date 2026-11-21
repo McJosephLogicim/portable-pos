@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
-  BookOpen,
   Check,
   Repeat,
   ChevronRight,
@@ -91,7 +90,6 @@ export interface SettingsProps extends EditorProps {
   onPage: (page: SettingsPage | null) => void;
   /** Opens the list of businesses to switch to or add. */
   onBusinesses: () => void;
-  onRecipes: () => void;
 }
 
 const countText = (n: number) => (n ? String(n) : "None");
@@ -1284,6 +1282,7 @@ export function SettingsScreen(props: SettingsProps) {
         />
       </div>
       <h2 className="group-title">Checkout</h2>
+      <ModeCard {...props} />
       <div className="card card-list">
         <Row
           icon={<Coins size={18} strokeWidth={1.8} />}
@@ -1296,6 +1295,12 @@ export function SettingsScreen(props: SettingsProps) {
           title="Discounts"
           detail={discountsOn ? discountsOn + " on" : "Off"}
           onClick={() => onPage("discounts")}
+        />
+        <Row
+          icon={<Store size={18} strokeWidth={1.8} />}
+          title="Currency and time"
+          detail={business.currency + " · " + (business.timeZone.split("/").pop() ?? "").replace(/_/g, " ")}
+          onClick={() => onPage("currency")}
         />
       </div>
       <h2 className="group-title">Shifts</h2>
@@ -1319,22 +1324,6 @@ export function SettingsScreen(props: SettingsProps) {
           description="The bazaars and markets you join"
           detail={countText(state.organizers?.length ?? 0)}
           onClick={() => onPage("organizers")}
-        />
-      </div>
-      <h2 className="group-title">Register setup</h2>
-      <ModeCard {...props} />
-      <div className="card card-list">
-        <Row
-          icon={<BookOpen size={18} strokeWidth={1.8} />}
-          title="Recipes"
-          description={isSimpleMode(s) ? "Menu items, categories and choices" : "Menu, choices, stock and costing"}
-          onClick={props.onRecipes}
-        />
-        <Row
-          icon={<Store size={18} strokeWidth={1.8} />}
-          title="Currency and time"
-          detail={business.currency + " · " + (business.timeZone.split("/").pop() ?? "").replace(/_/g, " ")}
-          onClick={() => onPage("currency")}
         />
       </div>
       <h2 className="group-title">This phone</h2>
