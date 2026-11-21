@@ -28,6 +28,7 @@ function assetURL(input, base = ROOT) {
     [
       "/icon-192.png",
       "/icon-512.png",
+      "/icon-maskable-512.png",
       "/apple-touch-icon.png",
       "/favicon.ico",
       "/mascots/popo/poster.png",
@@ -149,6 +150,20 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       const cache = await caches.open(ASSETS);
       const cached = await cache.match(request);
+      if (url.pathname === "/manifest.webmanifest") {
+        // The manifest links to versioned icons and needs to refresh while online.
+        const response = await fetch(request, { cache: "no-cache" }).catch(() => null);
+        if (
+          response?.ok &&
+          !response.redirected &&
+          response.headers.get("content-type")?.includes("json")
+        ) {
+          await cache.put(request, response.clone()).catch(() => {});
+          return response;
+        }
+        if (cached) return cached;
+        return response ?? Response.error();
+      }
       if (cached) return cached;
       const response = await fetch(request);
       if (
