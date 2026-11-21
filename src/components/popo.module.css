@@ -12,7 +12,7 @@
   }
 
   .settle {
-    animation: settle 1s 100ms cubic-bezier(.25, 0, .27, 1) both;
+    animation: settle 2.2s 80ms cubic-bezier(.25, 0, .27, 1) both;
   }
 }
 
@@ -23,7 +23,8 @@
 }
 
 @keyframes settle {
-  0%, 100% { transform: translateY(0) scale(1); }
-  40% { transform: translateY(-6px) scale(1.045); }
-  72% { transform: translateY(1px) scale(.99); }
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  29% { transform: translateY(-9px) rotate(-3deg) scale(1.04); }
+  56% { transform: translateY(1px) rotate(1deg) scale(.99); }
+  75% { transform: translateY(-4px) rotate(2deg) scale(1.015); }
 }
