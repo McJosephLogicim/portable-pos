@@ -905,7 +905,7 @@ export function Workspace() {
       {business && !showOnboarding && (
         <header className="account-bar">
           <button type="button" className="grow sell-brand" onClick={() => setSwitching(true)} aria-label={"Switch business, now " + business.name}>
-            <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} size={36} />
+            <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} ink={business.settings.ink} size={36} />
             <span className="strong ellipsis">{business.name}</span>
             <ChevronDown size={16} className="chev-down" aria-hidden="true" />
           </button>
