@@ -8,23 +8,22 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .greet {
-    animation: greet 2.3s 100ms cubic-bezier(.37, 0, .23, 1) both;
+    animation: greet 4s ease-in-out infinite;
   }
 
-  .settle {
-    animation: settle 2.2s 80ms cubic-bezier(.25, 0, .27, 1) both;
+  .idle {
+    animation: idle 3.6s ease-in-out infinite;
   }
 }
 
 @keyframes greet {
   0%, 100% { transform: translateY(0) rotate(0); }
-  42% { transform: translateY(-10px) rotate(-5deg); }
-  72% { transform: translateY(-3px) rotate(2deg); }
+  44% { transform: translateY(-9px) rotate(-4deg); }
+  72% { transform: translateY(-4px) rotate(2deg); }
 }
 
-@keyframes settle {
+@keyframes idle {
   0%, 100% { transform: translateY(0) rotate(0) scale(1); }
-  29% { transform: translateY(-9px) rotate(-3deg) scale(1.04); }
-  56% { transform: translateY(1px) rotate(1deg) scale(.99); }
-  75% { transform: translateY(-4px) rotate(2deg) scale(1.015); }
+  48% { transform: translateY(-7px) rotate(-2deg) scale(1.023); }
+  75% { transform: translateY(-3px) rotate(1deg) scale(1.009); }
 }

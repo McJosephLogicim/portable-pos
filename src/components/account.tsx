@@ -69,27 +69,11 @@ function AppMark() {
   );
 }
 
-function AccountPage({ children, brand, credit, showcase }: {
+function AccountPage({ children, brand, credit }: {
   children: ReactNode;
   brand?: string;
   credit?: boolean;
-  showcase?: boolean;
 }) {
-  if (showcase) {
-    return (
-      <main className={styles.entry}>
-        <div className={styles.entryShell}>
-          <div className={styles.showcase}>
-            <AppMark />
-            <div className={styles.scene} aria-hidden="true">
-              <Popo pose="welcome" motion="greet" size={228} className={styles.welcome} />
-            </div>
-          </div>
-          <div className={styles.entryContent}>{children}</div>
-        </div>
-      </main>
-    );
-  }
   return (
     <main className={styles.page} style={brandStyle(brand)}>
       <div className={styles.column}>
@@ -458,24 +442,64 @@ export function Account(props: AccountProps) {
     </Sheet>
   );
 
-  const linked = kind !== "register";
+  if (kind === "register") {
+    return (
+      <main className={styles.entry}>
+        <section className={styles.entryShell} aria-labelledby="entry-title">
+          <AppMark />
+          <div className={styles.entryIntro}>
+            <h1 id="entry-title" className={styles.title}>
+              {sentTo ? "Check your email" : create ? "Create your account" : "Sign in to your Pop-up"}
+            </h1>
+            <div aria-hidden="true" className={styles.entryPopo}>
+              <Popo pose="welcome" motion="greet" size={118} />
+            </div>
+          </div>
+          {sentTo ? <div className={styles.entryVerification}>{verification}</div> : (
+            <>
+              {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
+              {props.notice && <p role="alert" className="alert">{props.notice}</p>}
+              {fields}
+              {accountsEnabled && (
+                <button type="button" className={styles.modeLink} disabled={busy}
+                  onClick={() => switchMode(create ? "signin" : "create")}>
+                  {create ? "Back to sign in" : "Create account"}
+                </button>
+              )}
+              {props.onChooseAccount && (
+                <button type="button" className={styles.modeLink} disabled={busy} onClick={props.onChooseAccount}>
+                  Switch account
+                </button>
+              )}
+              <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
+                <span>
+                  <strong>Try the demo</strong>
+                  <span>Sample register · PIN 1234</span>
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   const plainTitle =
     kind === "invite" ? "Join the team"
       : kind === "shift" ? "Open the shift"
-      : kind === "business" ? "Open your team’s shifts"
-      : "Sign in";
+      : "Open your team’s shifts";
   const formTitle =
     kind === "invite" ? (preview.state === "gone" ? "Sign in" : create ? "Create your account to join" : "Sign in to join")
       : kind === "shift" ? "Sign in to take a seat"
-      : kind === "business" ? "Sign in to see open shifts"
-      : create ? "Create your account" : "Sign in to your register";
+      : "Sign in to see open shifts";
 
   const form = (
-    <section className={styles.card} aria-labelledby={linked && preview.state !== "none" ? "form-title" : "account-title"}>
-      {linked && preview.state !== "none" ? (
+    <section className={styles.card} aria-labelledby={preview.state !== "none" ? "form-title" : "account-title"}>
+      {preview.state !== "none" ? (
         <h2 id="form-title" className={styles.formTitle}>{formTitle}</h2>
       ) : (
-        <h1 id="account-title" className={styles.title}>{linked ? plainTitle : formTitle}</h1>
+        <h1 id="account-title" className={styles.title}>{plainTitle}</h1>
       )}
       {modes}
       {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
@@ -485,8 +509,8 @@ export function Account(props: AccountProps) {
   );
 
   return (
-    <AccountPage brand={data?.business.brand} credit={Boolean(data)} showcase={!linked}>
-      {linked && !data && <AppMark />}
+    <AccountPage brand={data?.business.brand} credit={Boolean(data)}>
+      {!data && <AppMark />}
       {preview.state === "loading" && <Placeholder />}
       {data && (kind === "invite" ? <InviteCard data={data} /> : <ShiftCard data={data} />)}
       {preview.state === "gone" && (
@@ -507,15 +531,6 @@ export function Account(props: AccountProps) {
       ) : form}
       {props.onChooseAccount && !sentTo && (
         <button type="button" className={styles.plain} onClick={props.onChooseAccount}>Switch account</button>
-      )}
-      {kind === "register" && !sentTo && (
-        <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
-          <span>
-            <strong>Try the demo</strong>
-            <span>A sample coffee counter. The PIN is 1234.</span>
-          </span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
       )}
     </AccountPage>
   );

@@ -75,7 +75,7 @@ async function enterCredentials(page: Page) {
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("portable-pos-account", id), accountId);
   await page.goto(appUrl);
-  await expect(page.getByRole("heading", { name: "Sign in to your register" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to your Pop-up" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
   await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
@@ -102,6 +102,20 @@ test.describe("account-enabled link entry", () => {
     "Use a local app started with test Supabase settings and set POS_TEST_MOCK_AUTH=1.",
   );
   test.use({ serviceWorkers: "block" });
+
+  test("the main entry can create an account and switch back to sign-in", async ({ page }) => {
+    await mockAuth(page);
+    await page.goto(appUrl);
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Sign in to your Pop-up" })).toBeVisible();
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Verification code" })).toBeVisible();
+  });
 
   test("sign-in shows the branded loader until the register is ready", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });

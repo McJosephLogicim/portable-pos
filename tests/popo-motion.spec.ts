@@ -8,13 +8,16 @@ async function expectPopoToMove(mascot: Locator) {
   await expect.poll(() => mascot.evaluate((image) => image.getAnimations().length)).toBe(1);
   const frames = await mascot.evaluate((image) => {
     const animation = image.getAnimations()[0];
+    const duration = Number(animation.effect!.getTiming().duration);
+    const iterations = animation.effect!.getTiming().iterations;
     animation.pause();
     animation.currentTime = 0;
     const start = getComputedStyle(image).transform;
-    animation.currentTime = 760;
-    return { start, middle: getComputedStyle(image).transform };
+    animation.currentTime = 2.48 * duration;
+    return { start, laterLoop: getComputedStyle(image).transform, loops: iterations === Infinity };
   });
-  expect(frames.middle).not.toBe(frames.start);
+  expect(frames.loops).toBe(true);
+  expect(frames.laterLoop).not.toBe(frames.start);
 }
 
 test("Popo waits for the artwork and the viewport, and respects reduced motion", async ({ page }) => {
@@ -37,7 +40,10 @@ test("Popo waits for the artwork and the viewport, and respects reduced motion",
     await expect.poll(() => welcome.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
     await expect(welcome).toHaveCSS("animation-name", "none");
     await offscreen.evaluate((style) => { style.parentNode?.removeChild(style); });
+    await expect(welcome).toBeInViewport({ ratio: 1 });
     await expectPopoToMove(welcome);
+    await welcome.evaluate((image) => { (image as HTMLElement).style.translate = "0 150vh"; });
+    await expect(welcome).toHaveCSS("animation-name", "none");
   } finally {
     artwork.resolve();
   }
