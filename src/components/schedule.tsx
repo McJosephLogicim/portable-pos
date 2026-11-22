@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   CalendarPlus,
@@ -42,6 +42,9 @@ import {
 } from "@/lib/team";
 import type {
   Booking,
+  BookingRecordKind,
+  BookingRecords,
+  ExpenseInput,
   Member,
   Organizer,
   Place,
@@ -54,11 +57,12 @@ import type {
 } from "@/lib/types";
 import { SuggestInput } from "./combobox";
 import { AddMenu } from "./add-menu";
-import { ShiftSales } from "./insights";
+import { SalesSheet, ShiftSales, shiftReceipts } from "./insights";
+import { ShiftExpensesSheet } from "./expenses";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
-import { DrawerDifference, ShiftList, useBookingSales, useShiftFormats } from "./shift-list";
+import { DrawerDifference, ShiftList, useBookingExpenses, useBookingSales, useShiftFormats } from "./shift-list";
 import { shiftCurrency } from "./receipt";
 import { ReportSheet } from "./report";
 import { CopyButton } from "./share";
@@ -76,6 +80,8 @@ export interface ScheduleProps {
   onAction: Act;
   onSaved: (text: string) => void;
   onSales: (focus: SalesFocus) => void;
+  onLoadBookingRecords?: (bookingId: string, kind: BookingRecordKind) => Promise<BookingRecords>;
+  onEditExpense?: (id: string, input: ExpenseInput) => Promise<void>;
 }
 
 const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
@@ -307,10 +313,86 @@ function RoleSheet({
 
 /* ---------- details ---------- */
 
+function BookingBreakdown({ kind, booking, till, shiftIds, amount, currency, props, onClose }: {
+  kind: BookingRecordKind;
+  booking: Booking;
+  till?: Shift;
+  shiftIds: string[];
+  amount: number;
+  currency: string;
+  props: ScheduleProps;
+  onClose: () => void;
+}) {
+  const { state, online, onLoadBookingRecords, onEditExpense } = props;
+  const [records, setRecords] = useState<BookingRecords>();
+  const [error, setError] = useState("");
+  const sales = shiftReceipts(state, shiftIds);
+  const expenses = (state.expenses ?? []).filter((e) => shiftIds.includes(e.shiftId) && !e.voidedAt);
+  const localAmount = kind === "sales"
+    ? sales.reduce((total, sale) => total + sale.total, 0)
+    : expenses.reduce((total, expense) => total + expense.amount, 0);
+  // The register only syncs the most recent closed tills. Fetch older history for this booking on demand.
+  const recent = till && (!till.closedAt || state.shifts.filter((s) => s.closedAt && s.number > till.number).length < 30);
+  const pending = state.pending.some((event) => shiftIds.includes(event.shiftId) &&
+    (kind === "sales" ? event.type === "sale" : ["expense", "editExpense", "unexpense"].includes(event.type)));
+  const needsHistory = Boolean(onLoadBookingRecords && !pending &&
+    (!recent || (Boolean(till?.closedAt) && localAmount !== amount)));
+  useEffect(() => {
+    if (!needsHistory || !online || !onLoadBookingRecords) return;
+    let current = true;
+    onLoadBookingRecords(booking.id, kind).then(
+      (data) => { if (current) { setRecords(data); setError(""); } },
+      (failure) => { if (current) setError(errorText(failure)); },
+    );
+    return () => { current = false; };
+  }, [booking.id, kind, needsHistory, online, onLoadBookingRecords]);
+
+  const notice = needsHistory && !records
+    ? !online ? "Connect to load the full shift history." : error || "Loading shift history…"
+    : props.demo && kind === "sales" && !sales.length && amount > 0
+      ? "This sample shift only has a sales total."
+      : undefined;
+  const fetched = needsHistory ? records : undefined;
+  const title = bookingTitle(booking);
+  if (kind === "expenses") {
+    const entries = fetched?.expenses ?? expenses;
+    const editableTillId = state.shift && !state.shift.closedAt && !state.closingShiftId ? state.shift.id : undefined;
+    return (
+      <ShiftExpensesSheet
+        title={title}
+        expenses={entries}
+        total={fetched ? entries.reduce((sum, expense) => sum + expense.amount, 0) : amount}
+        currency={currency}
+        timeZone={state.business!.timeZone}
+        notice={notice}
+        editableTillId={editableTillId}
+        onEdit={onEditExpense}
+        onClose={onClose}
+      />
+    );
+  }
+  const receipts = fetched ? [...fetched.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : sales;
+  const count = receipts.length;
+  return (
+    <SalesSheet
+      state={state}
+      title="Sales"
+      amount={fetched ? receipts.reduce((sum, sale) => sum + sale.total, 0) : amount}
+      summary={notice ? title : `${count} ${count === 1 ? "sale" : "sales"} at ${title}`}
+      notice={notice}
+      sales={receipts}
+      currency={currency}
+      onClose={onClose}
+      onSales={sales.length && !needsHistory ? () => props.onSales({ filter: { shift: [booking.id] } }) : undefined}
+    />
+  );
+}
+
 function BookingSheet({
   booking: b,
   props,
   sales,
+  expenses,
   till,
   onLinkTill,
   onEdit,
@@ -319,6 +401,7 @@ function BookingSheet({
   booking: Booking;
   props: ScheduleProps;
   sales?: number;
+  expenses: number;
   till?: Shift;
   onLinkTill?: () => void;
   onEdit: () => void;
@@ -332,6 +415,7 @@ function BookingSheet({
   const withPin = usePin();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [breakdown, setBreakdown] = useState<BookingRecordKind | null>(null);
   const [picking, setPicking] = useState<{ replace?: StaffSlot } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [managing, setManaging] = useState<StaffSlot | null>(null);
@@ -341,7 +425,7 @@ function BookingSheet({
   const open = seatsOpen(b);
   const started = Date.parse(b.startsAt) <= Date.now();
   const over = Date.parse(b.endsAt) <= Date.now();
-  const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0 }) : null;
+  const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0, expenses }) : null;
   const team = state.team ?? [];
   const joinable = !mine && open > 0 && !over;
   const [joining, setJoining] = useState(false);
@@ -535,14 +619,19 @@ function BookingSheet({
             <p className="group-title title-help">
               {over ? "How it did" : started ? "So far" : "Break-even"}
               <Explain title="Profit for this shift">
-                Sales come from tills opened for this shift. Cost of goods isn't counted.
+                <p>Profit subtracts rent, salaries, earned incentives and logged expenses from net sales. It excludes cost of goods.</p>
+                <p>Enter each rent payment once, under scheduled rent or as a logged expense.</p>
               </Explain>
             </p>
-            <div className="card card-list">
-              <div className="list-row">
+            <div className={`card card-list ${styles.profitRows}`}>
+              <button type="button" className="list-row" aria-haspopup="dialog" onClick={() => {
+                buzz.tap();
+                setBreakdown("sales");
+              }}>
                 <span className="grow">Sales</span>
                 <Money value={p.sales} currency={currency} />
-              </div>
+                <ChevronRight size={16} className="chev" aria-hidden />
+              </button>
               <div className="list-row">
                 <span className="grow">Rent</span>
                 <Money value={-p.rent} currency={currency} sign />
@@ -557,6 +646,14 @@ function BookingSheet({
                   <Money value={-p.incentives} currency={currency} sign />
                 </div>
               )}
+              <button type="button" className="list-row" aria-haspopup="dialog" onClick={() => {
+                buzz.tap();
+                setBreakdown("expenses");
+              }}>
+                <span className="grow">Expenses</span>
+                <Money value={-p.expenses} currency={currency} sign />
+                <ChevronRight size={16} className="chev" aria-hidden />
+              </button>
               <div className="list-row">
                 <span className="grow strong">
                   {!started && !p.sales ? "Sales needed to cover costs" : p.net >= 0 ? "Profit" : "Loss"}
@@ -600,6 +697,18 @@ function BookingSheet({
           deleteDisabled={!online}
         />
       </Sheet>
+      {p && breakdown && (
+        <BookingBreakdown
+          kind={breakdown}
+          booking={b}
+          till={till}
+          shiftIds={tills}
+          amount={p[breakdown]}
+          currency={currency}
+          props={props}
+          onClose={() => setBreakdown(null)}
+        />
+      )}
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
@@ -1158,7 +1267,7 @@ export function BookingEditor({
                     <>
                       <p>A bonus each person on the shift earns when sales reach the quota, on top of their pay.</p>
                       <p>With 2 people and {formatMoney(currency === "PHP" ? 10000 : 1000, currency)} each, the shift pays {formatMoney(currency === "PHP" ? 20000 : 2000, currency)} in incentives.</p>
-                      <p>Profit is sales minus rent, salaries and incentives.</p>
+                      <p>Profit is net sales minus rent, salaries, incentives and logged expenses.</p>
                     </>
                   ),
                 }}
@@ -1448,6 +1557,7 @@ export function ShiftDetailsSheet({
   const [editing, setEditing] = useState(false);
   const { state, demo } = props;
   const salesOf = useBookingSales(state, demo);
+  const expensesOf = useBookingExpenses(state);
   const matchesTill = (shift: Shift) => tillId ? shift.id === tillId : shift.bookingId === bookingId;
   const till = state.shift && matchesTill(state.shift) ? state.shift : state.shifts.find(matchesTill);
   const booking = state.bookings?.find((b) => b.id === (bookingId ?? till?.bookingId));
@@ -1458,6 +1568,7 @@ export function ShiftDetailsSheet({
         booking={booking}
         props={props}
         sales={salesOf(booking)}
+        expenses={expensesOf(booking)}
         till={till}
         onLinkTill={onLinkTill}
         onEdit={() => setEditing(true)}
@@ -1546,6 +1657,7 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
     [state.bookings],
   );
   const salesOf = useBookingSales(state, demo);
+  const expensesOf = useBookingExpenses(state);
 
   const marks = useMemo(() => {
     const map = new Map<string, { count: number; open: boolean; mine: boolean }>();
@@ -1570,8 +1682,9 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
   const monthDone = bookings.filter(
     (b) => Date.parse(b.endsAt) < Date.now() && dayOf(b.startsAt, zone).slice(0, 7) === month.slice(0, 7),
   );
-  const monthNet = monthDone.reduce((sum, b) => sum + bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net, 0);
-  const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
+  const monthProfit = monthDone.map((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0, expenses: expensesOf(b) }).net);
+  const monthNet = monthProfit.reduce((sum, net) => sum + net, 0);
+  const winners = monthProfit.filter((net) => net >= 0).length;
   const next = mineNext[0];
   return (
     <div className="page">
@@ -1624,7 +1737,7 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
           </span>
           <Money value={monthNet} currency={business.currency} className="big-num" sign />
           <span className="hero-label">
-            {winners} of {monthDone.length} paid for themselves after rent, salaries and incentives.
+            {winners} of {monthDone.length} paid for themselves after rent, salaries, incentives and expenses.
           </span>
         </div>
       ) : next ? (

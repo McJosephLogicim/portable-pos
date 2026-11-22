@@ -19,10 +19,45 @@ export function useShiftFormats(timeZone: string) {
 
 export function useBookingSales(state: RegisterState, demo: boolean) {
   const local = useMemo(() => salesByBooking(state.shifts, state.sales), [state.shifts, state.sales]);
-  // Live registers already have the booking total from the server.
-  return (booking: Booking) => state.me?.owner
-    ? !demo && booking.sales !== undefined ? booking.sales : (booking.sales ?? 0) + (local.get(booking.id) ?? 0)
-    : undefined;
+  const pendingSales = useMemo(
+    () => new Set(state.pending.filter((e) => e.type === "sale").map((e) => e.shiftId)),
+    [state.pending],
+  );
+  const pendingBookings = useMemo(
+    () => new Set(state.shifts.filter((shift) => pendingSales.has(shift.id)).map((shift) => shift.bookingId)),
+    [state.shifts, pendingSales],
+  );
+  // Live registers already have the booking total from the server. Local sales include pending receipts.
+  return (booking: Booking) => {
+    if (!state.me?.owner) return undefined;
+    const cached = local.get(booking.id) ?? 0;
+    if (demo) return (booking.sales ?? 0) + cached;
+    return pendingBookings.has(booking.id) ? cached : booking.sales ?? cached;
+  };
+}
+
+export function useBookingExpenses(state: RegisterState) {
+  const { expenses, shifts, shift, pending } = state;
+  const { totals, changed } = useMemo(() => {
+    const bookingByTill = new Map(shifts.map((s) => [s.id, s.bookingId]));
+    if (shift) bookingByTill.set(shift.id, shift.bookingId);
+    const totals = new Map<string, number>();
+    for (const expense of expenses ?? []) {
+      const bookingId = bookingByTill.get(expense.shiftId);
+      if (bookingId && !expense.voidedAt)
+        totals.set(bookingId, (totals.get(bookingId) ?? 0) + expense.amount);
+    }
+    const changed = new Set<string>();
+    for (const event of pending) {
+      if (event.type !== "expense" && event.type !== "editExpense" && event.type !== "unexpense") continue;
+      const bookingId = bookingByTill.get(event.shiftId);
+      if (bookingId) changed.add(bookingId);
+    }
+    return { totals, changed };
+  }, [expenses, shifts, shift, pending]);
+  return (booking: Booking) => changed.has(booking.id)
+    ? totals.get(booking.id) ?? 0
+    : booking.expenses ?? totals.get(booking.id) ?? 0;
 }
 
 export function DrawerDifference({ value, currency }: { value: number; currency: string }) {
@@ -38,12 +73,13 @@ export function DrawerDifference({ value, currency }: { value: number; currency:
 type ShiftEntry = Booking | Shift;
 type ShiftFilter = "day" | "open" | "mine";
 
-function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
+function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
   entry: ShiftEntry;
   booking?: Booking;
   till?: Shift;
   state: RegisterState;
   sales?: number;
+  expenses?: number;
   onOpen: () => void;
 }) {
   const business = state.business!;
@@ -56,7 +92,7 @@ function ShiftCard({ entry, booking, till, state, sales, onOpen }: {
   const closed = till ? Boolean(till.closedAt) : Boolean(end && Date.parse(end) <= now);
   const mine = booking?.staff.some((s) => s.memberId === state.me?.memberId);
   const open = booking ? seatsOpen(booking) : 0;
-  const profit = scheduled && closed && sales !== undefined ? bookingProfit({ ...entry, sales }) : null;
+  const profit = scheduled && closed && sales !== undefined ? bookingProfit({ ...entry, sales, expenses }) : null;
   const currency = shiftCurrency(till, business);
   return (
     <article className={"card booking" + (closed ? " past" : "")}>
@@ -111,6 +147,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
   const business = state.business!;
   const zone = business.timeZone;
   const { day } = useShiftFormats(zone);
+  const expensesOf = useBookingExpenses(state);
   const bookings = new Map(state.bookings?.map((booking) => [booking.id, booking]));
   const tills = new Map(state.shifts.flatMap((till) => till.bookingId ? [[till.bookingId, till] as const] : []));
   if (state.shift?.bookingId) tills.set(state.shift.bookingId, state.shift);
@@ -135,6 +172,7 @@ export function ShiftList({ entries, state, filter = "day", showDates, salesOf, 
                 till={till}
                 state={state}
                 sales={scheduled ? salesOf?.(entry) : undefined}
+                expenses={scheduled ? expensesOf(entry) : undefined}
                 onOpen={() => onOpen(entry.id)}
               />
             </div>

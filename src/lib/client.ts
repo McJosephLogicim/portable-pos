@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { RegisterResponse, Sale } from "./types";
+import type { BookingRecordKind, BookingRecords, RegisterResponse, Sale } from "./types";
 
 export class RequestFailure extends Error {
   constructor(
@@ -135,10 +135,18 @@ async function sessionFor(key: string, what: string) {
   };
 }
 
-export async function api(
+export function api(key: string, body: Record<string, unknown>): Promise<RegisterResponse> {
+  return registerRequest(key, body);
+}
+
+export function loadBookingRecords(key: string, bookingId: string, kind: BookingRecordKind): Promise<BookingRecords> {
+  return registerRequest(key, { action: "bookingRecords", bookingId, kind });
+}
+
+async function registerRequest<T extends { sales: Sale[] }>(
   key: string,
   body: Record<string, unknown>,
-): Promise<RegisterResponse> {
+): Promise<T> {
   const { headers: auth } = await sessionFor(key, "sync this register");
   async function send<T>(command: Record<string, unknown>): Promise<T> {
     const { response, data } = await post(
@@ -149,7 +157,7 @@ export async function api(
         cache: "no-store",
       },
       20_000,
-      command.action === "bootstrap" || command.action === "historyPage"
+      ["bootstrap", "historyPage", "bookingRecords"].includes(String(command.action))
         ? "Couldn't load the register. Check your connection and try again."
         : "Couldn't confirm the save. Check your connection and try again.",
     );
@@ -160,7 +168,7 @@ export async function api(
       );
     return data;
   }
-  const data = await send<RegisterResponse & { nextSales?: string }>(body);
+  const data = await send<T & { nextSales?: string }>(body);
   let cursor = data.nextSales;
   while (cursor) {
     const page = await send<{ sales: Sale[]; nextSales?: string }>({

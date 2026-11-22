@@ -88,6 +88,7 @@ const position = z.object({
   oldestShift: z.number().int().positive(),
   shift: z.number().int().positive(),
   sequence: z.number().int().positive(),
+  bookingId: z.uuid().optional(),
 });
 type Position = z.infer<typeof position>;
 type Page = { sales: Sale[]; nextSales?: string };
@@ -96,6 +97,7 @@ export async function historyPage(
   tx: Transaction,
   businessId: string | undefined,
   cursor: unknown,
+  owner = false,
 ): Promise<Page> {
   ensure(
     typeof cursor === "string" && cursor.length <= 512,
@@ -112,8 +114,8 @@ export async function historyPage(
   ensure(values.success, "Couldn't load older sales. Try again.");
   const { newestShift, oldestShift } = values.data;
   ensure(oldestShift <= newestShift, "Couldn't load older sales. Try again.");
-  if (!businessId) return { sales: [] };
-  return receiptsPage(tx, businessId, oldestShift, newestShift, values.data);
+  if (!businessId || (values.data.bookingId && !owner)) return { sales: [] };
+  return receiptsPage(tx, businessId, oldestShift, newestShift, values.data, values.data.bookingId);
 }
 
 async function receiptsPage(
@@ -122,6 +124,7 @@ async function receiptsPage(
   oldestShift: number,
   newestShift: number,
   after?: Position,
+  bookingId?: string,
 ): Promise<Page> {
   const pageSize = 100;
   const rows = await tx
@@ -132,6 +135,7 @@ async function receiptsPage(
       and(
         eq(shifts.businessId, businessId),
         between(shifts.number, oldestShift, newestShift),
+        bookingId ? and(eq(shifts.bookingId, bookingId), isNull(sales.reversedAt)) : undefined,
         after &&
           or(
             lt(shifts.number, after.shift),
@@ -161,12 +165,33 @@ async function receiptsPage(
       JSON.stringify({
         oldestShift,
         newestShift,
+        bookingId,
         shift: last.shiftNumber,
         sequence: last.row.sequence,
       }),
     ).toString("base64url");
   }
   return { sales: result, nextSales };
+}
+
+export async function bookingRecords(tx: Transaction, businessId: string, input: unknown, kind: unknown) {
+  const id = z.uuid().safeParse(input);
+  ensure(id.success && (kind === "sales" || kind === "expenses"), "Choose a shift to see its sales and expenses.");
+  const bookingId = id.data;
+  const tills = await tx
+    .select({ id: shifts.id, number: shifts.number })
+    .from(shifts)
+    .where(and(eq(shifts.businessId, businessId), eq(shifts.bookingId, bookingId)))
+    .orderBy(shifts.number);
+  if (!tills.length) return { sales: [], expenses: [] };
+  if (kind === "sales") {
+    const receipts = await receiptsPage(tx, businessId, tills[0].number, tills.at(-1)!.number, undefined, bookingId);
+    return { ...receipts, expenses: [] };
+  }
+  const spent = await tx.select().from(expenses)
+    .where(and(inArray(expenses.shiftId, tills.map((till) => till.id)), isNull(expenses.voidedAt)))
+    .orderBy(desc(expenses.createdAt), desc(expenses.id));
+  return { sales: [], expenses: spent.map(presentExpense) };
 }
 
 type Access = {
@@ -210,6 +235,7 @@ export async function snapshot(
     .orderBy(bookings.startsAt)
     .limit(1000);
   const takings = new Map<string, number>();
+  const spent = new Map<string, number>();
   if (me.owner && bookingRows.length) {
     const rows = await tx
       .select({ bookingId: shifts.bookingId, total: sum(sales.total).mapWith(Number) })
@@ -227,6 +253,17 @@ export async function snapshot(
       )
       .groupBy(shifts.bookingId);
     for (const row of rows) if (row.bookingId) takings.set(row.bookingId, row.total ?? 0);
+    const expensesByShift = await tx
+      .select({ bookingId: shifts.bookingId, total: sum(expenses.amount).mapWith(Number) })
+      .from(expenses)
+      .innerJoin(shifts, eq(expenses.shiftId, shifts.id))
+      .where(and(
+        eq(shifts.businessId, business.id),
+        isNull(expenses.voidedAt),
+        inArray(shifts.bookingId, bookingRows.map((b) => b.id)),
+      ))
+      .groupBy(shifts.bookingId);
+    for (const row of expensesByShift) if (row.bookingId) spent.set(row.bookingId, row.total ?? 0);
   }
   const faces = Object.fromEntries(
     (
@@ -256,7 +293,7 @@ export async function snapshot(
           .orderBy(desc(eq(members.userId, business.ownerId)), desc(members.owner), asc(members.name)),
     organizers: me.owner ? business.organizers : [],
     bookings: bookingRows.map((row) =>
-      redactBooking({ ...presentBooking(row), sales: takings.get(row.id) ?? 0 }, me),
+      redactBooking({ ...presentBooking(row), sales: takings.get(row.id) ?? 0, expenses: spent.get(row.id) ?? 0 }, me),
     ),
   };
   const { id, name, currency, timeZone, menu } = business;

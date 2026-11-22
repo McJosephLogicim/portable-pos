@@ -1,7 +1,7 @@
 import { getDb } from "@/server/db";
-import { historyPage } from "@/server/snapshot";
+import { bookingRecords, historyPage } from "@/server/snapshot";
 import { authenticatedOwner } from "@/server/auth";
-import { RegisterError } from "@/server/errors";
+import { ensure, RegisterError } from "@/server/errors";
 import { readCommand } from "@/server/request";
 import { runCommand } from "@/server/register";
 import { resolveAccess } from "@/server/team";
@@ -13,18 +13,22 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticatedOwner(request);
     const body = await readCommand(request);
-    if (
-      typeof body === "object" &&
-      body &&
-      "action" in body &&
-      body.action === "historyPage"
-    ) {
-      const cursor = "cursor" in body ? body.cursor : undefined;
+    if (typeof body === "object" && body && "action" in body &&
+      (body.action === "historyPage" || body.action === "bookingRecords")) {
       return Response.json(
         await getDb().transaction(async (tx) => {
           const access = await resolveAccess(tx, actor, false);
+          if (body.action === "bookingRecords") {
+            ensure(access?.member.owner, "Only the owner can see shift profitability.", 403);
+            return bookingRecords(
+              tx,
+              access.business.id,
+              "bookingId" in body ? body.bookingId : undefined,
+              "kind" in body ? body.kind : undefined,
+            );
+          }
           const till = access && (access.member.owner || access.member.roles.includes("cashier"));
-          return historyPage(tx, till ? access.business.id : undefined, cursor);
+          return historyPage(tx, till ? access.business.id : undefined, "cursor" in body ? body.cursor : undefined, access?.member.owner);
         }),
         { headers },
       );

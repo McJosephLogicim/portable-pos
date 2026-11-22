@@ -5,6 +5,7 @@ import { demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerA
 import type {
   Bootstrap,
   CartLine,
+  RegisterEvent,
   RegisterState,
   Sale,
   Shift,
@@ -274,7 +275,11 @@ export function mergeServer(
     for (const event of pending) {
       if (event.type === "sale") sales.set(event.sale.id, event.sale);
       else if (event.type === "expense") expenses.set(event.expense.id, event.expense);
-      else if (event.type === "unexpense") {
+      else if (event.type === "editExpense") {
+        const e = expenses.get(event.targetId);
+        if (e && e.shiftId === event.shiftId && !e.voidedAt)
+          expenses.set(e.id, { ...e, ...event.changes });
+      } else if (event.type === "unexpense") {
         const e = expenses.get(event.targetId);
         if (e) expenses.set(e.id, { ...e, voidedAt: e.voidedAt ?? new Date().toISOString() });
       } else soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
@@ -490,6 +495,14 @@ export async function uploadProofs(
   }
 }
 
+function expenseChanges({ label, amount, source }: ExpenseInput): ExpenseInput {
+  const cleanLabel = label.trim().slice(0, 80);
+  if (!cleanLabel) throw new Error("Say what the money was for.");
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_147_483_647)
+    throw new Error("Enter how much was spent.");
+  return { label: cleanLabel, amount, source };
+}
+
 /** Log money spent during the shift. It syncs like a sale. */
 export function logExpense(
   key: string,
@@ -497,23 +510,38 @@ export function logExpense(
 ) {
   return updateRegister(key, (current) => {
     const shift = writableShift(current);
-    const label = input.label.trim().slice(0, 80);
-    if (!label) throw new Error("Say what the money was for.");
-    if (!Number.isSafeInteger(input.amount) || input.amount <= 0 || input.amount > 2_147_483_647)
-      throw new Error("Enter how much was spent.");
     const expense: Expense = {
       id: crypto.randomUUID(),
       shiftId: shift.id,
       createdAt: new Date().toISOString(),
-      label,
-      amount: input.amount,
-      source: input.source,
+      ...expenseChanges(input),
       ...(input.by ? { by: input.by.slice(0, 80) } : {}),
     };
     return {
       ...current,
       expenses: [expense, ...(current.expenses ?? [])],
       pending: isPracticeKey(key) ? current.pending : [...current.pending, { id: expense.id, shiftId: shift.id, type: "expense", expense }],
+    };
+  });
+}
+
+export function editExpense(key: string, expenseId: string, input: ExpenseInput) {
+  return updateRegister(key, (current) => {
+    const shift = writableShift(current);
+    const expense = current.expenses?.find((e) => e.id === expenseId && e.shiftId === shift.id);
+    if (!expense || expense.voidedAt) throw new Error("This expense is no longer on the open shift.");
+    const changes = expenseChanges(input);
+    const event: RegisterEvent = {
+      id: crypto.randomUUID(),
+      shiftId: shift.id,
+      type: "editExpense",
+      targetId: expenseId,
+      changes,
+    };
+    return {
+      ...current,
+      expenses: (current.expenses ?? []).map((e) => e.id === expenseId ? { ...e, ...changes } : e),
+      pending: isPracticeKey(key) ? current.pending : [...current.pending, event],
     };
   });
 }

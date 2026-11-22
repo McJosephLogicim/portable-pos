@@ -153,10 +153,10 @@ export async function applyEvents(
       recorded = true;
       continue;
     }
-    if (event.type === "unexpense") {
+    if (event.type === "editExpense" || event.type === "unexpense") {
       await tx
         .update(expenses)
-        .set({ voidedAt: new Date().toISOString() })
+        .set(event.type === "editExpense" ? event.changes : { voidedAt: new Date().toISOString() })
         .where(and(eq(expenses.id, event.targetId), eq(expenses.shiftId, shift.id), isNull(expenses.voidedAt)));
       recorded = true;
       continue;

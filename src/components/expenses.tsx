@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, Receipt, Trash2 } from "lucide-react";
-import { parseMoney } from "@/lib/domain";
+import { ChevronDown, ChevronRight, Receipt, Trash2 } from "lucide-react";
+import { amountText, parseMoney } from "@/lib/domain";
 import { blocked } from "@/lib/reject";
 import type { Expense, ExpenseInput } from "@/lib/types";
 import { AddButton } from "./add-menu";
@@ -12,39 +12,49 @@ function ExpenseSheet({
   currency,
   suggestions,
   name,
+  expense,
   onSave,
   onDismiss,
 }: {
   currency: string;
   suggestions: string[];
   name: string;
+  expense?: Omit<Expense, "shiftId">;
   onSave: (input: ExpenseInput) => void | Promise<void>;
   onDismiss: () => void;
 }) {
-  const [label, setLabel] = useState("");
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState<Expense["source"]>("till");
+  const [label, setLabel] = useState(expense?.label ?? "");
+  const [amount, setAmount] = useState(expense ? amountText(expense.amount, currency) : "");
+  const [source, setSource] = useState<Expense["source"]>(expense?.source ?? "till");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   let value: number | undefined;
   try {
     value = amount.trim() ? parseMoney(amount, currency) : undefined;
   } catch {}
+  const payee = expense
+    ? expense.by || "the person who paid"
+    : name && name !== "You" ? name.split(" ")[0] : "you";
+  const submitLabel = expense
+    ? busy ? "Saving…" : "Save changes"
+    : busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense";
   return (
     <Sheet
-      title="Log an expense"
+      title={expense ? "Edit expense" : "Log an expense"}
       onClose={onDismiss}
       busy={busy}
       footer={
         <button
+          type="button"
           className="btn block"
           disabled={busy}
           {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
           onClick={async () => {
+            if (busy || !label.trim() || !value) return;
             setBusy(true);
             setError("");
             try {
-              await onSave({ label: label.trim(), amount: value!, source });
+              await onSave({ label: label.trim(), amount: value, source });
               buzz.success();
               onDismiss();
             } catch (e) {
@@ -54,7 +64,7 @@ function ExpenseSheet({
             }
           }}
         >
-          {busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense"}
+          {submitLabel}
         </button>
       }
     >
@@ -67,7 +77,7 @@ function ExpenseSheet({
           suggestions={suggestions.map((s) => ({ key: s, name: s }))}
           placeholder="Rent, Lalamove, ice…"
           maxLength={80}
-          autoFocus
+          autoFocus={!expense}
         />
       </div>
       <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
@@ -84,7 +94,7 @@ function ExpenseSheet({
         <p className="label">
           {source === "till"
             ? "Takes it out of the cash expected in the drawer."
-            : `Leaves the drawer alone. The report says to pay back ${name && name !== "You" ? name.split(" ")[0] : "you"}.`}
+            : `Leaves the drawer alone. The report says to pay back ${payee}.`}
         </p>
       </div>
       {error && (
@@ -93,6 +103,80 @@ function ExpenseSheet({
         </p>
       )}
     </Sheet>
+  );
+}
+
+function ExpenseRowContent({ expense, currency, time }: {
+  expense: Omit<Expense, "shiftId">;
+  currency: string;
+  time: Intl.DateTimeFormat;
+}) {
+  return (
+    <>
+      <span className="well"><Receipt size={18} strokeWidth={1.8} /></span>
+      <span className="grow stack">
+        <span className="ellipsis">{expense.label}</span>
+        <span className="label ellipsis">
+          {expense.source === "till" ? "From the till" : `Paid by ${expense.by ? expense.by.split(" ")[0] : "staff"}`}
+          {" · "}
+          {time.format(new Date(expense.createdAt))}
+        </span>
+      </span>
+      <Money value={expense.amount} currency={currency} className="end" />
+    </>
+  );
+}
+
+export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, notice, editableTillId, onEdit, onClose }: {
+  title: string;
+  expenses: Expense[];
+  total: number;
+  currency: string;
+  timeZone: string;
+  notice?: string;
+  editableTillId?: string;
+  onEdit?: (id: string, input: ExpenseInput) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+  return (
+    <>
+      <Sheet title="Expenses" onClose={onClose}>
+        <div className="stack gap-4">
+          <Money value={total} currency={currency} className="big-num" />
+          <p className="muted">{title}</p>
+        </div>
+        {notice && <p className="muted" role="status">{notice}</p>}
+        <div className="card card-list">
+          {!expenses.length && !notice && (
+            <EmptyRow object="expense" title="No expenses yet" detail="Expenses logged for this shift will show here." />
+          )}
+          {expenses.map((expense) => {
+            const content = <ExpenseRowContent expense={expense} currency={currency} time={time} />;
+            return onEdit && expense.shiftId === editableTillId ? (
+              <button key={expense.id} type="button" className="list-row" aria-haspopup="dialog" onClick={() => {
+                buzz.tap();
+                setEditing(expense);
+              }}>
+                {content}
+                <ChevronRight size={16} className="chev" aria-hidden />
+              </button>
+            ) : <div key={expense.id} className="list-row">{content}</div>;
+          })}
+        </div>
+      </Sheet>
+      {editing && onEdit && (
+        <ExpenseSheet
+          currency={currency}
+          suggestions={[...new Set(expenses.map((expense) => expense.label))]}
+          name=""
+          expense={editing}
+          onSave={(input) => onEdit(editing.id, input)}
+          onDismiss={() => setEditing(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -106,6 +190,7 @@ export function ExpensesSection({
   suggestions,
   disabled,
   onExpense,
+  onEditExpense,
   onUnexpense,
 }: {
   expenses: Omit<Expense, "shiftId">[];
@@ -115,9 +200,11 @@ export function ExpensesSection({
   suggestions: string[];
   disabled?: boolean;
   onExpense: (input: ExpenseInput) => void | Promise<void>;
+  onEditExpense: (id: string, input: ExpenseInput) => void | Promise<void>;
   onUnexpense: (id: string) => void | Promise<void>;
 }) {
-  const [addingExpense, setAddingExpense] = useState(false);
+  const [editor, setEditor] = useState<"new" | (typeof expenses)[number] | null>(null);
+  const editing = editor === "new" ? undefined : editor ?? undefined;
   const [removing, setRemoving] = useState<(typeof expenses)[number] | null>(null);
   const [allExpenses, setAllExpenses] = useState(false);
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -131,25 +218,26 @@ export function ExpensesSection({
           {expenses.length > 0 && <span className="label">{formatMoney(total, currency)}</span>}
           <AddButton
             disabled={disabled}
-            onClick={() => setAddingExpense(true)}
+            onClick={() => setEditor("new")}
           />
         </div>
       </div>
       <div className="card card-list">
         {(allExpenses ? expenses : expenses.slice(0, 5)).map((e) => (
-          <div className="list-row" key={e.id}>
-            <span className="well">
-              <Receipt size={18} strokeWidth={1.8} />
-            </span>
-            <span className="grow stack">
-              <span className="ellipsis">{e.label}</span>
-              <span className="label ellipsis">
-                {e.source === "till" ? "From the till" : `Paid by ${e.by ? e.by.split(" ")[0] : "staff"}`}
-                {" · "}
-                {time.format(new Date(e.createdAt))}
-              </span>
-            </span>
-            <Money value={e.amount} currency={currency} />
+          <div className="row gap-8" key={e.id}>
+            <button
+              type="button"
+              className="list-row grow"
+              aria-haspopup="dialog"
+              disabled={disabled}
+              onClick={() => {
+                buzz.tap();
+                setEditor(e);
+              }}
+            >
+              <ExpenseRowContent expense={e} currency={currency} time={time} />
+              <ChevronRight size={16} className="chev" aria-hidden />
+            </button>
             <button
               type="button"
               className="round flat"
@@ -174,13 +262,14 @@ export function ExpensesSection({
           </button>
         )}
       </div>
-      {addingExpense && (
+      {editor && (
         <ExpenseSheet
           currency={currency}
           suggestions={pastLabels}
           name={name}
-          onSave={onExpense}
-          onDismiss={() => setAddingExpense(false)}
+          expense={editing}
+          onSave={editing ? (input) => onEditExpense(editing.id, input) : onExpense}
+          onDismiss={() => setEditor(null)}
         />
       )}
       {removing && (

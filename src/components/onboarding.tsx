@@ -7,7 +7,7 @@ import { Activity, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import { PRACTICE, type OwnerAction } from "@/lib/demo";
 import { saveMenuItem, shiftTotals } from "@/lib/domain";
 import {
-  checkout, loadRegister, logExpense, openPracticeRegister, removeExpense, saveCart,
+  checkout, editExpense, loadRegister, logExpense, openPracticeRegister, removeExpense, saveCart,
   savePracticeAction, setAvailability,
 } from "@/lib/register-store";
 import { isSimpleMode } from "@/lib/settings";
@@ -170,6 +170,7 @@ export function Onboarding({
                 currency: till.settings.currency,
                 timeZone: business.timeZone,
                 onExpense: async (input) => setPractice(await logExpense(practiceKey, { ...input, by: live.me?.name })),
+                onEditExpense: async (id, input) => setPractice(await editExpense(practiceKey, id, input)),
                 onUnexpense: async (id) => setPractice(await removeExpense(practiceKey, id)),
               }}
               onClose={async (closing, pin) => {

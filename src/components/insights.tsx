@@ -129,11 +129,12 @@ export function ShiftSales({
 type Receipts = RegisterState["sales"];
 
 /** A breakdown over whatever is open: one big number, a line saying what it is, and the receipts behind it. */
-function SalesSheet({
+export function SalesSheet({
   state,
   title,
   amount,
   summary,
+  notice,
   sales,
   currency,
   onClose,
@@ -143,6 +144,7 @@ function SalesSheet({
   title: string;
   amount: number;
   summary: string;
+  notice?: string;
   sales: Receipts;
   currency: string;
   onClose: () => void;
@@ -165,7 +167,9 @@ function SalesSheet({
         <Money value={amount} currency={currency} className="big-num" />
         <p className="muted">{summary}</p>
       </div>
+      {notice && <p className="muted" role="status">{notice}</p>}
       <div className="card card-list">
+        {!sales.length && !notice && <EmptyRow object="salesReceipt" title="No sales yet" detail="Sales recorded for this shift will show here." />}
         {sales.map((sale) => (
           <div key={sale.id} className="list-row">
             <span className="grow stack gap-4" style={{ minWidth: 0 }}>
@@ -184,7 +188,7 @@ function SalesSheet({
   );
 }
 
-const live = (state: RegisterState, shiftIds: string[]) =>
+export const shiftReceipts = (state: RegisterState, shiftIds: string[]) =>
   state.sales
     .filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -208,7 +212,7 @@ export function ItemSales({
   onSales?: () => void;
 }) {
   const seller = bestSellers(state.sales, shiftIds).find((s) => s.productId === productId);
-  const sales = live(state, shiftIds).filter((s) => s.lines.some((l) => l.productId === productId));
+  const sales = shiftReceipts(state, shiftIds).filter((s) => s.lines.some((l) => l.productId === productId));
   if (!seller) return null;
   return (
     <SalesSheet
@@ -242,7 +246,7 @@ export function PaymentSales({
   onClose: () => void;
   onSales?: () => void;
 }) {
-  const sales = live(state, shiftIds).filter((s) => s.payment.id === method.id);
+  const sales = shiftReceipts(state, shiftIds).filter((s) => s.payment.id === method.id);
   if (!sales.length) return null;
   return (
     <SalesSheet

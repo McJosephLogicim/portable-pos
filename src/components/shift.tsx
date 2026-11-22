@@ -485,6 +485,7 @@ export function ShiftScreen({
   onJoin,
   onClose,
   onExpense,
+  onEditExpense,
   onUnexpense,
   onSell,
   onGoMenu,
@@ -493,12 +494,13 @@ export function ShiftScreen({
   onBack,
   openingId,
   sellLabel,
-  ...schedule
+  ...scheduleProps
 }: ScheduleProps & {
   onOpen: (opening: Opening) => Promise<void>;
   onJoin?: (shiftId: string) => Promise<void>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onExpense: (input: ExpenseInput) => Promise<void>;
+  onEditExpense: (id: string, input: ExpenseInput) => Promise<void>;
   onUnexpense: (id: string) => Promise<void>;
   onSell: () => void;
   onGoMenu?: () => void;
@@ -508,6 +510,7 @@ export function ShiftScreen({
   openingId?: string;
   sellLabel: string;
 }) {
+  const schedule = { ...scheduleProps, onEditExpense };
   const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
   const [bookingId, setBookingId] = useState<string | null>(null);
@@ -538,6 +541,7 @@ export function ShiftScreen({
     currency,
     disabled: Boolean(state.closingShiftId),
     onExpense,
+    onEditExpense,
     onUnexpense,
   };
   const canClose = online && !state.pending.length;

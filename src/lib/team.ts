@@ -19,7 +19,7 @@ export interface Plan {
   bookings: Booking[];
 }
 
-export type BookingInput = Omit<Booking, "sales">;
+export type BookingInput = Omit<Booking, "sales" | "expenses">;
 
 export function bookingTitle(b: Booking) {
   return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";
@@ -328,6 +328,7 @@ export function redactBooking(b: Booking, me: Me): Booking {
     hit: b.quota > 0 && (b.sales ?? 0) >= b.quota,
     rent: undefined,
     sales: undefined,
+    expenses: undefined,
     staff: b.staff.map((s) => (s.memberId === me.memberId ? s : { ...s, salary: undefined })),
   };
 }
@@ -340,8 +341,9 @@ export function bookingProfit(b: Booking) {
   const salaries = b.staff.reduce((sum, s) => sum + (s.salary ?? 0), 0);
   const hit = b.quota > 0 && sales >= b.quota;
   const incentives = hit ? b.incentive * b.staff.length : 0;
-  const costs = rent + salaries + incentives;
-  return { sales, rent, salaries, incentives, hit, costs, net: sales - costs };
+  const expenses = b.expenses ?? 0;
+  const costs = rent + salaries + incentives + expenses;
+  return { sales, rent, salaries, incentives, expenses, hit, costs, net: sales - costs };
 }
 
 /** Net sales rung up on tills opened for each booking, from what this device holds. */

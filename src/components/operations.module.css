@@ -237,3 +237,13 @@
 :global(html[data-input="keyboard"]) .openingProgress:global(.bar) i {
   transition: none;
 }
+
+.profitRows :global(.list-row) {
+  position: relative;
+  padding-inline-end: 24px;
+}
+
+.profitRows :global(.chev) {
+  position: absolute;
+  inset-inline-end: 0;
+}

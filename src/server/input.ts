@@ -99,6 +99,13 @@ const expense = z.object({
 const event = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale, menuVersion: z.union([z.literal("opening"), z.uuid()]).optional() }),
   z.object({ type: z.literal("expense"), id: z.uuid(), shiftId: z.uuid(), expense }),
+  z.object({
+    type: z.literal("editExpense"),
+    id: z.uuid(),
+    shiftId: z.uuid(),
+    targetId: z.uuid(),
+    changes: expense.pick({ label: true, amount: true, source: true }),
+  }),
   z.object({ type: z.literal("unexpense"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid() }),
   z.object({
     type: z.literal("availability"),

@@ -52,7 +52,7 @@ test(
     const booking = deleted.deletedRecord.booking;
     const restoreShift = { action: "restoreBooking", booking };
     const restored = await call(restoreShift);
-    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0 });
+    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0, expenses: 0 });
     assert.equal(restored.shift!.id, opened.shift!.id);
     assert.equal(restored.shift!.bookingId, bookingId);
     assert.equal((await call(restoreShift)).bookings!.filter((entry) => entry.id === bookingId).length, 1);
