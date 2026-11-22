@@ -8,7 +8,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 async function seedTill(
   page: Page,
   withShifts: boolean,
-  withPastSale = false,
+  withPastSale: boolean | "unscheduled" = false,
   { opening = false, rankedAs, withExpenses = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
@@ -18,7 +18,7 @@ async function seedTill(
   const demo = demoBootstrap("test-device");
   const espresso = demo.menu.find((item) => item.name === "Espresso")!;
   const sales = withPastSale ? [makeSale({
-    id: "past-sale", shift: { ...demo.shift!, id: "past" }, sequence: 1, soldOut: [],
+    id: "past-sale", shift: { ...demo.shift!, id: withPastSale === "unscheduled" ? "unscheduled" : "past" }, sequence: 1, soldOut: [],
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
@@ -266,7 +266,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
 });
 
 test("Past shift cards open details for both scheduled and unscheduled tills", async ({ page }) => {
-  await seedTill(page, true);
+  await seedTill(page, true, "unscheduled");
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await page.getByRole("button", { name: /Past shifts/ }).click();
   const past = page.getByRole("dialog", { name: "Past shifts" });
@@ -283,6 +283,10 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
   await past.getByRole("button", { name: /Shift 1/ }).click();
   const unscheduled = page.getByRole("dialog", { name: "Shift 1", exact: true });
+  await unscheduled.getByRole("button", { name: "All 1 sale" }).click();
+  const sales = page.getByRole("dialog", { name: "Sales", exact: true });
+  await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
+  await sales.getByRole("button", { name: "Close", exact: true }).click();
   await expect(unscheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report"]);
   await unscheduled.getByRole("button", { name: "Report", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Shift 1 report" })).toBeVisible();
@@ -466,6 +470,11 @@ test("Shift profitability opens the sales and expenses behind its totals", async
   const salesRow = shift.getByRole("button", { name: /^Sales ₱/ });
   await salesRow.click();
   const sales = page.getByRole("dialog", { name: "Sales", exact: true });
+  await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
+  await expect(sales.getByText(php(espresso.price), { exact: true })).toHaveCount(2);
+  await sales.getByRole("button", { name: "Close", exact: true }).click();
+
+  await shift.getByRole("button", { name: "All 1 sale" }).click();
   await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
   await expect(sales.getByText(php(espresso.price), { exact: true })).toHaveCount(2);
   await sales.getByRole("button", { name: "Close", exact: true }).click();
