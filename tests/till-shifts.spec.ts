@@ -143,7 +143,7 @@ test("Opening and closing tills can review stock, with expenses available after 
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Ice packs.*25\.50/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /^Atrium/ }).click();
+  await page.getByRole("button", { name: /^Selling for Atrium/ }).click();
   const activeShift = page.getByRole("dialog", { name: "Atrium", exact: true });
   await activeShift.getByRole("button", { name: /Expenses.*25\.50/ }).click();
   const shiftExpenses = page.getByRole("dialog", { name: "Expenses", exact: true });
