@@ -58,6 +58,7 @@ import type {
 import { SuggestInput } from "./combobox";
 import { AddMenu } from "./add-menu";
 import { SalesSheet, ShiftSales, shiftReceipts } from "./insights";
+import type { ShiftRecordStatus } from "./shift-record-list";
 import { ShiftExpensesSheet } from "./expenses";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
@@ -82,6 +83,7 @@ export interface ScheduleProps {
   onSales: (focus: SalesFocus) => void;
   onLoadBookingRecords?: (bookingId: string, kind: BookingRecordKind) => Promise<BookingRecords>;
   onEditExpense?: (id: string, input: ExpenseInput) => Promise<void>;
+  onUnexpense?: (id: string) => Promise<void>;
 }
 
 const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
@@ -313,79 +315,36 @@ function RoleSheet({
 
 /* ---------- details ---------- */
 
-function BookingBreakdown({ kind, booking, till, shiftIds, amount, currency, props, onClose }: {
-  kind: BookingRecordKind;
-  booking: Booking;
-  till?: Shift;
-  shiftIds: string[];
-  amount: number;
-  currency: string;
-  props: ScheduleProps;
-  onClose: () => void;
-}) {
-  const { state, online, onLoadBookingRecords, onEditExpense } = props;
-  const [records, setRecords] = useState<BookingRecords>();
-  const [error, setError] = useState("");
-  const sales = shiftReceipts(state, shiftIds);
-  const expenses = (state.expenses ?? []).filter((e) => shiftIds.includes(e.shiftId) && !e.voidedAt);
-  const localAmount = kind === "sales"
-    ? sales.reduce((total, sale) => total + sale.total, 0)
-    : expenses.reduce((total, expense) => total + expense.amount, 0);
-  // The register only syncs the most recent closed tills. Fetch older history for this booking on demand.
-  const recent = till && (!till.closedAt || state.shifts.filter((s) => s.closedAt && s.number > till.number).length < 30);
-  const pending = state.pending.some((event) => shiftIds.includes(event.shiftId) &&
-    (kind === "sales" ? event.type === "sale" : ["expense", "editExpense", "unexpense"].includes(event.type)));
-  const needsHistory = Boolean(onLoadBookingRecords && !pending &&
-    (!recent || (Boolean(till?.closedAt) && localAmount !== amount)));
+function useBookingHistory(
+  bookingId: string,
+  kind: BookingRecordKind,
+  amount: number,
+  enabled: boolean,
+  online: boolean,
+  load: ScheduleProps["onLoadBookingRecords"],
+): { records?: BookingRecords; status?: ShiftRecordStatus } {
+  const [result, setResult] = useState<{ amount: number; attempt: number; data?: BookingRecords; error?: string }>();
+  const [attempt, setAttempt] = useState(0);
+  const request = useRef<{ amount: number; attempt: number; load: typeof load; promise: Promise<BookingRecords> } | null>(null);
   useEffect(() => {
-    if (!needsHistory || !online || !onLoadBookingRecords) return;
+    if (!online) request.current = null;
+    if (!enabled || !online || !load) return;
     let current = true;
-    onLoadBookingRecords(booking.id, kind).then(
-      (data) => { if (current) { setRecords(data); setError(""); } },
-      (failure) => { if (current) setError(errorText(failure)); },
+    if (request.current?.amount !== amount || request.current.attempt !== attempt || request.current.load !== load) {
+      request.current = { amount, attempt, load, promise: load(bookingId, kind) };
+    }
+    request.current.promise.then(
+      (data) => { if (current) setResult({ amount, attempt, data }); },
+      (failure) => { if (current) setResult({ amount, attempt, error: errorText(failure) }); },
     );
     return () => { current = false; };
-  }, [booking.id, kind, needsHistory, online, onLoadBookingRecords]);
-
-  const notice = needsHistory && !records
-    ? !online ? "Connect to load the full shift history." : error || "Loading shift history…"
-    : props.demo && kind === "sales" && !sales.length && amount > 0
-      ? "This sample shift only has a sales total."
-      : undefined;
-  const fetched = needsHistory ? records : undefined;
-  const title = bookingTitle(booking);
-  if (kind === "expenses") {
-    const entries = fetched?.expenses ?? expenses;
-    const editableTillId = state.shift && !state.shift.closedAt && !state.closingShiftId ? state.shift.id : undefined;
-    return (
-      <ShiftExpensesSheet
-        title={title}
-        expenses={entries}
-        total={fetched ? entries.reduce((sum, expense) => sum + expense.amount, 0) : amount}
-        currency={currency}
-        timeZone={state.business!.timeZone}
-        notice={notice}
-        editableTillId={editableTillId}
-        onEdit={onEditExpense}
-        onClose={onClose}
-      />
-    );
-  }
-  const receipts = fetched ? [...fetched.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : sales;
-  const count = receipts.length;
-  return (
-    <SalesSheet
-      state={state}
-      title="Sales"
-      amount={fetched ? receipts.reduce((sum, sale) => sum + sale.total, 0) : amount}
-      summary={notice ? title : `${count} ${count === 1 ? "sale" : "sales"} at ${title}`}
-      notice={notice}
-      sales={receipts}
-      currency={currency}
-      onClose={onClose}
-      onSales={sales.length && !needsHistory ? () => props.onSales({ filter: { shift: [booking.id] } }) : undefined}
-    />
-  );
+  }, [amount, attempt, bookingId, enabled, kind, load, online]);
+  if (!enabled || !load) return {};
+  const latest = result?.amount === amount && result.attempt === attempt ? result : undefined;
+  if (latest?.data) return { records: latest.data };
+  if (!online) return { status: { kind: "unavailable", message: "Connect to see the full shift history." } };
+  if (latest?.error) return { status: { kind: "unavailable", message: latest.error, retry: () => setAttempt((n) => n + 1) } };
+  return { status: { kind: "loading" } };
 }
 
 function BookingSheet({
@@ -436,6 +395,40 @@ function BookingSheet({
     () => state.shifts.filter((s) => s.bookingId === b.id).map((s) => s.id),
     [state.shifts, b.id],
   );
+
+  // Recent records are already on the register. Fetch uncached history as soon as the shift opens.
+  const cachedSales = useMemo(() => shiftReceipts(state, tills), [state, tills]);
+  const cachedExpenses = useMemo(
+    () => (state.expenses ?? []).filter((entry) => tills.includes(entry.shiftId) && !entry.voidedAt),
+    [state.expenses, tills],
+  );
+  const salesAmount = p?.sales ?? 0;
+  const recent = till && (!till.closedAt || state.shifts.filter((s) => s.closedAt && s.number > till.number).length < 30);
+  const pendingSales = state.pending.some((event) => event.type === "sale" && tills.includes(event.shiftId));
+  const pendingExpenses = state.pending.some((event) =>
+    (event.type === "expense" || event.type === "editExpense" || event.type === "unexpense") && tills.includes(event.shiftId));
+  const hasHistory = me.owner && Boolean(till || started || salesAmount || expenses);
+  const salesHistory = useBookingHistory(
+    b.id, "sales", salesAmount,
+    hasHistory && !pendingSales &&
+      (!recent || (Boolean(till?.closedAt) && salesAmount !== cachedSales.reduce((sum, entry) => sum + entry.total, 0))),
+    online, props.onLoadBookingRecords,
+  );
+  const expenseHistory = useBookingHistory(
+    b.id, "expenses", expenses,
+    hasHistory && !pendingExpenses && (expenses > 0 || cachedExpenses.length > 0) &&
+      (!recent || (Boolean(till?.closedAt) && expenses !== cachedExpenses.reduce((sum, entry) => sum + entry.amount, 0))),
+    online, props.onLoadBookingRecords,
+  );
+  const title = bookingTitle(b);
+  const receipts = salesHistory.records
+    ? [...salesHistory.records.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : cachedSales;
+  const spent = expenseHistory.records?.expenses ?? cachedExpenses;
+  const salesStatus = salesHistory.status ?? (props.demo && !receipts.length && salesAmount > 0
+    ? { kind: "unavailable" as const, message: "This sample shift only has a sales total." }
+    : undefined);
+  const editableTillId = state.shift && !state.shift.closedAt && !state.closingShiftId ? state.shift.id : undefined;
 
   async function run(input: OwnerAction, label: string, owner = true, from?: Element | null) {
     const origin = centerOf(from);
@@ -697,15 +690,30 @@ function BookingSheet({
           deleteDisabled={!online}
         />
       </Sheet>
-      {p && breakdown && (
-        <BookingBreakdown
-          kind={breakdown}
-          booking={b}
-          till={till}
-          shiftIds={tills}
-          amount={p[breakdown]}
+      {p && breakdown === "sales" && (
+        <SalesSheet
+          state={state}
+          title="Sales"
+          amount={salesHistory.records ? receipts.reduce((total, entry) => total + entry.total, 0) : salesAmount}
+          summary={salesStatus ? title : `${receipts.length} ${receipts.length === 1 ? "sale" : "sales"} at ${title}`}
+          status={salesStatus}
+          sales={receipts}
           currency={currency}
-          props={props}
+          onClose={() => setBreakdown(null)}
+          onSales={cachedSales.length && !salesStatus && !salesHistory.records ? () => props.onSales({ filter: { shift: [b.id] } }) : undefined}
+        />
+      )}
+      {p && breakdown === "expenses" && (
+        <ShiftExpensesSheet
+          title={title}
+          expenses={spent}
+          total={expenseHistory.records ? spent.reduce((total, entry) => total + entry.amount, 0) : expenses}
+          currency={currency}
+          timeZone={business.timeZone}
+          status={expenseHistory.status}
+          editableTillId={editableTillId}
+          onEdit={props.onEditExpense}
+          onRemove={props.onUnexpense}
           onClose={() => setBreakdown(null)}
         />
       )}
@@ -1565,6 +1573,7 @@ export function ShiftDetailsSheet({
   return (
     <>
       <BookingSheet
+        key={booking.id}
         booking={booking}
         props={props}
         sales={salesOf(booking)}

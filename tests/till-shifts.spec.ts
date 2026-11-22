@@ -110,6 +110,7 @@ test("Opening and closing tills can review stock, with expenses available after 
     await expect(add).toHaveAttribute("aria-haspopup", "dialog");
     await add.click();
     const form = page.getByRole("dialog", { name: "Log an expense" });
+    await expect(form.getByRole("button", { name: "Remove expense" })).toHaveCount(0);
     await form.getByRole("combobox", { name: "What for" }).fill(label);
     await form.getByRole("textbox", { name: "Amount" }).fill(amount);
     await form.getByRole("button", { name: source, exact: true }).click();
@@ -117,10 +118,21 @@ test("Opening and closing tills can review stock, with expenses available after 
     await expect(form).toBeHidden();
   };
   const removeExpense = async (label: string, within: Page | Locator = page) => {
-    await within.getByRole("button", { name: `Remove ${label}` }).click();
+    const list = within.getByRole("region", { name: "Expenses" });
+    const row = list.getByRole("button").filter({ hasText: label });
+    await expect(list.getByRole("button", { name: /Remove/ })).toHaveCount(0);
+    await row.click();
+    const editor = page.getByRole("dialog", { name: "Edit expense" });
+    const remove = editor.getByRole("button", { name: "Remove expense" });
     const confirm = page.getByRole("dialog", { name: "Remove expense?" });
+    await remove.click();
+    await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(editor).toBeVisible();
+    await remove.click();
     await confirm.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(editor).toBeHidden();
     await expect(confirm).toBeHidden();
+    await expect(row).toHaveCount(0);
   };
   await reviewStock("Opening stock");
   await expect(page.getByRole("region", { name: "Expenses" })).toHaveCount(0);
@@ -149,6 +161,7 @@ test("Opening and closing tills can review stock, with expenses available after 
   const shiftExpenses = page.getByRole("dialog", { name: "Expenses", exact: true });
   await shiftExpenses.getByRole("button", { name: /^Ice packs/ }).click();
   await expect(edit.getByRole("textbox", { name: "Amount" })).toHaveValue("25.50");
+  await expect(edit.getByRole("button", { name: "Remove expense" })).toBeVisible();
   await edit.getByRole("button", { name: "Close", exact: true }).click();
   await shiftExpenses.getByRole("button", { name: "Close", exact: true }).click();
   await activeShift.getByRole("button", { name: "Close", exact: true }).click();

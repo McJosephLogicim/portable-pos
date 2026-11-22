@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { popoLoading } from "../src/lib/app-brand";
 import { demoBootstrap } from "../src/lib/demo";
+import { makeSale } from "../src/lib/domain";
 import { joinLink } from "../src/lib/join-link";
 import type { Bootstrap } from "../src/lib/types";
 
@@ -102,6 +103,78 @@ test.describe("account-enabled link entry", () => {
     "Use a local app started with test Supabase settings and set POS_TEST_MOCK_AUTH=1.",
   );
   test.use({ serviceWorkers: "block" });
+
+  test("an older shift prefetches its records and keeps its totals visible during requests", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
+    await mockAuth(page);
+    const snapshot = { ...teamSnapshot(), onboardingComplete: true };
+    const demo = demoBootstrap("history-test");
+    const till = demo.shift!;
+    const espresso = demo.menu.find((item) => item.name === "Espresso")!;
+    const sale = makeSale({
+      id: "archived-receipt", shift: till, sequence: 1, cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
+      soldOut: [], tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
+    });
+    const expense = { id: "archived-expense", shiftId: till.id, label: "Ice packs", source: "till", amount: 2000, createdAt: sale.createdAt };
+    snapshot.bookings![0] = {
+      ...snapshot.bookings![0], startsAt: "2026-11-21T01:00:00Z", endsAt: "2026-11-21T03:00:00Z",
+      sales: sale.total, expenses: expense.amount,
+    };
+
+    const finishSales = Promise.withResolvers<void>();
+    const finishExpenses = Promise.withResolvers<void>();
+    const requested = new Set<string>();
+    let salesRequests = 0;
+    await page.route("**/api/pos", async (route) => {
+      const { action, kind } = route.request().postDataJSON();
+      if (action !== "bookingRecords") return route.fulfill({ json: snapshot });
+      requested.add(kind);
+      if (kind === "expenses") {
+        await finishExpenses.promise;
+        return route.fulfill({ json: { sales: [], expenses: [expense] } });
+      }
+      salesRequests++;
+      if (salesRequests === 1) {
+        await finishSales.promise;
+        return route.fulfill({ status: 503, json: { error: "Couldn’t load these receipts." } });
+      }
+      return route.fulfill({ json: { sales: [sale], expenses: [] } });
+    });
+
+    try {
+      await page.goto(appUrl);
+      await enterCredentials(page);
+      await page.locator("button[type=submit]").click();
+      await page.getByRole("button", { name: "Shifts", exact: true }).click();
+      await page.getByRole("button", { name: /Saturday market/ }).click();
+      const shift = page.getByRole("dialog", { name: "Saturday market" });
+      await expect.poll(() => [...requested].sort()).toEqual(["expenses", "sales"]);
+
+      await shift.getByRole("button", { name: /^Sales ₱/ }).click();
+      const sales = page.getByRole("dialog", { name: "Sales", exact: true });
+      await expect(sales.getByRole("group", { name: "Sales receipts" })).toHaveAttribute("aria-busy", "true");
+      await expect(sales.locator(".big-num")).toHaveText(`₱${sale.total / 100}`);
+      await expect(sales.getByText("Loading shift history…")).toHaveCount(0);
+      finishSales.resolve();
+      await sales.getByRole("button", { name: "Retry" }).click();
+      await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
+      await sales.getByRole("button", { name: "Close", exact: true }).click();
+
+      await shift.getByRole("button", { name: /^Expenses/ }).click();
+      const expenses = page.getByRole("dialog", { name: "Expenses", exact: true });
+      await expect(expenses.getByRole("group", { name: "Expenses" })).toHaveAttribute("aria-busy", "true");
+      finishExpenses.resolve();
+      await expect(expenses.getByText("Ice packs")).toBeVisible();
+      await expenses.getByRole("button", { name: "Close", exact: true }).click();
+      await shift.getByRole("button", { name: /^Expenses/ }).click();
+      await expect(expenses.getByText("Ice packs")).toBeVisible();
+      await expect(expenses.getByRole("group", { name: "Expenses" })).not.toHaveAttribute("aria-busy", "true");
+    } finally {
+      finishSales.resolve();
+      finishExpenses.resolve();
+    }
+  });
 
   test("the main entry can create an account and switch back to sign-in", async ({ page }) => {
     await mockAuth(page);

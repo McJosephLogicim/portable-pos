@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import type { Product, RegisterState } from "@/lib/types";
+import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
 import { buzz, EmptyRow, formatMoney, Money, progressStyle, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -134,7 +135,7 @@ export function SalesSheet({
   title,
   amount,
   summary,
-  notice,
+  status,
   sales,
   currency,
   onClose,
@@ -144,7 +145,7 @@ export function SalesSheet({
   title: string;
   amount: number;
   summary: string;
-  notice?: string;
+  status?: ShiftRecordStatus;
   sales: Receipts;
   currency: string;
   onClose: () => void;
@@ -167,9 +168,12 @@ export function SalesSheet({
         <Money value={amount} currency={currency} className="big-num" />
         <p className="muted">{summary}</p>
       </div>
-      {notice && <p className="muted" role="status">{notice}</p>}
-      <div className="card card-list">
-        {!sales.length && !notice && <EmptyRow object="salesReceipt" title="No sales yet" detail="Sales recorded for this shift will show here." />}
+      <ShiftRecordList
+        label="Sales receipts"
+        status={status}
+        hasRecords={sales.length > 0}
+        empty={<EmptyRow object="salesReceipt" title="No sales yet" detail="Sales recorded for this shift will show here." />}
+      >
         {sales.map((sale) => (
           <div key={sale.id} className="list-row">
             <span className="grow stack gap-4" style={{ minWidth: 0 }}>
@@ -183,7 +187,7 @@ export function SalesSheet({
             <Money value={sale.total} currency={currency} />
           </div>
         ))}
-      </div>
+      </ShiftRecordList>
     </Sheet>
   );
 }

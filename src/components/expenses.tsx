@@ -5,6 +5,7 @@ import { blocked } from "@/lib/reject";
 import type { Expense, ExpenseInput } from "@/lib/types";
 import { AddButton } from "./add-menu";
 import { SuggestInput } from "./combobox";
+import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -14,6 +15,7 @@ function ExpenseSheet({
   name,
   expense,
   onSave,
+  onRemove,
   onDismiss,
 }: {
   currency: string;
@@ -21,11 +23,13 @@ function ExpenseSheet({
   name: string;
   expense?: Omit<Expense, "shiftId">;
   onSave: (input: ExpenseInput) => void | Promise<void>;
+  onRemove?: () => void | Promise<void>;
   onDismiss: () => void;
 }) {
   const [label, setLabel] = useState(expense?.label ?? "");
   const [amount, setAmount] = useState(expense ? amountText(expense.amount, currency) : "");
   const [source, setSource] = useState<Expense["source"]>(expense?.source ?? "till");
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   let value: number | undefined;
@@ -39,70 +43,100 @@ function ExpenseSheet({
     ? busy ? "Saving…" : "Save changes"
     : busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense";
   return (
-    <Sheet
-      title={expense ? "Edit expense" : "Log an expense"}
-      onClose={onDismiss}
-      busy={busy}
-      footer={
-        <button
-          type="button"
-          className="btn block"
-          disabled={busy}
-          {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
-          onClick={async () => {
-            if (busy || !label.trim() || !value) return;
-            setBusy(true);
-            setError("");
-            try {
-              await onSave({ label: label.trim(), amount: value, source });
-              buzz.success();
-              onDismiss();
-            } catch (e) {
-              setError(errorText(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {submitLabel}
-        </button>
-      }
-    >
-      <div className="field">
-        <span>What for</span>
-        <SuggestInput
-          label="What for"
-          value={label}
-          onChange={setLabel}
-          suggestions={suggestions.map((s) => ({ key: s, name: s }))}
-          placeholder="Rent, Lalamove, ice…"
-          maxLength={80}
-          autoFocus={!expense}
-        />
-      </div>
-      <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
-      <div className="stack gap-8">
-        <span className="label">Paid with</span>
-        <div className="segmented" role="group" aria-label="Paid with">
-          <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
-            Cash from the till
-          </button>
-          <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
-            Own pocket
-          </button>
+    <>
+      <Sheet
+        title={expense ? "Edit expense" : "Log an expense"}
+        onClose={onDismiss}
+        busy={busy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn block"
+              disabled={busy}
+              {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
+              onClick={async () => {
+                if (busy || !label.trim() || !value) return;
+                setBusy(true);
+                setError("");
+                try {
+                  await onSave({ label: label.trim(), amount: value, source });
+                  buzz.success();
+                  onDismiss();
+                } catch (e) {
+                  setError(errorText(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {submitLabel}
+            </button>
+            {expense && onRemove && (
+              <button
+                type="button"
+                className="btn ghost danger compact block"
+                aria-haspopup="dialog"
+                disabled={busy}
+                onClick={() => {
+                  buzz.tap();
+                  setConfirmRemove(true);
+                }}
+              >
+                <Trash2 size={16} aria-hidden /> Remove expense
+              </button>
+            )}
+          </>
+        }
+      >
+        <div className="field">
+          <span>What for</span>
+          <SuggestInput
+            label="What for"
+            value={label}
+            onChange={setLabel}
+            suggestions={suggestions.map((s) => ({ key: s, name: s }))}
+            placeholder="Rent, Lalamove, ice…"
+            maxLength={80}
+            autoFocus={!expense}
+          />
         </div>
-        <p className="label">
-          {source === "till"
-            ? "Takes it out of the cash expected in the drawer."
-            : `Leaves the drawer alone. The report says to pay back ${payee}.`}
-        </p>
-      </div>
-      {error && (
-        <p className="alert" role="alert">
-          {error}
-        </p>
+        <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
+        <div className="stack gap-8">
+          <span className="label">Paid with</span>
+          <div className="segmented" role="group" aria-label="Paid with">
+            <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
+              Cash from the till
+            </button>
+            <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
+              Own pocket
+            </button>
+          </div>
+          <p className="label">
+            {source === "till"
+              ? "Takes it out of the cash expected in the drawer."
+              : `Leaves the drawer alone. The report says to pay back ${payee}.`}
+          </p>
+        </div>
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+      </Sheet>
+      {expense && onRemove && confirmRemove && (
+        <ConfirmSheet
+          title="Remove expense?"
+          detail={`${expense.label} (${formatMoney(expense.amount, currency)}) will come out of the shift’s expense total.`}
+          confirmLabel="Remove"
+          onClose={() => setConfirmRemove(false)}
+          onConfirm={async () => {
+            await onRemove();
+            onDismiss();
+          }}
+        />
       )}
-    </Sheet>
+    </>
   );
 }
 
@@ -127,15 +161,16 @@ function ExpenseRowContent({ expense, currency, time }: {
   );
 }
 
-export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, notice, editableTillId, onEdit, onClose }: {
+export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, status, editableTillId, onEdit, onRemove, onClose }: {
   title: string;
   expenses: Expense[];
   total: number;
   currency: string;
   timeZone: string;
-  notice?: string;
+  status?: ShiftRecordStatus;
   editableTillId?: string;
   onEdit?: (id: string, input: ExpenseInput) => Promise<void>;
+  onRemove?: (id: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -147,11 +182,13 @@ export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone,
           <Money value={total} currency={currency} className="big-num" />
           <p className="muted">{title}</p>
         </div>
-        {notice && <p className="muted" role="status">{notice}</p>}
-        <div className="card card-list">
-          {!expenses.length && !notice && (
-            <EmptyRow object="expense" title="No expenses yet" detail="Expenses logged for this shift will show here." />
-          )}
+        <ShiftRecordList
+          status={status}
+          label="Expenses"
+          withIcon
+          hasRecords={expenses.length > 0}
+          empty={<EmptyRow object="expense" title="No expenses yet" detail="Expenses logged for this shift will show here." />}
+        >
           {expenses.map((expense) => {
             const content = <ExpenseRowContent expense={expense} currency={currency} time={time} />;
             return onEdit && expense.shiftId === editableTillId ? (
@@ -164,7 +201,7 @@ export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone,
               </button>
             ) : <div key={expense.id} className="list-row">{content}</div>;
           })}
-        </div>
+        </ShiftRecordList>
       </Sheet>
       {editing && onEdit && (
         <ExpenseSheet
@@ -173,6 +210,7 @@ export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone,
           name=""
           expense={editing}
           onSave={(input) => onEdit(editing.id, input)}
+          onRemove={onRemove && editing.shiftId === editableTillId ? () => onRemove(editing.id) : undefined}
           onDismiss={() => setEditing(null)}
         />
       )}
@@ -205,7 +243,6 @@ export function ExpensesSection({
 }) {
   const [editor, setEditor] = useState<"new" | (typeof expenses)[number] | null>(null);
   const editing = editor === "new" ? undefined : editor ?? undefined;
-  const [removing, setRemoving] = useState<(typeof expenses)[number] | null>(null);
   const [allExpenses, setAllExpenses] = useState(false);
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const pastLabels = [...new Set([...suggestions, ...expenses.map((e) => e.label), ...expenseIdeas])];
@@ -224,33 +261,20 @@ export function ExpensesSection({
       </div>
       <div className="card card-list">
         {(allExpenses ? expenses : expenses.slice(0, 5)).map((e) => (
-          <div className="row gap-8" key={e.id}>
-            <button
-              type="button"
-              className="list-row grow"
-              aria-haspopup="dialog"
-              disabled={disabled}
-              onClick={() => {
-                buzz.tap();
-                setEditor(e);
-              }}
-            >
-              <ExpenseRowContent expense={e} currency={currency} time={time} />
-              <ChevronRight size={16} className="chev" aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="round flat"
-              aria-label={"Remove " + e.label}
-              disabled={disabled}
-              onClick={() => {
-                buzz.tap();
-                setRemoving(e);
-              }}
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
+          <button
+            key={e.id}
+            type="button"
+            className="list-row"
+            aria-haspopup="dialog"
+            disabled={disabled}
+            onClick={() => {
+              buzz.tap();
+              setEditor(e);
+            }}
+          >
+            <ExpenseRowContent expense={e} currency={currency} time={time} />
+            <ChevronRight size={16} className="chev" aria-hidden />
+          </button>
         ))}
         {!expenses.length && (
           <EmptyRow object="expense" title="Nothing spent yet" detail="Log ice, supplies or fares so the drawer adds up." />
@@ -269,16 +293,8 @@ export function ExpensesSection({
           name={name}
           expense={editing}
           onSave={editing ? (input) => onEditExpense(editing.id, input) : onExpense}
+          onRemove={editing && !disabled ? () => onUnexpense(editing.id) : undefined}
           onDismiss={() => setEditor(null)}
-        />
-      )}
-      {removing && (
-        <ConfirmSheet
-          title="Remove expense?"
-          detail={`${removing.label} (${formatMoney(removing.amount, currency)}) will come out of the shift’s expense total.`}
-          confirmLabel="Remove"
-          onClose={() => setRemoving(null)}
-          onConfirm={() => onUnexpense(removing.id)}
         />
       )}
     </section>

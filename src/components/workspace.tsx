@@ -878,6 +878,7 @@ export function Workspace() {
               onAction={owner} onSaved={setToast} onSales={onSales}
               onLoadBookingRecords={demo ? undefined : bookingRecords}
               onEditExpense={updateExpense}
+              onUnexpense={unexpense}
               onLeaderboard={() => open({ tab: "schedule", leaderboard: true })}
             />
           );
