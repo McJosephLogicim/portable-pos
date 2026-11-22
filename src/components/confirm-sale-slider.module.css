@@ -22,12 +22,16 @@
   height: 100%;
 }
 
+.fill,
+.thumb {
+  background: var(--glossy);
+}
+
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--slide-x) + var(--thumb));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
   transition: width var(--settle), opacity var(--dur-fast) var(--ease-out);
 }
 
@@ -46,6 +50,7 @@
 
 .track[data-phase="saving"] .label {
   inset-inline: 0 var(--thumb);
+  color: var(--on-accent);
 }
 
 .thumb {
@@ -57,7 +62,6 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: var(--glossy);
   color: var(--on-accent);
   box-shadow: 0 2px 5px rgb(0 0 0 / 0.18);
   transition: left var(--settle), width var(--settle), box-shadow var(--dur-fast) var(--ease-out);

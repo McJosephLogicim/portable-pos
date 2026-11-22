@@ -421,6 +421,9 @@ test("the sale slider springs back after a short drag and saves on a full releas
   await expect(review).toBeVisible();
 
   const lane = thumb.locator("..");
+  const fill = lane.locator(":scope > span[aria-hidden=true]").first();
+  const thumbGradient = await thumb.evaluate((node) => getComputedStyle(node).backgroundImage);
+  await expect(fill).toHaveCSS("background-image", thumbGradient);
   const bounds = (await thumb.boundingBox())!;
   const track = (await lane.boundingBox())!;
   const x = bounds.x + bounds.width / 2;

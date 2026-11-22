@@ -1573,7 +1573,6 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
   const monthNet = monthDone.reduce((sum, b) => sum + bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net, 0);
   const winners = monthDone.filter((b) => bookingProfit({ ...b, sales: salesOf(b) ?? 0 }).net >= 0).length;
   const next = mineNext[0];
-  const addInEmptyState = me?.owner && list.length === 0 && (filter === "day" || (filter === "open" && upcoming.length === 0));
   return (
     <div className="page">
       <div className={`page-top tight ${styles.scheduleHeader}`}>
@@ -1609,7 +1608,7 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && !addInEmptyState && (
+        {me?.owner && (
           <AddShiftMenu
             disabled={!props.online}
             onAdd={setEditing}
@@ -1666,11 +1665,9 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
         state={state}
         filter={filter}
         showCalendarObject
-        emptyAction={addInEmptyState
-          ? <AddShiftMenu disabled={!props.online} onAdd={setEditing} />
-          : filter !== "open" && openSeats.length > 0 && (
-            <button type="button" className="btn compact" onClick={() => setFilter("open")}>See open seats</button>
-          )}
+        emptyAction={filter !== "open" && openSeats.length > 0 && (
+          <button type="button" className="btn compact" onClick={() => setFilter("open")}>See open seats</button>
+        )}
         showDates={filter !== "day"}
         salesOf={salesOf}
         onOpen={setOpenId}

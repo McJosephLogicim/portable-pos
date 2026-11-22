@@ -2,7 +2,7 @@
 
 import { useState, type ComponentProps } from "react";
 import { CalendarDays, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList, FileText, Wallet } from "lucide-react";
-import type { Booking, ExpenseInput, OpeningExpense, RegisterState, Shift } from "@/lib/types";
+import type { Booking, ExpenseInput, RegisterState, Shift } from "@/lib/types";
 import { shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
@@ -220,7 +220,6 @@ function OpenShift({
   const [counting, setCounting] = useState(false);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<string[]>([]);
-  const [expenses, setExpenses] = useState<OpeningExpense[]>([]);
   const value = cash.amount;
   const unticked = checklist.filter((c) => !checked.includes(c.id)).length;
   const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
@@ -254,12 +253,7 @@ function OpenShift({
           <BookingRow booking={booking} zone={business.timeZone} />
         </div>
       </div>
-      <div className="stack gap-10">
-        {expenses.some((expense) => expense.source === "till") && (
-          <p className="label">Enter the starting float before expenses paid from the till.</p>
-        )}
-        <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
-      </div>
+      <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
       {tracked.length > 0 && (
         <OptionalStockCount
           title="Opening stock"
@@ -273,20 +267,6 @@ function OpenShift({
           onChange={(id, value) => setCounts((all) => ({ ...all, [id]: value }))}
         />
       )}
-      <ExpensesSection
-        expenses={expenses.map((expense) => ({ ...expense, by: state.me?.name }))}
-        currency={currency}
-        timeZone={business.timeZone}
-        name={state.me?.name ?? ""}
-        suggestions={(state.expenses ?? []).map((expense) => expense.label)}
-        note="Expenses are saved when you open the till."
-        disabled={busy}
-        onExpense={(input) => {
-          const expense = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
-          setExpenses((current) => [expense, ...current]);
-        }}
-        onUnexpense={(id) => setExpenses((current) => current.filter((expense) => expense.id !== id))}
-      />
       {checklist.length > 0 && (
         <div className="stack gap-10">
           <div className="between section-head">
@@ -367,7 +347,6 @@ function OpenShift({
                 ...(cash.count ? { openingCount: cash.count } : {}),
                 stock: countedOnly(tracked.filter((i) => counting || limits.has(i.id)), counts),
                 checked,
-                ...(expenses.length ? { expenses } : {}),
                 bookingId: booking.id,
               });
               if (origin) celebrate(origin);
