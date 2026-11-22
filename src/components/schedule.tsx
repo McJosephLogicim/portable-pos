@@ -402,7 +402,8 @@ function BookingSheet({
     () => (state.expenses ?? []).filter((entry) => tills.includes(entry.shiftId) && !entry.voidedAt),
     [state.expenses, tills],
   );
-  const salesAmount = p?.sales ?? 0;
+  const cachedSalesAmount = cachedSales.reduce((sum, entry) => sum + entry.total, 0);
+  const salesAmount = p?.sales ?? cachedSalesAmount;
   const recent = till && (!till.closedAt || state.shifts.filter((s) => s.closedAt && s.number > till.number).length < 30);
   const pendingSales = state.pending.some((event) => event.type === "sale" && tills.includes(event.shiftId));
   const pendingExpenses = state.pending.some((event) =>
@@ -411,7 +412,7 @@ function BookingSheet({
   const salesHistory = useBookingHistory(
     b.id, "sales", salesAmount,
     hasHistory && !pendingSales &&
-      (!recent || (Boolean(till?.closedAt) && salesAmount !== cachedSales.reduce((sum, entry) => sum + entry.total, 0))),
+      (!recent || (Boolean(till?.closedAt) && salesAmount !== cachedSalesAmount)),
     online, props.onLoadBookingRecords,
   );
   const expenseHistory = useBookingHistory(
@@ -429,6 +430,11 @@ function BookingSheet({
     ? { kind: "unavailable" as const, message: "This sample shift only has a sales total." }
     : undefined);
   const editableTillId = state.shift && !state.shift.closedAt && !state.closingShiftId ? state.shift.id : undefined;
+
+  function openSales() {
+    buzz.tap();
+    setBreakdown("sales");
+  }
 
   async function run(input: OwnerAction, label: string, owner = true, from?: Element | null) {
     const origin = centerOf(from);
@@ -617,10 +623,7 @@ function BookingSheet({
               </Explain>
             </p>
             <div className={`card card-list ${styles.profitRows}`}>
-              <button type="button" className="list-row" aria-haspopup="dialog" onClick={() => {
-                buzz.tap();
-                setBreakdown("sales");
-              }}>
+              <button type="button" className="list-row" aria-haspopup="dialog" onClick={openSales}>
                 <span className="grow">Sales</span>
                 <Money value={p.sales} currency={currency} />
                 <ChevronRight size={16} className="chev" aria-hidden />
@@ -669,10 +672,9 @@ function BookingSheet({
           shiftIds={tills}
           menu={state.menu}
           currency={currency}
-          title={bookingTitle(b)}
-          onSales={(productId) => {
-            props.onSales({ filter: { shift: [b.id], ...(productId ? { item: [productId] } : {}) } });
-          }}
+          title={title}
+          onAllSales={openSales}
+          onSales={(productId) => props.onSales({ filter: { shift: [b.id], item: [productId] } })}
         />
 
         {error && (
@@ -690,7 +692,7 @@ function BookingSheet({
           deleteDisabled={!online}
         />
       </Sheet>
-      {p && breakdown === "sales" && (
+      {breakdown === "sales" && (
         <SalesSheet
           state={state}
           title="Sales"
@@ -1597,6 +1599,7 @@ export function ShiftDetailsSheet({
 
 function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: ScheduleProps; onClose: () => void }) {
   const { state, onSales } = props;
+  const [showSales, setShowSales] = useState(false);
   const business = state.business!;
   const { long, time } = useShiftFormats(business.timeZone);
   const title = `Shift ${till.number}`;
@@ -1605,41 +1608,57 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
   const currency = shiftCurrency(till, business);
   const total = shiftTotals(till, state.sales, state.expenses).total;
   return (
-    <Sheet title={title} onClose={onClose}>
-      <div className="stack gap-4">
-        <p className="strong">{date}</p>
-        <p className="label">{hours}{till.openedBy ? ` · ${till.openedBy}` : ""}</p>
-      </div>
-      <div className="card card-list">
-        <div className="list-row">
-          <span className="grow">Sales</span>
-          <Money value={total} currency={currency} />
+    <>
+      <Sheet title={title} onClose={onClose}>
+        <div className="stack gap-4">
+          <p className="strong">{date}</p>
+          <p className="label">{hours}{till.openedBy ? ` · ${till.openedBy}` : ""}</p>
         </div>
-        {till.difference !== undefined && (
-          <div className="list-row"><DrawerDifference value={till.difference} currency={currency} /></div>
-        )}
-      </div>
-      <ShiftSales
-        state={state}
-        shiftIds={[till.id]}
-        menu={state.menu}
-        currency={currency}
-        title={title}
-        onSales={(productId) => {
-          onSales({ filter: { shift: [shiftKey(till)], ...(productId ? { item: [productId] } : {}) } });
-        }}
-      />
-      <ShiftSheetActions
-        state={state}
-        title={title}
-        till={till}
-        shareText={() => [
-          `${business.name} — ${title}`,
-          `${date} · ${hours}`,
-          till.openedBy ? `Opened by ${till.openedBy}` : "",
-        ].filter(Boolean).join("\n")}
-      />
-    </Sheet>
+        <div className="card card-list">
+          <div className="list-row">
+            <span className="grow">Sales</span>
+            <Money value={total} currency={currency} />
+          </div>
+          {till.difference !== undefined && (
+            <div className="list-row"><DrawerDifference value={till.difference} currency={currency} /></div>
+          )}
+        </div>
+        <ShiftSales
+          state={state}
+          shiftIds={[till.id]}
+          menu={state.menu}
+          currency={currency}
+          title={title}
+          onAllSales={() => {
+            buzz.tap();
+            setShowSales(true);
+          }}
+          onSales={(productId) => onSales({ filter: { shift: [shiftKey(till)], item: [productId] } })}
+        />
+        <ShiftSheetActions
+          state={state}
+          title={title}
+          till={till}
+          shareText={() => [
+            `${business.name} — ${title}`,
+            `${date} · ${hours}`,
+            till.openedBy ? `Opened by ${till.openedBy}` : "",
+          ].filter(Boolean).join("\n")}
+        />
+      </Sheet>
+      {showSales && (
+        <SalesSheet
+          state={state}
+          title="Sales"
+          amount={total}
+          summary={title}
+          sales={shiftReceipts(state, [till.id])}
+          currency={currency}
+          onClose={() => setShowSales(false)}
+          onSales={() => onSales({ filter: { shift: [shiftKey(till)] } })}
+        />
+      )}
+    </>
   );
 }
 

@@ -24,7 +24,7 @@ import { FilterBar, FilterChoices } from "./filter-controls";
 import { EmptyState, Money, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
-/** Opens Sales already filtered, like from "All sales" on a shift. */
+/** Opens Sales already filtered, like from "See in Sales" on a shift. */
 export interface SalesFocus {
   filter: SalesFilter;
 }

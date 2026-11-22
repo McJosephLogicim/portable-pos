@@ -53,6 +53,7 @@ export function ShiftSales({
   menu,
   currency,
   title,
+  onAllSales,
   onSales,
 }: {
   state: RegisterState;
@@ -61,8 +62,9 @@ export function ShiftSales({
   currency: string;
   /** The shift's name, for the item sheet. */
   title: string;
-  /** Opens Sales for this shift, or for one item in it. */
-  onSales?: (productId?: string) => void;
+  onAllSales: () => void;
+  /** Opens the Sales tab filtered to one item in this shift. */
+  onSales?: (productId: string) => void;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
   const zone = state.business!.timeZone;
@@ -76,11 +78,9 @@ export function ShiftSales({
     <div className="stack gap-10">
       <div className="between section-head">
         <p className="group-title">Best sellers</p>
-        {onSales && (
-          <button className="link small-link" onClick={() => onSales()}>
-            All {count} {count === 1 ? "sale" : "sales"} <ChevronRight size={14} />
-          </button>
-        )}
+        <button type="button" className="link small-link" aria-haspopup="dialog" onClick={onAllSales}>
+          All {count} {count === 1 ? "sale" : "sales"} <ChevronRight size={14} aria-hidden />
+        </button>
       </div>
       <div className="card card-list">
         {sellers.slice(0, 5).map((s, i) => (
