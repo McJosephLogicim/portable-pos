@@ -247,3 +247,32 @@
   position: absolute;
   inset-inline-end: 0;
 }
+
+.recordPlaceholderText i,
+.recordPlaceholderAmount,
+.recordPlaceholderIcon {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.recordPlaceholderText i:first-child {
+  width: 45%;
+  height: 14px;
+}
+
+.recordPlaceholderText i:last-child {
+  width: 28%;
+  height: 12px;
+}
+
+.recordPlaceholderAmount {
+  width: 44px;
+  height: 14px;
+}
+
+.recordPlaceholderIcon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}

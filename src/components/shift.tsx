@@ -510,7 +510,7 @@ export function ShiftScreen({
   openingId?: string;
   sellLabel: string;
 }) {
-  const schedule = { ...scheduleProps, onEditExpense };
+  const schedule = { ...scheduleProps, onEditExpense, onUnexpense };
   const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
   const [bookingId, setBookingId] = useState<string | null>(null);
