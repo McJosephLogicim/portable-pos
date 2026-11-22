@@ -104,7 +104,6 @@ export function ExpensesSection({
   timeZone,
   name,
   suggestions,
-  note,
   disabled,
   onExpense,
   onUnexpense,
@@ -114,7 +113,6 @@ export function ExpensesSection({
   timeZone: string;
   name: string;
   suggestions: string[];
-  note?: string;
   disabled?: boolean;
   onExpense: (input: ExpenseInput) => void | Promise<void>;
   onUnexpense: (id: string) => void | Promise<void>;
@@ -137,7 +135,6 @@ export function ExpensesSection({
           />
         </div>
       </div>
-      {note && <p className="label">{note}</p>}
       <div className="card card-list">
         {(allExpenses ? expenses : expenses.slice(0, 5)).map((e) => (
           <div className="list-row" key={e.id}>

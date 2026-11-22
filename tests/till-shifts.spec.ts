@@ -78,7 +78,7 @@ async function seedTill(
   await page.reload();
 }
 
-test("Opening and closing tills can review stock and manage shift expenses", async ({ page }) => {
+test("Opening and closing tills can review stock, with expenses available after opening", async ({ page }) => {
   await seedTill(page, true, false, { opening: true });
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await page.getByRole("button", { name: /Atrium/ }).click();
@@ -114,16 +114,14 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
     await expect(confirm).toBeHidden();
   };
   await reviewStock("Opening stock");
-  await logExpense("Opening supplies", "20", "Cash from the till");
-  await logExpense("Discarded draft", "15", "Own pocket");
-  await removeExpense("Discarded draft");
+  await expect(page.getByRole("region", { name: "Expenses" })).toHaveCount(0);
   await page.getByRole("button", { name: "Type the total" }).click();
   await page.getByRole("textbox", { name: "Starting cash" }).fill("100");
   await page.getByRole("button", { name: "Open till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
   await page.getByRole("button", { name: "Till", exact: true }).click();
-  await expect(page.getByText("Opening supplies", { exact: true })).toBeVisible();
-  await expect(page.getByText("Discarded draft", { exact: true })).toBeHidden();
+  await logExpense("Till supplies", "20", "Cash from the till");
+  await expect(page.getByText("Till supplies", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Count drawer and close" }).click();
   const closing = page.getByRole("dialog", { name: /^Close shift/ });
@@ -134,7 +132,7 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await expect(drawer.getByText("₱80", { exact: true })).toBeVisible();
   await logExpense("Closing supplies", "10", "Cash from the till", closing);
   await expect(drawer.getByText("₱70", { exact: true })).toBeVisible();
-  await removeExpense("Opening supplies", closing);
+  await removeExpense("Till supplies", closing);
   await expect(drawer.getByText("₱90", { exact: true })).toBeVisible();
 
   await closing.getByRole("button", { name: "Type the total" }).click();
@@ -148,7 +146,7 @@ test("Opening and closing tills can review stock and manage shift expenses", asy
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toContainText("Closing supplies");
   await expect(report.locator("pre")).toContainText("Closing fare");
-  await expect(report.locator("pre")).not.toContainText("Opening supplies");
+  await expect(report.locator("pre")).not.toContainText("Till supplies");
 });
 
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
@@ -322,6 +320,21 @@ test("Blue Halo displays quotas and shifts for team members", async ({ page }) =
   await expect(podium).toHaveAccessibleDescription("Ranked by quotas hit, then shifts worked");
   await expect(podium.getByText("1 quota hit", { exact: true })).toHaveCount(3);
   await expect(page.getByRole("main")).not.toContainText(/₱|Profit|Loss/);
+});
+
+test("The Shifts header keeps Add when selecting a day with no shifts", async ({ page }) => {
+  await seedTill(page, true);
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  const header = page.locator(".page-top").filter({ has: page.getByRole("heading", { name: "Shifts", exact: true }) });
+  const add = header.getByRole("button", { name: "Add", exact: true });
+  await expect(add).toBeInViewport();
+  await page.getByRole("button", { name: "Sunday, November 22", exact: true }).click();
+  await expect(page.getByText("Nothing scheduled", { exact: true })).toBeVisible();
+  await expect(add).toBeInViewport();
+  await add.click();
+  await page.getByRole("menuitem", { name: "Add a shift", exact: true }).click();
+  const single = page.getByRole("dialog", { name: "New shift", exact: true });
+  await expect(single.getByLabel("Date", { exact: true })).toHaveValue("2026-11-22");
 });
 
 test("The Till Shifts sheet offers both Add actions in the empty state", async ({ page }) => {
