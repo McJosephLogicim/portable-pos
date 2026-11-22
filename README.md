@@ -71,7 +71,7 @@ To give someone owner access, open **Settings › Team**, select someone who has
 
 The Shifts tab shows a month calendar of scheduled shifts. Each shift has a location, an organizer and event, the seats it needs, and the people on it with their pay. It also has rent, a sales quota, and an incentive paid to each person when sales reach the quota. Teammates can join open seats or leave a shift before it starts. The owner creates and edits shifts and can add a run of them at once for a bazaar. The owner also assigns, swaps, takes people off, or takes over a seat. All of these need the owner PIN.
 
-When the till opens, it asks which scheduled shift it's for. That shift's profit is the till's net sales minus rent, salaries and any incentives. Cost of goods isn't counted. Rent, other people's pay, and profit are visible only to the owner.
+When the till opens, it asks which scheduled shift it's for. That shift's profit is the till's net sales minus rent, salaries, earned incentives and logged expenses. In the shift sheet, tap Sales or Expenses for the records behind the total. Cost of goods isn't counted. Rent, other people's pay, and profit are visible only to the owner.
 
 A shift's sheet on the Shifts tab shows its best sellers. Tapping a seller, or **All sales**, opens the Sales tab filtered to that shift. The trophy button at the top of Shifts opens leaderboards for events, organizers, places and people, for **This month** or **All time**. In Sales, open **Sales by hour** to view the chart once enough receipts are available. The owner sees leaderboard rankings by sales with profit. Everyone else sees rankings by quotas hit, then shifts worked.
 

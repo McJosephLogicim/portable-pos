@@ -18,7 +18,7 @@ import { Onboarding } from "./onboarding";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
-import { accountsEnabled, api, authClient, authForUser, forgetAccount, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
+import { accountsEnabled, api, authClient, authForUser, forgetAccount, loadBookingRecords, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
 import {
   beginClose,
   cancelClose,
@@ -39,7 +39,7 @@ import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
-import type { CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
+import type { BookingRecordKind, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
@@ -181,6 +181,10 @@ async function syncRegister(
 export function Workspace() {
   const [key, setKey] = useState<string | null>(null),
     [state, setState] = useState<RegisterState | null>(null);
+  const bookingRecords = useCallback((bookingId: string, kind: BookingRecordKind) => {
+    if (!key) throw Error("Register unavailable.");
+    return loadBookingRecords(key, bookingId, kind);
+  }, [key]);
   const navigation = useScreenHistory<Screen>(SELL);
   const resetNavigation = navigation.reset;
   const [online, setOnline] = useState(true),
@@ -872,6 +876,8 @@ export function Workspace() {
             <ScheduleScreen
               state={state} online={online} demo={demo} sharedSchedule={screen.shared ?? null}
               onAction={owner} onSaved={setToast} onSales={onSales}
+              onLoadBookingRecords={demo ? undefined : bookingRecords}
+              onEditExpense={updateExpense}
               onLeaderboard={() => open({ tab: "schedule", leaderboard: true })}
             />
           );
@@ -920,6 +926,7 @@ export function Workspace() {
               onJoin={demo ? undefined : join}
               onSchedule={() => go("schedule")}
               onSales={onSales}
+              onLoadBookingRecords={demo ? undefined : bookingRecords}
               onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
               onExpense={expense}
               onEditExpense={updateExpense}

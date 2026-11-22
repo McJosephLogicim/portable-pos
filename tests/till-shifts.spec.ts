@@ -9,7 +9,7 @@ async function seedTill(
   page: Page,
   withShifts: boolean,
   withPastSale = false,
-  { opening = false, rankedAs }: { opening?: boolean; rankedAs?: "owner" | "member" } = {},
+  { opening = false, rankedAs, withExpenses = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
@@ -22,7 +22,7 @@ async function seedTill(
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, opening, rankedAs }) => {
+  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -68,13 +68,22 @@ async function seedTill(
             state.menu.find((item) => item.name === "Espresso")!.stock = true;
           }
           state.sales = sales;
+          if (withExpenses) {
+            const entry = { shiftId: past.id, createdAt: past.openedAt, source: "till" as const };
+            state.expenses = [
+              { ...entry, id: "ice", label: "Ice packs", amount: 2000 },
+              { ...entry, id: "fare", label: "Delivery fare", amount: 3000, source: "pocket", by: "Ana" },
+              { ...entry, id: "void", label: "Wrong expense", amount: 4000, voidedAt: past.openedAt },
+              { ...entry, shiftId: shift.id, id: "other", label: "Other shift expense", amount: 5000 },
+            ];
+          }
           store.put(state, "demo-register-v2");
         };
         tx.oncomplete = () => { db.close(); resolve(); };
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, opening, rankedAs });
+  }, { withShifts, sales, opening, rankedAs, withExpenses });
   await page.reload();
 }
 
@@ -133,6 +142,16 @@ test("Opening and closing tills can review stock, with expenses available after 
   await page.reload();
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Ice packs.*25\.50/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Atrium/ }).click();
+  const activeShift = page.getByRole("dialog", { name: "Atrium", exact: true });
+  await activeShift.getByRole("button", { name: /Expenses.*25\.50/ }).click();
+  const shiftExpenses = page.getByRole("dialog", { name: "Expenses", exact: true });
+  await shiftExpenses.getByRole("button", { name: /^Ice packs/ }).click();
+  await expect(edit.getByRole("textbox", { name: "Amount" })).toHaveValue("25.50");
+  await edit.getByRole("button", { name: "Close", exact: true }).click();
+  await shiftExpenses.getByRole("button", { name: "Close", exact: true }).click();
+  await activeShift.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Count drawer and close" }).click();
   const closing = page.getByRole("dialog", { name: /^Close shift/ });
@@ -419,4 +438,30 @@ test("Change from till opening restores the same spot in the shift list", async 
   await page.getByRole("button", { name: "Change", exact: true }).click();
   await expect(shift).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+});
+
+test("Shift profitability opens the sales and expenses behind its totals", async ({ page }) => {
+  await seedTill(page, true, true, { withExpenses: true });
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /^Past shifts/ }).click();
+  await page.getByRole("dialog", { name: "Past shifts" }).getByRole("button", { name: /Closed market/ }).click();
+  const shift = page.getByRole("dialog", { name: "Closed market" });
+  const espresso = demoBootstrap("test-device").menu.find((item) => item.name === "Espresso")!;
+  const php = (amount: number) => "₱" + (amount / 100);
+  await expect(shift.locator(".list-row").filter({ hasText: /^(Profit|Loss)/ })).toContainText(php(Math.abs(espresso.price - 5000)));
+
+  const salesRow = shift.getByRole("button", { name: /^Sales ₱/ });
+  await salesRow.click();
+  const sales = page.getByRole("dialog", { name: "Sales", exact: true });
+  await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
+  await expect(sales.getByText(php(espresso.price), { exact: true })).toHaveCount(2);
+  await sales.getByRole("button", { name: "Close", exact: true }).click();
+
+  await shift.getByRole("button", { name: /Expenses.*₱50/ }).click();
+  const expenses = page.getByRole("dialog", { name: "Expenses", exact: true });
+  await expect(expenses.getByText("Ice packs")).toBeVisible();
+  await expect(expenses.getByText("Delivery fare")).toBeVisible();
+  await expect(expenses.getByText(/Wrong expense|Other shift expense/)).toHaveCount(0);
+  await expenses.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(shift).toBeVisible();
 });

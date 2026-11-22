@@ -106,6 +106,80 @@ function ExpenseSheet({
   );
 }
 
+function ExpenseRowContent({ expense, currency, time }: {
+  expense: Omit<Expense, "shiftId">;
+  currency: string;
+  time: Intl.DateTimeFormat;
+}) {
+  return (
+    <>
+      <span className="well"><Receipt size={18} strokeWidth={1.8} /></span>
+      <span className="grow stack">
+        <span className="ellipsis">{expense.label}</span>
+        <span className="label ellipsis">
+          {expense.source === "till" ? "From the till" : `Paid by ${expense.by ? expense.by.split(" ")[0] : "staff"}`}
+          {" · "}
+          {time.format(new Date(expense.createdAt))}
+        </span>
+      </span>
+      <Money value={expense.amount} currency={currency} className="end" />
+    </>
+  );
+}
+
+export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, notice, editableTillId, onEdit, onClose }: {
+  title: string;
+  expenses: Expense[];
+  total: number;
+  currency: string;
+  timeZone: string;
+  notice?: string;
+  editableTillId?: string;
+  onEdit?: (id: string, input: ExpenseInput) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
+  return (
+    <>
+      <Sheet title="Expenses" onClose={onClose}>
+        <div className="stack gap-4">
+          <Money value={total} currency={currency} className="big-num" />
+          <p className="muted">{title}</p>
+        </div>
+        {notice && <p className="muted" role="status">{notice}</p>}
+        <div className="card card-list">
+          {!expenses.length && !notice && (
+            <EmptyRow object="expense" title="No expenses yet" detail="Expenses logged for this shift will show here." />
+          )}
+          {expenses.map((expense) => {
+            const content = <ExpenseRowContent expense={expense} currency={currency} time={time} />;
+            return onEdit && expense.shiftId === editableTillId ? (
+              <button key={expense.id} type="button" className="list-row" aria-haspopup="dialog" onClick={() => {
+                buzz.tap();
+                setEditing(expense);
+              }}>
+                {content}
+                <ChevronRight size={16} className="chev" aria-hidden />
+              </button>
+            ) : <div key={expense.id} className="list-row">{content}</div>;
+          })}
+        </div>
+      </Sheet>
+      {editing && onEdit && (
+        <ExpenseSheet
+          currency={currency}
+          suggestions={[...new Set(expenses.map((expense) => expense.label))]}
+          name=""
+          expense={editing}
+          onSave={(input) => onEdit(editing.id, input)}
+          onDismiss={() => setEditing(null)}
+        />
+      )}
+    </>
+  );
+}
+
 const expenseIdeas = ["Rent", "Lalamove", "Grab", "Ice", "Supplies", "Parking", "Food", "Gas"];
 
 export function ExpensesSection({
@@ -161,18 +235,7 @@ export function ExpensesSection({
                 setEditor(e);
               }}
             >
-              <span className="well">
-                <Receipt size={18} strokeWidth={1.8} />
-              </span>
-              <span className="grow stack">
-                <span className="ellipsis">{e.label}</span>
-                <span className="label ellipsis">
-                  {e.source === "till" ? "From the till" : `Paid by ${e.by ? e.by.split(" ")[0] : "staff"}`}
-                  {" · "}
-                  {time.format(new Date(e.createdAt))}
-                </span>
-              </span>
-              <Money value={e.amount} currency={currency} className="end" />
+              <ExpenseRowContent expense={e} currency={currency} time={time} />
               <ChevronRight size={16} className="chev" aria-hidden />
             </button>
             <button

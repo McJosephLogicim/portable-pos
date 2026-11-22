@@ -494,7 +494,7 @@ export function ShiftScreen({
   onBack,
   openingId,
   sellLabel,
-  ...schedule
+  ...scheduleProps
 }: ScheduleProps & {
   onOpen: (opening: Opening) => Promise<void>;
   onJoin?: (shiftId: string) => Promise<void>;
@@ -510,6 +510,7 @@ export function ShiftScreen({
   openingId?: string;
   sellLabel: string;
 }) {
+  const schedule = { ...scheduleProps, onEditExpense };
   const { state, online, onSales } = schedule;
   const [closing, setClosing] = useState(false);
   const [bookingId, setBookingId] = useState<string | null>(null);

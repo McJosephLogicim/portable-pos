@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { makeSale } from "../src/lib/domain";
 import type { RegisterEvent, Shift, Tender } from "../src/lib/types";
+import { getDb } from "../src/server/db";
+import { bookingRecords } from "../src/server/snapshot";
 import { runCommand } from "../src/server/register";
 import { shiftNow } from "./schedule";
 
@@ -99,6 +101,22 @@ test(
     const retried = await sync(phoneA, [edit]);
     assert.deepEqual(retried.expenses, [{ ...expense, ...changes }]);
     assert.equal(retried.shifts.find((s) => s.id === shift.id)!.difference, -5000);
+    const delivery = { ...expense, id: randomUUID(), label: "Delivery", amount: 1200 };
+    const voidedExpense = { ...expense, id: randomUUID(), label: "Duplicate" };
+    const spent = await sync(phoneA, [
+      { type: "expense", id: delivery.id, shiftId: shift.id, expense: delivery },
+      { type: "expense", id: voidedExpense.id, shiftId: shift.id, expense: voidedExpense },
+      { type: "unexpense", id: randomUUID(), shiftId: shift.id, targetId: voidedExpense.id },
+    ]);
+    assert.equal(spent.bookings?.find((b) => b.id === bookingId)?.expenses, 5700);
+    const businessId = opened.business!.id;
+    await getDb().transaction(async (tx) => {
+      const receipts = await bookingRecords(tx, businessId, bookingId, "sales");
+      assert.equal(receipts.sales.length, 4);
+      const records = await bookingRecords(tx, businessId, bookingId, "expenses");
+      assert.deepEqual(records.expenses.map((expense) => expense.label).sort(), ["Delivery", "Ice packs"]);
+      assert.deepEqual(await bookingRecords(tx, randomUUID(), bookingId, "expenses"), { sales: [], expenses: [] });
+    });
 
     // A sold-out mark that arrives after closing is ignored instead of blocking the queue.
     await sync(phoneA, [{ type: "availability", id: randomUUID(), shiftId: shift.id, targetId: "tea", soldOut: true }]);

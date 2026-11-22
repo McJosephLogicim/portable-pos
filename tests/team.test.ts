@@ -97,17 +97,18 @@ test("an invite without an email gets its own link", () => {
   assert.throws(() => applyPlan(plan, asOwner, { action: "invite", name: "Kim", email: "kim@", rate: 0 }), /email/);
 });
 
-test("profit is sales minus rent, pay, and the incentive once the quota is hit", () => {
+test("profit subtracts expenses without changing whether sales hit the incentive quota", () => {
   const staffed = { ...booking, staff: [{ memberId: "b", name: "Bea", role: "cashier" as const, salary: 70000 }, { memberId: "p", name: "Paolo", role: "server" as const, salary: 60000 }] };
   const miss = bookingProfit({ ...staffed, sales: 700000 });
   assert.equal(miss.hit, false);
   assert.equal(miss.net, 700000 - 150000 - 130000);
-  const hit = bookingProfit({ ...staffed, sales: 800000 });
+  const hit = bookingProfit({ ...staffed, sales: 800000, expenses: 8500 });
   assert.equal(hit.incentives, 40000);
-  assert.equal(hit.net, 800000 - 150000 - 130000 - 40000);
-  const seen = redactBooking({ ...staffed, sales: 1 }, asBea);
+  assert.equal(hit.net, 800000 - 150000 - 130000 - 40000 - 8500);
+  const seen = redactBooking({ ...staffed, sales: 1, expenses: 8500 }, asBea);
   assert.equal(seen.rent, undefined);
   assert.equal(seen.sales, undefined);
+  assert.equal(seen.expenses, undefined);
   assert.equal(seen.staff[0].salary, 70000);
   assert.equal(seen.staff[1].salary, undefined);
 });

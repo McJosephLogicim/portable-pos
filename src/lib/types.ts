@@ -324,9 +324,14 @@ export interface Booking {
   incentive: number;
   /** Owner only: net sales rung up on tills opened for this shift. */
   sales?: number;
+  /** Owner only: expenses logged on tills opened for this shift. */
+  expenses?: number;
   /** Whether sales reached the quota. Shared with the team, unlike the sales figure. */
   hit?: boolean;
 }
+export type BookingRecordKind = "sales" | "expenses";
+export type BookingRecords = { sales: Sale[]; expenses: Expense[] };
+
 /** A business this person can switch to. */
 export interface BusinessSummary {
   id: string;
