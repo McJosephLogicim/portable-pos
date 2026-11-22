@@ -247,6 +247,7 @@ export interface Sale {
 export type RegisterEvent =
   | { id: string; shiftId: string; type: "sale"; sale: Sale; menuVersion?: string }
   | { id: string; shiftId: string; type: "expense"; expense: Expense }
+  | { id: string; shiftId: string; type: "editExpense"; targetId: string; changes: ExpenseInput }
   | { id: string; shiftId: string; type: "unexpense"; targetId: string }
   | {
       id: string;

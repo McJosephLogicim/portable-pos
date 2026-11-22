@@ -485,6 +485,7 @@ export function ShiftScreen({
   onJoin,
   onClose,
   onExpense,
+  onEditExpense,
   onUnexpense,
   onSell,
   onGoMenu,
@@ -499,6 +500,7 @@ export function ShiftScreen({
   onJoin?: (shiftId: string) => Promise<void>;
   onClose: (closing: CloseInput, pin: string) => Promise<void>;
   onExpense: (input: ExpenseInput) => Promise<void>;
+  onEditExpense: (id: string, input: ExpenseInput) => Promise<void>;
   onUnexpense: (id: string) => Promise<void>;
   onSell: () => void;
   onGoMenu?: () => void;
@@ -538,6 +540,7 @@ export function ShiftScreen({
     currency,
     disabled: Boolean(state.closingShiftId),
     onExpense,
+    onEditExpense,
     onUnexpense,
   };
   const canClose = online && !state.pending.length;

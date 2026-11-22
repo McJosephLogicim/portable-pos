@@ -24,6 +24,7 @@ import {
   cancelClose,
   checkout,
   clearRegister,
+  editExpense,
   loadRegister,
   logExpense,
   mergeServer,
@@ -635,6 +636,11 @@ export function Workspace() {
       });
     });
   }
+  async function updateExpense(id: string, input: ExpenseInput) {
+    if (!key) throw Error("Register unavailable.");
+    await locked("write-" + key, async () => show(key, await editExpense(key, id, input)));
+    void flush();
+  }
   async function unexpense(id: string) {
     if (!key) throw Error("Register unavailable.");
     await locked("write-" + key, async () => show(key, await removeExpense(key, id)));
@@ -916,6 +922,7 @@ export function Workspace() {
               onSales={onSales}
               onClose={(closing, pin) => owner({ action: "close", ...closing, pin })}
               onExpense={expense}
+              onEditExpense={updateExpense}
               onUnexpense={unexpense}
               onAction={owner}
               onSaved={setToast}

@@ -6,7 +6,9 @@ import {
   cancelClose,
   checkout,
   clearRegister,
+  editExpense,
   loadRegister,
+  logExpense,
   mergeServer,
   saveCart,
   setAvailability,
@@ -173,4 +175,25 @@ test("a close with an uncertain network outcome still blocks sales after reload"
       .closingShiftId,
     undefined,
   );
+});
+
+test("an offline expense edit survives a refresh and a concurrent removal wins", async () => {
+  const { key, data } = await start();
+  const logged = await logExpense(key, { label: "Ice", amount: 200, source: "till", by: "Ana" });
+  const original = logged.expenses![0];
+  const changes = { label: "Ice packs", amount: 350, source: "pocket" as const };
+  const edited = await editExpense(key, original.id, changes);
+  const expected = { ...original, ...changes };
+  assert.deepEqual(edited.expenses, [expected]);
+
+  const snapshot = { ...data, expenses: [original] };
+  const refreshed = await mergeServer(key, snapshot, [logged.pending[0].id]);
+  assert.deepEqual(refreshed.expenses, [expected]);
+  assert.equal(refreshed.pending.length, 1);
+
+  const removed = { ...original, voidedAt: new Date().toISOString() };
+  const remote = { ...data, expenses: [removed] };
+  assert.deepEqual((await mergeServer(key, remote)).expenses, [removed]);
+  assert.deepEqual((await mergeServer(key, remote, [edited.pending[1].id])).pending, []);
+  await assert.rejects(editExpense(key, original.id, changes), /no longer on the open shift/);
 });

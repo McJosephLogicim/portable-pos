@@ -121,19 +121,34 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
   await page.getByRole("button", { name: "Till", exact: true }).click();
   await logExpense("Till supplies", "20", "Cash from the till");
-  await expect(page.getByText("Till supplies", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Till supplies/ }).click();
+  const edit = page.getByRole("dialog", { name: "Edit expense" });
+  await expect(edit.getByRole("combobox", { name: "What for" })).toHaveValue("Till supplies");
+  await expect(edit.getByRole("textbox", { name: "Amount" })).toHaveValue("20.00");
+  await expect(edit.getByRole("button", { name: "Cash from the till" })).toHaveAttribute("aria-pressed", "true");
+  await edit.getByRole("combobox", { name: "What for" }).fill("Ice packs");
+  await edit.getByRole("textbox", { name: "Amount" }).fill("25.50");
+  await edit.getByRole("button", { name: "Save changes" }).click();
+  await expect(edit).toBeHidden();
+  await page.reload();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Ice packs.*25\.50/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Count drawer and close" }).click();
   const closing = page.getByRole("dialog", { name: /^Close shift/ });
   const drawer = closing.locator(".tile").filter({ hasText: "Expected in the drawer" });
-  await expect(drawer.getByText("₱80", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("₱74.50", { exact: true })).toBeVisible();
   await reviewStock("Closing stock");
   await logExpense("Closing fare", "30", "Own pocket", closing);
-  await expect(drawer.getByText("₱80", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("₱74.50", { exact: true })).toBeVisible();
   await logExpense("Closing supplies", "10", "Cash from the till", closing);
-  await expect(drawer.getByText("₱70", { exact: true })).toBeVisible();
-  await removeExpense("Till supplies", closing);
+  await expect(drawer.getByText("₱64.50", { exact: true })).toBeVisible();
+  await closing.getByRole("button", { name: /^Ice packs/ }).click();
+  await edit.getByRole("button", { name: "Own pocket" }).click();
+  await edit.getByRole("button", { name: "Save changes" }).click();
+  await expect(edit).toBeHidden();
   await expect(drawer.getByText("₱90", { exact: true })).toBeVisible();
+  await removeExpense("Closing fare", closing);
 
   await closing.getByRole("button", { name: "Type the total" }).click();
   await closing.getByRole("textbox", { name: "Cash on hand" }).fill("90");
@@ -145,8 +160,8 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(report.locator('[data-popo-motion="victoryHop"]')).toHaveAttribute("data-animating", "");
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toContainText("Closing supplies");
-  await expect(report.locator("pre")).toContainText("Closing fare");
-  await expect(report.locator("pre")).not.toContainText("Till supplies");
+  await expect(report.locator("pre")).toContainText("Ice packs");
+  await expect(report.locator("pre")).not.toContainText("Closing fare");
 });
 
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {

@@ -67,6 +67,7 @@ test(
       label: "Ice",
       amount: 5000,
       source: "till" as const,
+      by: "Ana",
     };
     await sync(phoneB, [{ type: "expense", id: expense.id, shiftId: shift.id, expense }]);
     await cmd({ action: "reverse", deviceId: phoneB, saleId: a[0].id, reason: "Rang twice", pin });
@@ -91,6 +92,14 @@ test(
     assert.equal(after.difference, 0);
     assert.equal(after.usedStock?.tea, 4);
     assert.equal(settled.sales.find((s) => s.id === late.id)?.sequence, 5);
+    // An expense correction queued before closing also reconciles the original shift.
+    const changes = { label: "Ice packs", amount: 4500, source: "pocket" as const };
+    const edit: RegisterEvent = { type: "editExpense", id: randomUUID(), shiftId: shift.id, targetId: expense.id, changes };
+    await sync(phoneA, [edit]);
+    const retried = await sync(phoneA, [edit]);
+    assert.deepEqual(retried.expenses, [{ ...expense, ...changes }]);
+    assert.equal(retried.shifts.find((s) => s.id === shift.id)!.difference, -5000);
+
     // A sold-out mark that arrives after closing is ignored instead of blocking the queue.
     await sync(phoneA, [{ type: "availability", id: randomUUID(), shiftId: shift.id, targetId: "tea", soldOut: true }]);
 
