@@ -10,7 +10,7 @@ import {
   mergeShiftSettings,
 } from "../lib/settings";
 import { batchIngredientProblem, hasStockCostAmounts, pricingInCurrency, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
-import { linkBookingProblem, normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
+import { isOnShift, linkBookingProblem, normalEmail, ownerPlanActions, planActions, startProblem, walkInBooking, type PlanCommand } from "../lib/team";
 import type { RegisterResponse } from "../lib/types";
 import { getDb, type Transaction } from "./db";
 import { ensure } from "./errors";
@@ -18,7 +18,7 @@ import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, completedOnboarding, expenses, images, members, sales, shifts, syncedEvents } from "./schema";
-import { presentShift, snapshot as baseSnapshot } from "./snapshot";
+import { activeTill, presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
@@ -155,12 +155,8 @@ export async function runCommand(
     const openShifts = () =>
       tx.select().from(shifts).where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
     /** The open shift this phone is running, if any. */
-    const tillShift = async (running?: Awaited<ReturnType<typeof openShifts>>) => {
-      const open = running ?? await openShifts();
-      if (view.till !== undefined) return open.find((s) => s.id === view.till);
-      // Older app versions: the one open shift, as before.
-      return open.length === 1 ? open[0] : open.find((s) => s.deviceId === view.deviceId);
-    };
+    const tillShift = async (running?: Awaited<ReturnType<typeof openShifts>>) =>
+      activeTill(tx, running ?? await openShifts(), view, me.memberId);
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
       const deleted = await runPlan(tx, business, me, cmd as PlanCommand);
@@ -298,27 +294,30 @@ export async function runCommand(
       const joined = bookingId && running.find((s) => s.bookingId === bookingId);
       const mine = await tillShift(running);
       ensure(!mine || (joined && mine.id === joined.id), `Close shift ${mine?.number} on this phone before starting another.`, 409);
-      if (joined) view.till = joined.id;
-      else {
+      const settings = business.settings ?? defaultSettings(business.currency);
+      const checklist = settings.checklist ?? [];
+      let stock, openingCount;
+      if (!joined) {
         ensure(
           business.menu.length,
           "Add a menu item before opening the till.",
         );
-        const settings = business.settings ?? defaultSettings(business.currency);
-        const checklist = settings.checklist ?? [];
-        let stock, openingCount;
         try {
           stock = checkOpening(business.menu, settings.stockItems, checklist, cmd.stock, cmd.checked);
           openingCount = checkCount(cmd.openingCount, cmd.openingCash);
         } catch (error) {
           ensure(false, (error as Error).message);
         }
-        ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
-        const [booking] = await tx
-          .select({ startsAt: bookings.startsAt })
-          .from(bookings)
-          .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
-        ensure(booking, "That scheduled shift was removed.", 404);
+      }
+      ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
+      const [booking] = await tx
+        .select({ startsAt: bookings.startsAt, staff: bookings.staff })
+        .from(bookings)
+        .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
+      ensure(booking, "That scheduled shift was removed.", 404);
+      ensure(isOnShift(booking, me.memberId), "You need to be on this shift to use its till.", 403);
+      if (joined) view.till = joined.id;
+      else {
         const [closed] = await tx
           .select({ id: shifts.id })
           .from(shifts)
@@ -339,7 +338,7 @@ export async function runCommand(
           .limit(1);
         const { mode: _mode, menuCategories: _categories, ...checkoutSettings } = withoutStockCosts(settings);
         const [opened] = await tx.insert(shifts).values({
-          stock: Object.keys(stock).length ? stock : null,
+          stock: stock && Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,
           openedBy: me.name || null,
           bookingId,
@@ -424,6 +423,7 @@ export async function runCommand(
         .from(bookings)
         .where(and(eq(bookings.businessId, business.id), eq(bookings.id, cmd.bookingId)));
       ensure(booking, "That scheduled shift was removed.", 404);
+      ensure(isOnShift(booking, me.memberId), "You need to be on this shift to use its till.", 403);
       const [closed] = await tx
         .select({ id: shifts.id })
         .from(shifts)

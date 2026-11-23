@@ -423,16 +423,16 @@ function BookingSheet({
   const { onStart, onJoin } = props;
   const tillButton = `btn block${joinable ? " secondary" : ""}`;
   const tillAction = onLinkTill ? (
-    <button type="button" className={tillButton} disabled={!online || busy} aria-haspopup="dialog" onClick={onLinkTill}>
+    <button type="button" className={tillButton} disabled={!online || busy} {...blocked(!mine && "You need to be on this shift to use its till.")} aria-haspopup="dialog" onClick={onLinkTill}>
       <Link2 size={17} aria-hidden="true" /> Add till
     </button>
   ) : runningTill ? (
-    localTill?.id !== runningTill.id && onJoin && (
+    mine && localTill?.id !== runningTill.id && onJoin && (
       <button type="button" className={tillButton} disabled={busy} {...blocked(tillBlock)} aria-haspopup="dialog" onClick={() => setJoiningTill(runningTill)}>
         Join till
       </button>
     )
-  ) : !tillClosed && onStart && (
+  ) : mine && !tillClosed && onStart && (
     <button
       type="button"
       className={tillButton}

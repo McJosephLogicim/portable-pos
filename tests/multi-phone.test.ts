@@ -32,7 +32,29 @@ test(
     const opened = await cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 50000, stock: { tea: 3 } });
     const shift = opened.shift!;
 
-    // The same account on a fresh phone sees the open shift even before it picks a till.
+    const outsiderId = randomUUID();
+    const outsider = (input: object) => runCommand(outsiderId, input);
+    const invited = await cmd({ action: "invite", name: "New teammate", email: "", rate: 0, pin });
+    const invite = invited.team!.find((person) => person.name === "New teammate")!;
+    await outsider({ action: "acceptInvite", code: invite.inviteCode });
+    const foreignTill = { action: "bootstrap", deviceId: randomUUID(), till: shift.id };
+    assert.equal((await outsider(foreignTill)).shift, null);
+    assert.equal((await outsider({ action: "bootstrap" })).shift, null);
+    await assert.rejects(
+      outsider({ action: "open", deviceId: foreignTill.deviceId, till: null, bookingId, openingCash: 0 }),
+      { status: 403 },
+    );
+    const unstaffed = await shiftNow(cmd, pin, false);
+    await assert.rejects(
+      cmd({ action: "open", deviceId: randomUUID(), till: null, bookingId: unstaffed, openingCash: 0, stock: { tea: 1 } }),
+      { status: 403 },
+    );
+    await outsider({ action: "join", bookingId, role: "cashier" });
+    assert.equal((await outsider(foreignTill)).shift?.id, shift.id);
+    await cmd({ action: "leave", bookingId, memberId: invite.id, pin });
+    assert.equal((await outsider(foreignTill)).shift, null);
+
+    // The same assigned account on a fresh phone sees the open shift before picking a till.
     const discovery = await cmd({ action: "bootstrap", deviceId: phoneB, till: null });
     assert.equal(discovery.shift, null);
     assert.deepEqual(discovery.shifts.map(({ id, closedAt }) => ({ id, closedAt })), [{ id: shift.id, closedAt: null }]);

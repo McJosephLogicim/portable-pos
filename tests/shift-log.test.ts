@@ -295,6 +295,7 @@ test("a closed scheduled shift cannot be started again in the demo", () => {
     menu: [{ id: "tea", name: "Tea", category: "", price: 100, groups: [] }],
     bookings: [booking],
   };
+  booking.staff = [{ memberId: initial.me!.memberId, name: initial.me!.name, role: "cashier" }];
   const open = { action: "open" as const, openingCash: 0, stock: {}, checked: [], bookingId: booking.id };
   const opened = { ...state, ...demoAction(state, open) };
   const closed = { ...opened, ...demoAction(opened, { action: "close", countedCash: 0, pin: DEMO_PIN }) };
@@ -316,7 +317,7 @@ test(
     const deviceId = randomUUID();
     const pin = "4821";
     const cmd = (input: object) => runCommand(owner, input);
-    await cmd({ action: "setup", name: "On time", currency: "PHP", timeZone: "Asia/Manila", pin });
+    const { me } = await cmd({ action: "setup", name: "On time", currency: "PHP", timeZone: "Asia/Manila", pin });
     await cmd({ action: "menu", menu: [{ id: "tea", name: "Tea", category: "", price: 100, groups: [] }], pin });
     const open = (bookingId?: string) => cmd({ action: "open", deviceId, openingCash: 0, bookingId });
     // No shift on the schedule, no till.
@@ -329,7 +330,8 @@ test(
         booking: {
           id, startsAt: new Date(Date.now() + startHours * 3600000).toISOString(),
           endsAt: new Date(Date.now() + endHours * 3600000).toISOString(),
-          place: null, organizer: null, event: null, seats: 1, staff: [], rent: 0, quota: 0, incentive: 0,
+          place: null, organizer: null, event: null, seats: 1,
+          staff: [{ memberId: me!.memberId, name: me!.name, role: "cashier" }], rent: 0, quota: 0, incentive: 0,
         },
       }).then(() => id);
     };

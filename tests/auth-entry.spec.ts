@@ -94,9 +94,10 @@ test("a missed shift can be started and joined from another phone by members, ow
   const [booking] = initial.bookings!;
   booking.startsAt = "2026-11-20T01:00:00Z";
   booking.endsAt = "2026-11-20T03:00:00Z";
+  booking.staff = [{ memberId: initial.me!.memberId, name: initial.me!.name, role: "cashier" }];
   let till: Shift | undefined;
   const deviceIds = new Set<string>();
-  const signIn = async (phone: Page, role: "owner" | "co-owner" | "member" = "owner") => {
+  const signIn = async (phone: Page, role: "owner" | "co-owner" | "member" = "owner", assigned = true) => {
     const me = { ...initial.me!, owner: role !== "member" };
     const team = me.owner ? initial.team?.map((person) => person.id === me.memberId
       ? { ...person, owner: true, primaryOwner: role === "owner" }
@@ -118,6 +119,7 @@ test("a missed shift can be started and joined from another phone by members, ow
       }
       return route.fulfill({ json: {
         ...initial,
+        bookings: [assigned ? booking : { ...booking, staff: [{ memberId: "other", name: "Another cashier", role: "cashier" }] }],
         me,
         team,
         shifts: till ? [till] : [],
@@ -164,7 +166,21 @@ test("a missed shift can be started and joined from another phone by members, ow
       }
     });
   }
-  expect(deviceIds.size).toBe(4);
+  const unassigned = await browser.newPage();
+  try {
+    await signIn(unassigned, "member", false);
+    await expect(unassigned.getByRole("heading", { name: "Till closed" })).toBeVisible();
+    await unassigned.getByRole("button", { name: "Till", exact: true }).click();
+    await expect(unassigned.getByText("Open on another phone")).toHaveCount(0);
+    await showMissedShift(unassigned);
+    await unassigned.getByRole("button", { name: /Saturday market.*Started/ }).click();
+    const details = unassigned.getByRole("dialog", { name: "Saturday market" });
+    await expect(details.getByText("Started on another device")).toBeVisible();
+    await expect(details.getByRole("button", { name: "Join till", exact: true })).toHaveCount(0);
+  } finally {
+    await unassigned.close();
+  }
+  expect(deviceIds.size).toBe(5);
 });
 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {

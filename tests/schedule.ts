@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import type { Bootstrap } from "../src/lib/types";
 
 /** Schedule a shift running right now, so a till can open for it. */
-export async function shiftNow(cmd: (input: object) => Promise<unknown>, pin: string) {
+export async function shiftNow(cmd: (input: object) => Promise<unknown>, pin: string, assignSelf = true) {
   const id = randomUUID();
+  const me = assignSelf ? (await cmd({ action: "bootstrap" }) as Bootstrap).me : null;
   await cmd({
     action: "booking",
     pin,
@@ -14,7 +16,7 @@ export async function shiftNow(cmd: (input: object) => Promise<unknown>, pin: st
       organizer: null,
       event: null,
       seats: 2,
-      staff: [],
+      staff: me ? [{ memberId: me.memberId, name: me.name, role: "cashier" }] : [],
       rent: 0,
       quota: 0,
       incentive: 0,

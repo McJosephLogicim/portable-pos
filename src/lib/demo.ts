@@ -4,7 +4,7 @@ import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftSto
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { changeMenuCategories, menuCategoryNames, type MenuCategoryChange } from "./menu-categories";
 import { demoPlan } from "./demo-plan";
-import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
+import { applyPlan, isOnShift, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { currencyDigits, defaultSettings, mergeShiftSettings } from "./settings";
 import type {
@@ -189,6 +189,7 @@ export function demoAction(
       if (!input.bookingId) throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
       const booking = state.bookings?.find((b) => b.id === input.bookingId);
       if (!booking) throw Error("That scheduled shift was removed.");
+      if (!isOnShift(booking, state.me?.memberId)) throw new RequestFailure(403, "You need to be on this shift to use its till.");
       if (booking.tillClosed || state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
         throw Error("This shift already closed. Add a new one on Shifts.");
       const problem = startProblem(booking, business.timeZone);
@@ -255,6 +256,8 @@ export function demoAction(
       if (open.bookingId) throw new RequestFailure(409, "This till is already on another shift.");
       const booking = state.bookings?.find((b) => b.id === input.bookingId);
       if (!booking) throw new RequestFailure(404, "That scheduled shift was removed.");
+      if (state.business?.id !== PRACTICE && !isOnShift(booking, state.me?.memberId))
+        throw new RequestFailure(403, "You need to be on this shift to use its till.");
       if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
         throw new RequestFailure(409, "This shift already closed. Choose another shift.");
       // Practice can link the shift immediately, including one scheduled for another day.

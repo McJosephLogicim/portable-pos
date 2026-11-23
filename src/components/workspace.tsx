@@ -41,6 +41,7 @@ import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import { LoginExpired, loginDeadline } from "@/lib/login-session";
+import { isOnShift } from "@/lib/team";
 import type { MenuCategoryChange } from "@/lib/menu-categories";
 import type { BookingRecordKind, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
@@ -538,8 +539,12 @@ export function Workspace() {
     const before = openShift.current;
     if (!state) return;
     openShift.current = live ? { id: live.id, number: live.number, business: state.business?.id } : null;
-    if (before && before.business === state.business?.id && before.id !== live?.id && !closingHere.current)
-      setNotice(`Shift ${before.number} was closed on another phone. Anything sold here still counts toward it.`);
+    if (before && before.business === state.business?.id && before.id !== live?.id && !closingHere.current) {
+      const stillOpen = state.shifts.some((shift) => shift.id === before.id && !shift.closedAt);
+      setNotice(stillOpen
+        ? `You're no longer assigned to shift ${before.number}. Anything sold here still counts toward it.`
+        : `Shift ${before.number} was closed on another phone. Anything sold here still counts toward it.`);
+    }
     closingHere.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live?.id, state?.business?.id]);
@@ -687,7 +692,10 @@ export function Workspace() {
         if (s.shift && !s.shift.closedAt) throw Error(`Close shift ${s.shift.number} on this phone first.`);
         const data = await api(key, { action: "bootstrap", deviceId: s.deviceId, till: shiftId });
         show(key, await mergeServer(key, data));
-        if (data.shift?.id !== shiftId) throw Error("That shift just closed.");
+        if (data.shift?.id !== shiftId) {
+          const stillOpen = data.shifts.some((shift) => shift.id === shiftId && !shift.closedAt);
+          throw Error(stillOpen ? "You need to be on this shift to use its till." : "That shift just closed.");
+        }
       });
     });
   }
@@ -913,7 +921,8 @@ export function Workspace() {
   else if (!business)
     content = <main><Setup onboarding={state.onboardingComplete === false} onSave={owner} onSignOut={() => setConfirmSignOut(true)} /></main>;
   else {
-    const otherTillOpen = state.shifts.some((shift) => !shift.closedAt && shift.bookingId);
+    const otherTillOpen = state.bookings?.some((booking) => isOnShift(booking, state.me?.memberId) &&
+      state.shifts.some((shift) => shift.bookingId === booking.id && !shift.closedAt)) ?? false;
     const onMenu: EditorProps["onMenu"] = (menu, pin, stock) => owner({ action: "menu", menu, pin, stock });
     const onMenuCategory = (change: MenuCategoryChange, pin: string) => owner({ ...change, pin });
     const editor: EditorProps = {

@@ -11,7 +11,7 @@ import {
   legacyShiftSettings,
 } from "../lib/settings";
 import { bookings, businesses, expenses, members, sales, shifts } from "./schema";
-import { redactBooking } from "../lib/team";
+import { isOnShift, redactBooking } from "../lib/team";
 import { presentBooking, presentMe, presentMember } from "./team";
 
 export function presentShift(
@@ -44,6 +44,23 @@ export function presentShift(
     ...(row.mergedAt ? { mergedAt: new Date(row.mergedAt).toISOString() } : {}),
     ...(row.openedBy ? { openedBy: row.openedBy } : {}),
   };
+}
+
+export async function activeTill(
+  tx: Transaction,
+  running: (typeof shifts.$inferSelect)[],
+  view: { till?: string | null; deviceId?: string },
+  memberId: string,
+  knownBookings: Pick<typeof bookings.$inferSelect, "id" | "staff">[] = [],
+) {
+  const shift = view.till !== undefined
+    ? running.find((row) => row.id === view.till)
+    : running.length === 1 ? running[0] : running.find((row) => row.deviceId === view.deviceId);
+  if (!shift) return;
+  if (!shift.bookingId) return view.till === undefined || shift.deviceId === view.deviceId ? shift : undefined;
+  const booking = knownBookings.find((row) => row.id === shift.bookingId) ?? (await tx.select({ staff: bookings.staff })
+    .from(bookings).where(and(eq(bookings.businessId, shift.businessId), eq(bookings.id, shift.bookingId))))[0];
+  if (isOnShift(booking, memberId)) return shift;
 }
 
 export function presentExpense(row: typeof expenses.$inferSelect): Expense {
@@ -223,8 +240,6 @@ export async function snapshot(
   const [member] = await tx.select().from(members).where(eq(members.id, access.member.id));
   if (!business) return empty;
   const me = presentMe(member ?? access.member);
-  // Roles are picked per shift, so everyone on the team can run the till.
-  const till = true;
 
   // Two months back for the books, and everything ahead.
   const since = new Date(Date.now() - 62 * 86400000).toISOString();
@@ -307,12 +322,6 @@ export async function snapshot(
   const { id, name, currency, timeZone, menu } = business;
   const currentSettings = business.settings ?? defaultSettings(currency);
   const settings = me.owner ? currentSettings : withoutStockCosts(currentSettings);
-  if (!till)
-    return {
-      ...empty,
-      ...plan,
-      business: { id, name, currency, timeZone, settings },
-    };
 
   // Every booth still open, plus the last 30 closed.
   const running = await tx
@@ -327,10 +336,7 @@ export async function snapshot(
     .orderBy(desc(shifts.number))
     .limit(30);
   const recent = [...running, ...closed].sort((a, b) => b.number - a.number);
-  // The shift this phone runs. Older app versions don't say, and get the one open shift.
-  const active = view.till !== undefined
-    ? running.find((shift) => shift.id === view.till)
-    : running.length === 1 ? running[0] : running.find((shift) => shift.deviceId === view.deviceId);
+  const active = await activeTill(tx, running, view, me.memberId, bookingRows);
   const history = recent.length
     ? await receiptsPage(
         tx,

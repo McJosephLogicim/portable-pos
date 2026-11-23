@@ -17,7 +17,7 @@ import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
-import { bookingTitle, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
+import { bookingTitle, isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import { blocked, type Reason } from "@/lib/reject";
 import {
   errorText,
@@ -111,8 +111,9 @@ function NoShift({
   }
   // Booths other phones are running now. This phone can sell on one, or start its own.
   const running = new Map(state.shifts.flatMap((s) => (!s.closedAt && s.bookingId ? [[s.bookingId, s] as const] : [])));
-  const list = upcomingBookings(state);
-  const live = (state.bookings ?? []).filter((b) => running.has(b.id));
+  const memberId = state.me?.memberId;
+  const list = upcomingBookings(state).filter((b) => isOnShift(b, memberId));
+  const live = (state.bookings ?? []).filter((b) => running.has(b.id) && isOnShift(b, memberId));
   const ready = list.filter((b) => !running.has(b.id) && !startProblem(b, zone));
   const next = list.find((b) => !running.has(b.id) && startProblem(b, zone));
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
@@ -123,7 +124,7 @@ function NoShift({
     <div className="stack gap-18">
       <div className={styles.tillHeading}>
         <h1 className="headline">Open till</h1>
-        {(list.length > 0 || running.size > 0) && <Popo pose="connect" size={68} className={styles.tillMascot} />}
+        {(list.length > 0 || live.length > 0) && <Popo pose="connect" size={68} className={styles.tillMascot} />}
       </div>
       {live.length > 0 && (
         <div className="stack gap-10">
@@ -170,12 +171,12 @@ function NoShift({
           </div>
         </div>
       )}
-      {!list.length && !running.size ? (
+      {!list.length && !live.length ? (
         <EmptyState
           pose="plan"
           object="shiftCalendar"
-          title="Nothing scheduled"
-          text={state.me?.owner ? "Schedule a shift before opening the till." : "Ask the owner to schedule a shift before you open the till."}
+          title="No shifts assigned to you"
+          text="Join an open seat on Shifts or ask an owner to assign you."
         >
           <button type="button" className="btn compact" onClick={onSchedule}>Go to Shifts</button>
         </EmptyState>
@@ -516,7 +517,7 @@ export function ShiftScreen({
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
   const startingBooking = openingId && !state.shifts.some((s) => s.bookingId === openingId)
-    ? state.bookings?.find((b) => b.id === openingId && !b.tillClosed)
+    ? state.bookings?.find((b) => b.id === openingId && !b.tillClosed && isOnShift(b, state.me?.memberId))
     : undefined;
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;

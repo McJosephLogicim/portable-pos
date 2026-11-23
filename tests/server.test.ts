@@ -131,9 +131,10 @@ test(
     });
     await cmd({ action: "sync", deviceId, events: [{ type: "sale", id: sale.id, shiftId: shift.id, sale }] });
 
+    const me = (await cmd({ action: "bootstrap" })).me!;
     const booking = {
       id: randomUUID(), startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString(),
-      seats: 1, staff: [], place: null, organizer: null, event: null, quota: 0, incentive: 0,
+      seats: 1, staff: [{ memberId: me.memberId, name: me.name, role: "cashier" }], place: null, organizer: null, event: null, quota: 0, incentive: 0,
     };
     const other = { ...booking, id: randomUUID() };
     await cmd({ action: "booking", booking, pin });

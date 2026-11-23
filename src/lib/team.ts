@@ -29,6 +29,10 @@ export function seatsOpen(b: Booking) {
   return Math.max(0, b.seats - b.staff.length);
 }
 
+export function isOnShift(booking: Pick<Booking, "staff"> | undefined, memberId: string | undefined) {
+  return Boolean(memberId && booking?.staff.some((slot) => slot.memberId === memberId));
+}
+
 export type PlanCommand =
   | { action: "invite"; name: string; email: string; rate: number }
   | { action: "member"; memberId: string; name: string; rate: number; owner?: boolean }

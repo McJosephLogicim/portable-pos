@@ -50,6 +50,8 @@ async function seedTill(
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = opening ? null : shift;
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
+          if (!staffAs && state.me)
+            first.staff = [{ memberId: state.me.memberId, name: state.me.name, role: "cashier" }];
           if (staffAs) {
             const person = state.team!.find((person) => person.id === state.me!.memberId)!;
             state.me!.owner = person.owner = staffAs !== "member";
@@ -71,6 +73,8 @@ async function seedTill(
           }
           state.shifts = opening ? [past, unscheduled] : withShifts ? [shift, past, unscheduled] : [shift];
           if (opening) {
+            second.staff = first.staff;
+            future.staff = first.staff;
             state.business!.settings.checklist = [];
             state.business!.settings.stockItems!.find((i) => i.id === "milk")!.onHand = 5;
             state.menu.find((item) => item.name === "Espresso")!.stock = true;

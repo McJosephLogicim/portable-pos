@@ -517,7 +517,7 @@ test(
     assert.equal(JSON.stringify(preview).includes("40000"), false);
     assert.equal(await invitePreview("zzzzzzzz"), null);
     // A shared shift link shows when and where, never rent or who is on it.
-    const nightShift = await shiftNow(night, "9999");
+    const nightShift = await shiftNow(night, "9999", false);
     const shiftCode = new URL(joinLink("https://pos.example.com", second, nightShift)).pathname.slice(3);
     const seen = await shiftPreview(shiftCode);
     assert.equal(seen!.business.name, "Night stall");
