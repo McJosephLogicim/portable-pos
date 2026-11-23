@@ -339,6 +339,18 @@ export function PhotoPicker({
             <div className="grid-2">
               <button
                 type="button"
+                className="btn"
+                {...blocked(blockedReason)}
+                onClick={() => {
+                  // The file picker must open inside the tap, before the sheet closes.
+                  input.current?.click();
+                  setViewing(false);
+                }}
+              >
+                Change
+              </button>
+              <button
+                type="button"
                 className="btn secondary"
                 {...blocked(blockedReason)}
                 onClick={() => {
@@ -351,18 +363,6 @@ export function PhotoPicker({
                 }}
               >
                 Remove
-              </button>
-              <button
-                type="button"
-                className="btn"
-                {...blocked(blockedReason)}
-                onClick={() => {
-                  // The file picker must open inside the tap, before the sheet closes.
-                  input.current?.click();
-                  setViewing(false);
-                }}
-              >
-                Change
               </button>
             </div>
           }
@@ -675,7 +675,6 @@ export function ConfirmSheet({
       onClose={onClose}
       footer={
         <div className="grid-2">
-          <button type="button" className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button>
           <button
             type="button"
             className={destructive ? "btn destructive" : "btn"}
@@ -685,6 +684,7 @@ export function ConfirmSheet({
           >
             {busy ? "Working…" : confirmLabel}
           </button>
+          <button type="button" className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button>
         </div>
       }
     >

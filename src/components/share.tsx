@@ -139,6 +139,32 @@ export function ImageShareSheet({
     }
   }
 
+  const copyButton = (
+    <CopyButton
+      key="copy"
+      text={text}
+      disabled={sharing}
+      description="Copy as text"
+      compactOnMobile
+      primary={unavailable}
+      onError={(message) => {
+        setCopyError(message);
+        if (message && details.current) {
+          details.current.open = true;
+          details.current.scrollIntoView({ block: "start" });
+        }
+      }}
+    />
+  );
+  const imageButton = (
+    <button key="image" type="button" className={`btn responsive-icon${unavailable ? " secondary" : ""}`} disabled={!image || sharing} onClick={() => void shareImage()}>
+      {canShare ? <Share2 size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
+      <span className="button-label">
+        {unavailable ? "Image unavailable" : !image ? "Preparing…" : sharing ? "Opening…" : canShare ? "Share" : "Save"}
+      </span>
+    </button>
+  );
+
   return (
     <Sheet
       title={title}
@@ -151,26 +177,7 @@ export function ImageShareSheet({
           {copyError && <p className="alert" role="alert">{copyError}</p>}
           <p className={done ? `label ${styles.reportStatus}` : "sr-only"} role="status">{done}</p>
           <div className={`grid-2 ${styles.reportActions}`}>
-            <CopyButton
-              text={text}
-              disabled={sharing}
-              description="Copy as text"
-              compactOnMobile
-              primary={unavailable}
-              onError={(message) => {
-                setCopyError(message);
-                if (message && details.current) {
-                  details.current.open = true;
-                  details.current.scrollIntoView({ block: "start" });
-                }
-              }}
-            />
-            <button type="button" className={`btn responsive-icon${unavailable ? " secondary" : ""}`} disabled={!image || sharing} onClick={() => void shareImage()}>
-              {canShare ? <Share2 size={17} aria-hidden="true" /> : <Download size={17} aria-hidden="true" />}
-              <span className="button-label">
-                {unavailable ? "Image unavailable" : !image ? "Preparing…" : sharing ? "Opening…" : canShare ? "Share" : "Save"}
-              </span>
-            </button>
+            {unavailable ? [copyButton, imageButton] : [imageButton, copyButton]}
           </div>
         </div>
       )}

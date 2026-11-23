@@ -139,11 +139,19 @@ test("Starting a shift is the only primary action when a member can also change 
   await expect(details.getByRole("button", { name: "Change role" })).toHaveClass(/\bsecondary\b/);
   await expect(details.getByRole("button", { name: "Leave", exact: true })).toHaveClass(/\bghost\b/);
   const footerButtons = details.locator(".sheet-foot").getByRole("button");
-  await expect(footerButtons).toHaveText(["Change role", "Leave", "Start shift"]);
+  await expect(footerButtons).toHaveText(["Start shift", "Change role", "Leave"]);
   const footerRows = await footerButtons.evaluateAll((buttons) =>
     new Set(buttons.map((button) => button.getBoundingClientRect().top)).size,
   );
   expect(footerRows).toBe(3);
+  await page.setViewportSize({ width: 768, height: 844 });
+  await expect.poll(() => footerButtons.evaluateAll((buttons) => {
+    const positions = buttons.map((button) => button.getBoundingClientRect());
+    const [primary, secondary, tertiary] = positions;
+    return primary.top === secondary.top && secondary.top === tertiary.top &&
+      primary.left < secondary.left && secondary.left < tertiary.left;
+  })).toBe(true);
+  await page.setViewportSize({ width: 320, height: 780 });
 
   const actions = details.getByRole("group", { name: "Shift actions" });
   const share = actions.getByRole("button", { name: "Share", exact: true });
@@ -307,13 +315,17 @@ test("Delete shakes and shows an error for an open till on both Shifts and Till"
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
   await seedTill(page, true, true);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  const headerActions = page.getByRole("button", { name: /^(Add|Share the schedule|Leaderboard)$/ });
+  await expect(headerActions.nth(0)).toHaveAccessibleName("Add");
+  await expect(headerActions.nth(1)).toHaveAccessibleName("Share the schedule");
+  await expect(headerActions.nth(2)).toHaveAccessibleName("Leaderboard");
   const today = page.getByRole("article").filter({ hasText: "Atrium" });
   await expect(today.getByRole("button")).toHaveCount(1);
   const todayCard = await today.innerText();
   const details = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1", exact: true });
   await today.getByRole("button", { name: /Atrium/ }).click();
   const actions = details.getByRole("group", { name: "Shift actions" }).getByRole("button");
-  await expect(actions).toHaveText(["Share", "Report", "Delete"]);
+  await expect(actions).toHaveText(["Report", "Share", "Delete"]);
   const actionRows = () =>
     actions.evaluateAll((buttons) => new Set(buttons.map((button) => button.getBoundingClientRect().top)).size);
   await expect.poll(actionRows).toBe(3);
@@ -350,7 +362,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   const choice = shifts.getByRole("article").filter({ hasText: "Atrium" });
   expect(await choice.innerText()).toBe(todayCard);
   await choice.getByRole("button", { name: /Atrium/ }).click();
-  await expect(actions).toHaveText(["Share", "Report", "Delete"]);
+  await expect(actions).toHaveText(["Report", "Share", "Delete"]);
   await details.getByRole("button", { name: "Report", exact: true }).click();
   const emptyReport = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1 report", exact: true });
   await expect(emptyReport.getByText("No till report is available for this shift.")).toBeVisible();
@@ -359,6 +371,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await details.getByRole("button", { name: "Add till", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: "Add till to this shift?" });
   await expect(confirmation.getByText("Atrium • Nov 21 • Shift 1", { exact: true })).toBeVisible();
+  await expect(confirmation.locator(".sheet-foot").getByRole("button")).toHaveText(["Add till", "Cancel"]);
   await confirmation.getByRole("button", { name: "Cancel" }).click();
   await details.getByRole("button", { name: "Close", exact: true }).click();
   await shifts.getByRole("button", { name: "Close", exact: true }).click();
@@ -395,10 +408,12 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await expect(past.getByRole("article")).toHaveCount(2);
   await past.getByRole("button", { name: /Closed market/ }).click();
   const scheduled = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1", exact: true });
-  await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report", "Delete"]);
+  await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Report", "Share", "Delete"]);
   await scheduled.getByRole("button", { name: "Report", exact: true }).click();
   const report = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1 report" });
   await expect(report.getByRole("img", { name: "Closed market • Nov 21 • Shift 1 report" })).toBeVisible();
+  const reportButtons = report.locator(".sheet-foot").getByRole("button");
+  await expect(reportButtons).toHaveText([/^(Share|Save)$/, "Copy"]);
   const copy = report.getByRole("button", { name: "Copy", exact: true });
   await expect(copy).toHaveClass(/\bsecondary\b/);
   await report.getByText("Show as text", { exact: true }).click();
@@ -412,6 +427,7 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await expect(unavailable).toBeDisabled();
   await expect(unavailable).toHaveClass(/\bsecondary\b/);
   await expect(copy).not.toHaveClass(/\bsecondary\b/);
+  await expect(reportButtons).toHaveText(["Copy", "Image unavailable"]);
   await report.getByRole("button", { name: "Close", exact: true }).click();
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
   await past.getByRole("button", { name: /Sunday Supply • Nov 20 • 11:00 AM/ }).click();
@@ -420,7 +436,7 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   const sales = page.getByRole("dialog", { name: "Sales", exact: true });
   await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
   await sales.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(unscheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report"]);
+  await expect(unscheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Report", "Share"]);
   await unscheduled.getByRole("button", { name: "Report", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Sunday Supply • Nov 20 • 11:00 AM report" })).toBeVisible();
 });

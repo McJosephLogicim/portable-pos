@@ -448,11 +448,12 @@ function BookingSheet({
       Start shift
     </button>
   );
-  const staffAction = joinable ? (
+  const joinShiftAction = joinable && (
     <button type="button" className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} aria-haspopup="dialog" onClick={() => setJoining(true)}>
       {busy ? "Joining…" : "Join shift"}
     </button>
-  ) : !onLinkTill && !me.owner && mine && !over && (
+  );
+  const staffActions = !onLinkTill && !me.owner && mine && !over && (
     <>
       <button className={`btn block${tillAction ? " secondary" : ""}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
         {busy ? "Updating…" : "Change role"}
@@ -462,6 +463,7 @@ function BookingSheet({
       </button>
     </>
   );
+  const hasFooterAction = Boolean(joinShiftAction || tillAction || staffActions);
 
   // Recent records are already on the register. Fetch uncached history as soon as the shift opens.
   const cachedSales = useMemo(() => shiftReceipts(state, tills), [state, tills]);
@@ -537,14 +539,13 @@ function BookingSheet({
             Edit
           </button>
         )}
-        footer={
-          (tillAction || staffAction) && (
-            <div className={styles.shiftActions}>
-              {staffAction}
-              {tillAction}
-            </div>
-          )
-        }
+        footer={hasFooterAction && (
+          <div className={styles.shiftActions}>
+            {joinShiftAction}
+            {tillAction}
+            {staffActions}
+          </div>
+        )}
       >
         <div className="stack gap-4">
           <p className="strong">{f.long.format(new Date(b.startsAt))}</p>
@@ -737,7 +738,7 @@ function BookingSheet({
           state={state}
           title={title}
           till={till}
-          primaryReport={Boolean(till && !tillAction && !staffAction)}
+          primaryReport={Boolean(till && !hasFooterAction)}
           shareText={() => scheduledShiftText(b, business, title, location.origin)}
           busy={busy}
           onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
@@ -1447,16 +1448,16 @@ function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, dele
   return (
     <>
       <div className={styles.shiftActions} role="group" aria-label="Shift actions">
+        <button type="button" className={`btn compact${primaryReport ? "" : " secondary"}`} disabled={busy} aria-haspopup="dialog" onClick={() => setAction("report")}>
+          <FileText size={17} aria-hidden="true" />
+          Report
+        </button>
         <button type="button" className="btn secondary compact" disabled={busy} aria-haspopup="dialog" onClick={() => {
           buzz.tap();
           setAction("share");
         }}>
           <Share2 size={17} aria-hidden="true" />
           Share
-        </button>
-        <button type="button" className={`btn compact${primaryReport ? "" : " secondary"}`} disabled={busy} aria-haspopup="dialog" onClick={() => setAction("report")}>
-          <FileText size={17} aria-hidden="true" />
-          Report
         </button>
         {onDelete && (
           <button type="button" className="btn secondary danger-text compact" disabled={busy} {...blocked(deleteBlock)} aria-haspopup="dialog" onClick={onDelete}>
@@ -1790,6 +1791,13 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
             )}
           </Explain>
         </div>
+        {me?.owner && (
+          <AddShiftMenu
+            disabled={!props.online}
+            onAdd={setEditing}
+            className={`btn add-shift responsive-icon ${styles.addShift}`}
+          />
+        )}
         <button
           className="round"
           aria-label="Share the schedule"
@@ -1812,13 +1820,6 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
         >
           <Trophy size={19} />
         </button>
-        {me?.owner && (
-          <AddShiftMenu
-            disabled={!props.online}
-            onAdd={setEditing}
-            className={`btn add-shift responsive-icon ${styles.addShift}`}
-          />
-        )}
       </div>
 
       {me?.owner && monthDone.length > 0 ? (

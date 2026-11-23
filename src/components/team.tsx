@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { APP_NAME } from "@/lib/app-brand";
 import { inviteLink } from "@/lib/join-link";
 import { Banknote, ChevronRight, HandPlatter, Trash2, UserPlus } from "lucide-react";
@@ -293,7 +293,7 @@ function memberAccessLabel({ primaryOwner, owner }: TeamRosterMember, demo = fal
 
 export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onBack" | "backLabel"> & {
   startAdding?: boolean;
-  inviteSecondary?: boolean;
+  primaryAction?: ReactNode;
 }) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
@@ -327,7 +327,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
   const inTab = pending ? waiting : sorted;
   const shown = inTab.filter((m) => matches(query, m.name, m.email));
   const invite = (
-    <button className={`btn${props.inviteSecondary ? " secondary" : ""}`} {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
+    <button className={`btn${props.primaryAction ? " secondary" : ""}`} {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
       <UserPlus size={18} /> Invite
     </button>
   );
@@ -349,6 +349,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
       onBack={props.onBack}
       backLabel={props.backLabel}
     >
+      {props.primaryAction}
       {canManage && (
         <>
           {inTab.length > 0 && invite}

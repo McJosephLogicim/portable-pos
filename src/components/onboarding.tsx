@@ -218,18 +218,18 @@ export function Onboarding({
     </main>
   );
 
+  const finishSetup = hasTeammate && (
+    <>
+      {error && <Notice tone="danger">{error}</Notice>}
+      <button type="button" className={`btn block ${styles.cta}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>
+        {busy ? "Finishing…" : "Finish setup"}
+      </button>
+    </>
+  );
   if (action === "team") actionPage = (
     <main>
-      <TeamPage startAdding inviteSecondary={hasTeammate} state={live} online={online} demo={false}
+      <TeamPage startAdding primaryAction={finishSetup} state={live} online={online} demo={false}
         onAction={onAction} onSaved={onSaved} onBack={finish} backLabel="Back to setup guide" />
-      {hasTeammate && (
-        <div className="page">
-          {error && <Notice tone="danger">{error}</Notice>}
-          <button type="button" className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>
-            {busy ? "Finishing…" : "Finish setup"}
-          </button>
-        </div>
-      )}
     </main>
   );
 
@@ -257,13 +257,10 @@ export function Onboarding({
               <span data-status="complete" />
               {steps.map((entry, i) => <span key={entry.id} data-status={i === index ? "current" : i < index ? "complete" : undefined} />)}
             </div>
-            {error && <Notice tone="danger">{error}</Notice>}
+            {step.id === "team" && hasTeammate ? finishSetup : error && <Notice tone="danger">{error}</Notice>}
             <button type="button" className={`btn block ${step.id === "team" && hasTeammate ? "secondary" : styles.cta}`} disabled={busy} {...blocked(!practiceStep && !online && OFFLINE)} onClick={() => void run(start)}>
               {step.button} <ArrowRight size={18} aria-hidden />
             </button>
-            {step.id === "team" && hasTeammate && (
-              <button type="button" className={`btn block ${styles.cta}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>Finish setup</button>
-            )}
             {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
           </footer>
         </main>
