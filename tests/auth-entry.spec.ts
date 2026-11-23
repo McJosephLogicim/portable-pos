@@ -198,6 +198,30 @@ test.describe("account-enabled link entry", () => {
   );
   test.use({ serviceWorkers: "block" });
 
+  test("a co-owner can view the primary owner's name only as read-only", async ({ page }) => {
+    const snapshot = teamSnapshot();
+    const [primary, coOwner, member] = snapshot.team!;
+    snapshot.team = [{ ...primary, primaryOwner: true }, { ...coOwner, owner: true, rate: 0 }, member];
+    snapshot.me = { memberId: coOwner.id, name: coOwner.name, roles: coOwner.roles, owner: true };
+    await mockAuth(page);
+    await page.route("**/api/pos", (route) => route.fulfill({ json: snapshot }));
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    await page.getByRole("button", { name: "Account and settings" }).click();
+    await page.getByRole("button", { name: /^Team\b/ }).click();
+    await page.getByRole("button", { name: `${primary.name} Owner`, exact: true }).click();
+    const ownerEditor = page.getByRole("dialog", { name: primary.name, exact: true });
+    const ownerName = ownerEditor.getByRole("textbox", { name: "Name", exact: true });
+    await expect(ownerName).toHaveValue(primary.name);
+    await expect(ownerName).not.toBeEditable();
+    await ownerEditor.getByRole("button", { name: "Close", exact: true }).click();
+
+    await page.getByRole("button", { name: `${coOwner.name} Co-owner`, exact: true }).click();
+    const myEditor = page.getByRole("dialog", { name: coOwner.name, exact: true });
+    await expect(myEditor.getByRole("textbox", { name: "Name", exact: true })).toBeEditable();
+  });
+
   test("a saved login refreshes on return and expires 365 days after sign-in", async ({ page }) => {
     const started = Date.parse("2026-11-23T01:00:00Z");
     let now = started;

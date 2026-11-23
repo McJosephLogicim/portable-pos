@@ -185,13 +185,15 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "member": {
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person left the team.", 404);
+      const name = cmd.name.trim();
+      check(!member.primaryOwner || member.id === me.memberId || name === member.name, "Only the primary owner can change their name.", 403);
       const owner = cmd.owner ?? member.owner;
       if (owner !== member.owner) {
         check(member.joined, "They must accept the invitation before you can change their access.");
         check(!member.primaryOwner, "The original owner keeps owner access.");
         check(member.id !== me.memberId, "Ask another owner to change your access.");
       }
-      const next = { ...member, name: cmd.name.trim(), rate: cmd.rate, owner };
+      const next = { ...member, name, rate: cmd.rate, owner };
       return {
         ...plan,
         members: members.map((m) => (m.id === member.id ? next : m)),

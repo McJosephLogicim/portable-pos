@@ -395,6 +395,11 @@ export async function runCommand(
       const target = cmd.memberId ?? member.id;
       ensure(target === member.id || me.owner, "Only the owner can change someone else's profile.", 403);
       ensure(cmd.photo !== undefined || cmd.name, "Nothing to change.");
+      if (cmd.name && target !== member.id) {
+        const [profile] = await tx.select({ userId: members.userId, name: members.name }).from(members)
+          .where(and(eq(members.id, target), eq(members.businessId, business.id)));
+        ensure(profile?.userId !== business.ownerId || cmd.name === profile.name, "Only the primary owner can change their name.", 403);
+      }
       await tx
         .update(members)
         .set({ ...(cmd.photo !== undefined ? { photo: cmd.photo } : {}), ...(cmd.name ? { name: cmd.name } : {}) })

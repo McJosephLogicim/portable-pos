@@ -94,6 +94,7 @@ export function RolePicker({
 
 function MemberSheet({
   member,
+  canChangeName,
   canChangeAccess,
   link,
   currency,
@@ -103,6 +104,7 @@ function MemberSheet({
   onClose,
 }: {
   member?: Member;
+  canChangeName: boolean;
   canChangeAccess: boolean;
   /** A pending invite's link. */
   link?: string;
@@ -197,6 +199,7 @@ function MemberSheet({
             autoFocus={!member}
             placeholder="e.g. Bea Santos"
             value={name}
+            readOnly={!canChangeName}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
@@ -393,6 +396,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
             <MemberSheet
               key={editing === "new" ? "new" : editing.id}
               member={editing === "new" ? undefined : editing}
+              canChangeName={editing === "new" || !editing.primaryOwner || editing.id === props.state.me?.memberId}
               canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
               link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
               currency={business.currency}

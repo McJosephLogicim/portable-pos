@@ -567,6 +567,15 @@ test(
         ...promote, memberId: originalOwner.id, name: originalOwner.name, rate: originalOwner.rate, owner: false,
       }), /original owner/);
 
+      const ownerDetails = { action: "member", memberId: originalOwner.id, name: originalOwner.name, rate: originalOwner.rate, pin: "9999" };
+      const renameOwner = { action: "profile", memberId: originalOwner.id, name: "New owner name", pin: "9999" };
+      await assert.rejects(asBeaAtNight({ ...ownerDetails, name: renameOwner.name }), { status: 403 });
+      await assert.rejects(asBeaAtNight(renameOwner), { status: 403 });
+      const unchanged = await asBeaAtNight(ownerDetails);
+      assert.equal(unchanged.team!.find((m) => m.id === originalOwner.id)?.name, originalOwner.name);
+      assert.equal((await night(renameOwner)).me?.name, renameOwner.name);
+      assert.equal((await night(ownerDetails)).me?.name, originalOwner.name);
+
       await night({ ...promote, owner: false });
       const revoked = await asBeaAtNight({ action: "bootstrap" });
       assert.equal(revoked.me!.owner, false);
