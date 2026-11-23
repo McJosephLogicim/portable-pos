@@ -242,15 +242,24 @@ test(
     });
     const rent: Expense = { id: randomUUID(), shiftId: shift.id, createdAt: new Date().toISOString(), label: "Rent", amount: 20000, source: "till" };
     const ride: Expense = { id: randomUUID(), shiftId: shift.id, createdAt: new Date().toISOString(), label: "Lalamove", amount: 11000, source: "pocket", by: "Eunice" };
+    const wallet: Expense = {
+      ...rent, id: randomUUID(), label: "Wallet transfer", amount: 4500,
+      deduction: { id: "gcash", name: "GCash", kind: "wallet" },
+    };
     const events = [
       { id: sale.id, shiftId: shift.id, type: "sale", sale },
       { id: rent.id, shiftId: shift.id, type: "expense", expense: rent },
+      { id: wallet.id, shiftId: shift.id, type: "expense", expense: wallet },
       { id: ride.id, shiftId: shift.id, type: "expense", expense: ride },
       { id: randomUUID(), shiftId: shift.id, type: "unexpense", targetId: ride.id },
     ];
     await cmd({ action: "sync", deviceId, events });
     const synced = await cmd({ action: "sync", deviceId, events });
-    assert.equal(synced.expenses!.length, 2);
+    assert.equal(synced.expenses!.length, 3);
+    assert.deepEqual(synced.expenses!.find((expense) => expense.id === wallet.id)?.deduction, wallet.deduction);
+    const totals = shiftTotals(shift, synced.sales, synced.expenses);
+    assert.equal(totals.methods.find((method) => method.id === "gcash")?.expenses, 4500);
+    assert.equal(totals.expectedCash, 27000);
     assert.ok(synced.expenses!.find((e) => e.id === ride.id)!.voidedAt);
 
     // Setting what's left of ice mid-shift starts it again from 10 kg; the earlier sale stays used.

@@ -81,6 +81,7 @@ export function presentExpense(row: typeof expenses.$inferSelect): Expense {
     label: row.label,
     amount: row.amount,
     source: row.source as Expense["source"],
+    ...(row.deduction ? { deduction: row.deduction } : {}),
     ...(row.by ? { by: row.by } : {}),
     ...(row.voidedAt ? { voidedAt: new Date(row.voidedAt).toISOString() } : {}),
   };

@@ -1,0 +1,1 @@
+ALTER TABLE "portable_pos"."expenses" ADD COLUMN "deduction" jsonb;

@@ -204,7 +204,7 @@ export function useCountUp(value: number, ms = 260) {
 
 /* ---------- photos ---------- */
 
-type Upload = (file: File, face?: boolean) => Promise<string>;
+type Upload = (file: File, face?: boolean, icon?: boolean) => Promise<string>;
 const PhotoContext = createContext<Upload>(async () => {
   throw Error("Photos are unavailable.");
 });
@@ -251,13 +251,17 @@ export function PhotoPicker({
   size = "large",
   blockedReason,
   onError,
+  onBusyChange,
   face,
+  icon,
 }: {
   /** A profile photo, which anyone on the team can add for themselves. */
   face?: boolean;
   value?: string;
   onChange: (url: string | undefined) => void | Promise<void>;
   onError?: (message: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  icon?: boolean;
   label: string;
   size?: "large" | "small";
   blockedReason?: Reason;
@@ -270,7 +274,7 @@ export function PhotoPicker({
   const [viewing, setViewing] = useState(false);
   const title = label[0].toUpperCase() + label.slice(1);
   return (
-    <div className={"photo-pick " + size}>
+    <div className={"photo-pick " + size + (icon ? " icon-picker" : "")}>
       <button
         type="button"
         className={"photo-slot" + (value ? " has" : "")}
@@ -316,10 +320,11 @@ export function PhotoPicker({
           e.target.value = "";
           if (!file) return;
           setBusy(true);
+          onBusyChange?.(true);
           setError("");
           onError?.("");
           try {
-            await onChange(await upload(file, face));
+            await onChange(await upload(file, face, icon));
             buzz.success();
           } catch (err) {
             const message = errorText(err);
@@ -328,6 +333,7 @@ export function PhotoPicker({
             buzz.error();
           } finally {
             setBusy(false);
+            onBusyChange?.(false);
           }
         }}
       />

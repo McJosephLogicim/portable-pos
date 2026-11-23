@@ -95,6 +95,11 @@ const expense = z.object({
   label: z.string().trim().min(1).max(80),
   amount: amount.min(1),
   source: z.enum(["till", "pocket"]),
+  deduction: z.object({
+    id: key,
+    name: z.string().trim().min(1).max(100),
+    kind: z.enum(["cash", "wallet", "card", "bank", "other", "member"]),
+  }).nullable().optional(),
   by: z.string().trim().max(80).optional(),
 });
 const event = z.discriminatedUnion("type", [
@@ -105,7 +110,7 @@ const event = z.discriminatedUnion("type", [
     id: z.uuid(),
     shiftId: z.uuid(),
     targetId: z.uuid(),
-    changes: expense.pick({ label: true, amount: true, source: true }),
+    changes: expense.pick({ label: true, amount: true, source: true, deduction: true }),
   }),
   z.object({ type: z.literal("unexpense"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid() }),
   z.object({
@@ -124,10 +129,12 @@ const settings = z.object({
     .array(
       z.object({
         id: key,
-        name: z.string().trim().min(1).max(40),
+        name: z.string().trim().min(1).max(100),
         kind: z.enum(["cash", "wallet", "card", "bank", "other"]),
         on: z.boolean(),
         proof: z.boolean().optional(),
+        presetId: key.nullable().optional(),
+        icon: z.string().regex(/^\/api\/images\/[0-9a-f-]{36}$/).optional(),
       }),
     )
     .min(1)

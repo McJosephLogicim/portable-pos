@@ -40,7 +40,7 @@ export interface ShiftReport {
   hourly: { label: string; total: number }[];
   closed: boolean;
   sales: { total: number; count: number; reversed: number; discounts: number };
-  methods: { name: string; kind: string; amount: number; count: number }[];
+  methods: { name: string; kind: string; amount: number; count: number; expenses: number }[];
   sold: { productId: string; name: string; quantity: number; revenue: number; image?: string }[];
   stock: StockRow[];
   expenses: Expense[];
@@ -132,9 +132,14 @@ export function shiftReport(
     };
   });
 
-  const owed = new Map<string, number>();
-  for (const e of expenses)
-    if (e.source === "pocket") owed.set(e.by || "Staff", (owed.get(e.by || "Staff") ?? 0) + e.amount);
+  const owed = new Map<string, { name: string; amount: number }>();
+  for (const expense of expenses) {
+    if (expense.source !== "pocket") continue;
+    const member = expense.deduction;
+    const name = (member && extra.names?.[member.id]) || member?.name || expense.by || "Staff";
+    const id = member?.id ?? name;
+    owed.set(id, { name, amount: (owed.get(id)?.amount ?? 0) + expense.amount });
+  }
 
   const nameOf = (s: { memberId: string; name: string }) => extra.names?.[s.memberId] || s.name;
   const staff = booking?.staff.map(nameOf).filter(Boolean) ?? [];
@@ -159,7 +164,7 @@ export function shiftReport(
       [
         ...Object.entries(extra.names ?? {}).map(([id, name]) => [name, extra.faces?.[id]] as const),
         ...(booking?.staff ?? []).map((s) => [nameOf(s), extra.faces?.[s.memberId]] as const),
-      ].filter((x): x is readonly [string, string] => Boolean(x[1]) && people.includes(x[0])),
+      ].filter((x): x is readonly [string, string] => Boolean(x[1])),
     ),
     hourly: hours,
     ...(top ? { peak: { hour: top.label, total: top.total } } : {}),
@@ -170,7 +175,7 @@ export function shiftReport(
       reversed: totals.reversed,
       discounts: totals.discounts,
     },
-    methods: totals.methods.filter((m) => m.count).map(({ name, kind, amount, count }) => ({ name, kind, amount, count })),
+    methods: totals.methods.filter((m) => m.count || m.expenses).map(({ name, kind, amount, count, expenses }) => ({ name, kind, amount, count, expenses })),
     sold: [...sold.values()].sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue),
     stock,
     expenses,
@@ -180,17 +185,22 @@ export function shiftReport(
       float: shift.openingCash,
       ...(shift.openingCount ? { floatCount: shift.openingCount } : {}),
       sales: totals.cash,
-      expenses: totals.tillExpenses,
+      expenses: totals.cashExpenses,
       expected: totals.expectedCash,
       ...(shift.countedCash !== undefined ? { counted: shift.countedCash } : {}),
       ...(shift.closingCount ? { count: shift.closingCount } : {}),
       ...(shift.difference !== undefined ? { difference: shift.difference } : {}),
     },
-    payBack: [...owed].map(([name, amount]) => ({ name, amount })),
+    payBack: [...owed.values()],
   };
 }
 
 type Format = (minor: number) => string;
+
+export function expenseSourceLabel(expense: Omit<Expense, "shiftId">) {
+  if (expense.source === "pocket") return `Paid by ${expense.deduction?.name ?? (expense.by || "staff")}`;
+  return expense.deduction ? `From till · ${expense.deduction.name}` : "From the till";
+}
 
 export function differenceText(value: number, fmt: Format) {
   return value === 0 ? "matches" : `${fmt(Math.abs(value))} ${value < 0 ? "short" : "over"}`;
@@ -211,7 +221,10 @@ export function reportText(r: ShiftReport, fmt: Format) {
   if (r.people.length) out.push(r.people.map((p) => (r.roles[p] ? `${p} (${r.roles[p]})` : p)).join(", "));
   out.push("");
   out.push(`SALES ${fmt(r.sales.total)} (${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"})`);
-  for (const m of r.methods) out.push(`${m.name} ${fmt(m.amount)}`);
+  for (const m of r.methods) {
+    out.push(`${m.name} ${fmt(m.amount)}`);
+    if (m.expenses) out.push(`  − ${fmt(m.expenses)} expenses = ${fmt(m.amount - m.expenses)} after expenses`);
+  }
   if (r.sales.discounts) out.push(`Discounts given ${fmt(r.sales.discounts)}`);
   if (r.sales.reversed) out.push(`${r.sales.reversed} reversed`);
   if (r.sold.length) {
@@ -230,8 +243,10 @@ export function reportText(r: ShiftReport, fmt: Format) {
   }
   if (r.expenses.length) {
     out.push("", "EXPENSES");
-    for (const e of r.expenses)
-      out.push(`${e.label} ${fmt(e.amount)} (${e.source === "till" ? "from till" : `paid by ${e.by || "staff"}`})`);
+    for (const expense of r.expenses) {
+      const source = expenseSourceLabel(expense);
+      out.push(`${expense.label} ${fmt(expense.amount)} (${source[0].toLowerCase() + source.slice(1)})`);
+    }
   }
   out.push("", "CASH");
   out.push(`Float ${fmt(r.cash.float)}`);

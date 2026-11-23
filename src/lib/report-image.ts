@@ -1,7 +1,7 @@
 import { countRows } from "./cash";
 import { APP_NAME, appIcons, leaderboardCrown } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
-import { differenceText, type ShiftReport } from "./report";
+import { differenceText, expenseSourceLabel, type ShiftReport } from "./report";
 import { itemInitials } from "./item-photos";
 import { round, unitText } from "./stock";
 import { leaderboardColors } from "./theme";
@@ -47,6 +47,32 @@ function cover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, w: number,
   ctx.clip();
   drawCover(ctx, img, x, y, w, h);
   ctx.restore();
+}
+
+function squircle(ctx: Ctx, x: number, y: number, size: number) {
+  const middle = size / 2;
+  const inset = size * 0.09;
+  const outer = size - inset;
+  ctx.beginPath();
+  ctx.moveTo(x + middle, y);
+  ctx.bezierCurveTo(x + outer, y, x + size, y + inset, x + size, y + middle);
+  ctx.bezierCurveTo(x + size, y + outer, x + outer, y + size, x + middle, y + size);
+  ctx.bezierCurveTo(x + inset, y + size, x, y + outer, x, y + middle);
+  ctx.bezierCurveTo(x, y + inset, x + inset, y, x + middle, y);
+  ctx.closePath();
+}
+
+function drawAvatar(ctx: Ctx, img: Img, x: number, y: number, size: number, background: string) {
+  squircle(ctx, x, y, size);
+  if (img) {
+    ctx.save();
+    ctx.clip();
+    drawCover(ctx, img, x, y, size, size);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = background;
+    ctx.fill();
+  }
 }
 
 function drawShareBrand(ctx: Ctx, icon: Img, top: number, family: string, color: string) {
@@ -164,11 +190,8 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
     }
   };
   const avatar = (ctx: Ctx, name: string, img: Img, x: number, ty: number, size: number) => {
-    if (img) return cover(ctx, img, x, ty, size, size, size / 2);
-    ctx.fillStyle = muted;
-    ctx.beginPath();
-    ctx.arc(x + size / 2, ty + size / 2, size / 2, 0, Math.PI * 2);
-    ctx.fill();
+    drawAvatar(ctx, img, x, ty, size, muted);
+    if (img) return;
     ctx.textBaseline = "middle";
     text(ctx, initials(name), x + size / 2, ty + size / 2 + 0.5, font(size * 0.34, 500), ink2, "center");
     ctx.textBaseline = "top";
@@ -244,7 +267,8 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
     const t = y;
     const f = font(30, 500);
     const sales = `${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"}`;
-    const only = r.methods.length === 1 ? ` ${r.methods[0].name.toLowerCase() === "cash" ? "in cash" : `by ${r.methods[0].name}`}` : "";
+    const sellingMethods = r.methods.filter((method) => method.count);
+    const only = sellingMethods.length === 1 ? ` ${sellingMethods[0].kind === "cash" ? "in cash" : `by ${sellingMethods[0].name}`}` : "";
     const parts = [
       { text: `${fmt(r.sales.total)} in sales `, color: ink },
       { text: `from ${sales}${only}${r.place ? ` at ${r.place}` : ""}${r.closed ? "." : " so far."}`, color: ink3 },
@@ -368,8 +392,8 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
 
   /* ---------- how they paid ---------- */
   // One way of paying needs no card: the sentence already has the total.
-  if (r.methods.length > 1) {
-    const row = 54;
+  if (r.methods.length > 1 || r.methods.some((method) => method.expenses)) {
+    const row = r.methods.some((method) => method.expenses) ? 72 : 54;
     const total = r.methods.reduce((n, x) => n + x.amount, 0) || 1;
     card(r.methods.length * row - 10, (ctx, top) => {
       r.methods.forEach((x, i) => {
@@ -380,6 +404,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         const cw = width(amount, font(15, 500));
         text(ctx, `${x.count} ${x.count === 1 ? "sale" : "sales"}`, R - cw - 10, ty + 1, font(14), ink3, "right");
         bar(ctx, L, ty + 28, R - L, x.amount / total);
+        if (x.expenses) text(ctx, `− ${fmt(x.expenses)} expenses · ${fmt(x.amount - x.expenses)} after expenses`, L, ty + 39, font(13.5), ink2);
       });
     }, "How they paid");
   }
@@ -456,7 +481,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         if (i) divider(ctx, ty - 14);
         const amount = fmt(e.amount);
         text(ctx, fit(e.label, font(15, 500), R - L - width(amount, font(15, 500)) - 16), L, ty, font(15, 500), ink);
-        text(ctx, e.source === "till" ? "From the till" : `Paid by ${e.by || "staff"}`, L, ty + 22, font(13.5), ink2);
+        text(ctx, expenseSourceLabel(e), L, ty + 22, font(13.5), ink2);
         text(ctx, amount, R, ty, font(15, 500), ink, "right");
       });
     }, "Expenses");
@@ -565,12 +590,10 @@ export async function leaderboardImage(report: LeaderboardShare): Promise<Blob> 
 
   function drawPortrait(row: LeaderboardShare["rows"][number], x: number, y: number, size: number, ring?: string) {
     const stroke = ring ? Math.round(size * 0.04) : 0;
-    if (ring) box(x - stroke, y - stroke, size + stroke * 2, size + stroke * 2, size, ring);
+    if (ring) drawAvatar(ctx, null, x - stroke, y - stroke, size + stroke * 2, ring);
     const photo = row.photo ? portraits.get(row.photo) : null;
-    if (photo) {
-      cover(ctx, photo, x, y, size, size, size / 2);
-    } else {
-      box(x, y, size, size, size / 2, "#2a3e64");
+    drawAvatar(ctx, photo ?? null, x, y, size, "#2a3e64");
+    if (!photo) {
       if (icon) {
         const glyph = Math.round(size * 0.46);
         const inset = (size - glyph) / 2;

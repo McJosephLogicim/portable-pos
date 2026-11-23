@@ -8,6 +8,8 @@ export interface PaymentMethod {
   on: boolean;
   /** A photo of the payment, like a wallet screenshot, must be taken at checkout. */
   proof?: boolean;
+  presetId?: string | null;
+  icon?: string;
 }
 export interface Discount {
   id: string;
@@ -150,19 +152,23 @@ export interface StockUse {
   amount: number;
   notes?: string;
 }
+export type ExpenseDeduction = { id: string; name: string; kind: PaymentKind | "member" };
+
 export interface Expense {
   id: string;
   shiftId: string;
   createdAt: string;
   label: string;
   amount: number;
-  /** Paid with cash from the till, or by the person out of their own pocket. */
+  /** Paid from a till payment method or by a teammate. */
   source: "till" | "pocket";
+  /** Selected source at the time of the expense. Older rows used the cash drawer or the logger. */
+  deduction?: ExpenseDeduction | null;
   /** Who logged it. */
   by?: string;
   voidedAt?: string;
 }
-export type ExpenseInput = Pick<Expense, "label" | "amount" | "source">;
+export type ExpenseInput = Pick<Expense, "label" | "amount" | "source" | "deduction">;
 export type OpeningExpense = ExpenseInput & Pick<Expense, "id" | "createdAt">;
 
 export interface Business {
@@ -238,7 +244,7 @@ export interface Sale {
   discount?: { id: string; name: string; amount: number };
   total: number;
   tender: Tender;
-  payment: { id: string; name: string; kind: PaymentKind };
+  payment: Pick<PaymentMethod, "id" | "name" | "kind" | "icon" | "presetId">;
   received: number;
   change: number;
   reversedAt?: string;

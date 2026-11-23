@@ -239,7 +239,7 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
   position: relative;
   overflow: hidden;
   aspect-ratio: 1;
-  border-radius: 50%;
+  border-radius: 0;
 }
 
 .page :global(.avatar img) {
@@ -247,7 +247,6 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
   inset: 0;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -256,9 +255,13 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
 .categoryIcon {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
   background: radial-gradient(circle at 40% 20%, #425b88, #202f50 74%);
   color: var(--board-ink);
+}
+.portrait,
+.categoryIcon {
+  border-radius: 0;
+  mask: var(--item-squircle) center / 100% 100% no-repeat;
 }
 
 .portrait > :global(.avatar) {

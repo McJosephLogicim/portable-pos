@@ -2,17 +2,31 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Receipt, Trash2 } from "lucide-react";
 import { amountText, parseMoney } from "@/lib/domain";
 import { blocked } from "@/lib/reject";
-import type { Expense, ExpenseInput } from "@/lib/types";
+import { expenseSourceLabel } from "@/lib/report";
+import type { Expense, ExpenseDeduction, ExpenseInput, PaymentMethod, RegisterState, TeamRosterMember } from "@/lib/types";
 import { AddButton } from "./add-menu";
 import { SuggestInput } from "./combobox";
+import { SingleSelect } from "./multi-select";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
+import { Avatar } from "./team";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
 import styles from "./operations.module.css";
+
+type ExpenseSources = { payments: PaymentMethod[]; teammates: TeamRosterMember[] };
+
+export function expenseTeammates(state: RegisterState): TeamRosterMember[] {
+  const roster = state.teamRoster ?? (state.team ?? []).filter((person) => person.joined);
+  return [...roster].sort((a, b) =>
+    Number(Boolean(b.primaryOwner)) - Number(Boolean(a.primaryOwner)) ||
+    Number(b.owner) - Number(a.owner) || a.name.localeCompare(b.name),
+  );
+}
 
 function ExpenseSheet({
   currency,
   suggestions,
-  name,
+  sources,
   expense,
   onSave,
   onRemove,
@@ -20,7 +34,7 @@ function ExpenseSheet({
 }: {
   currency: string;
   suggestions: string[];
-  name: string;
+  sources: ExpenseSources;
   expense?: Omit<Expense, "shiftId">;
   onSave: (input: ExpenseInput) => void | Promise<void>;
   onRemove?: () => void | Promise<void>;
@@ -29,6 +43,10 @@ function ExpenseSheet({
   const [label, setLabel] = useState(expense?.label ?? "");
   const [amount, setAmount] = useState(expense ? amountText(expense.amount, currency) : "");
   const [source, setSource] = useState<Expense["source"]>(expense?.source ?? "till");
+  const cash = sources.payments.find((method) => method.on && method.kind === "cash");
+  const legacy = expense && !expense.deduction ? expense.source : undefined;
+  const [paymentId, setPaymentId] = useState(expense?.source === "till" ? expense.deduction?.id ?? "" : cash?.id ?? "");
+  const [memberId, setMemberId] = useState(expense?.source === "pocket" ? expense.deduction?.id ?? "" : "");
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,9 +54,39 @@ function ExpenseSheet({
   try {
     value = amount.trim() ? parseMoney(amount, currency) : undefined;
   } catch {}
-  const payee = expense
-    ? expense.by || "the person who paid"
-    : name && name !== "You" ? name.split(" ")[0] : "you";
+  const payments = sources.payments.filter((method) => method.on || method.id === paymentId || (expense?.source === "till" && method.id === expense.deduction?.id));
+  const payment = payments.find((method) => method.id === paymentId);
+  const member = sources.teammates.find((person) => person.id === memberId);
+  const oldDeduction = expense?.source === source && expense.deduction?.id === (source === "till" ? paymentId : memberId)
+    ? expense.deduction
+    : undefined;
+  const deduction: ExpenseDeduction | null = source === "till"
+    ? oldDeduction ?? (payment ? { id: payment.id, name: payment.name, kind: payment.kind } : null)
+    : oldDeduction ?? (member ? { id: member.id, name: member.name, kind: "member" } : null);
+  const paymentOptions = payments.map((method) => ({ id: method.id, name: method.name, icon: <PaymentMethodIcon method={method} /> }));
+  const memberOptions = sources.teammates.map((person) => ({
+    id: person.id,
+    name: person.name,
+    detail: person.primaryOwner ? "Owner" : person.owner ? "Co-owner" : "Member",
+    icon: <Avatar id={person.id} name={person.name} small />,
+  }));
+  if (expense?.deduction && expense.source === source) {
+    const options = source === "till" ? paymentOptions : memberOptions;
+    const saved = expense.deduction;
+    if (!options.some((option) => option.id === saved.id)) {
+      if (saved.kind === "member") memberOptions.push({ id: saved.id, name: saved.name, detail: "Previously selected", icon: <Avatar id={saved.id} name={saved.name} small /> });
+      else paymentOptions.push({ id: saved.id, name: saved.name, icon: <PaymentMethodIcon method={{ name: saved.name, kind: saved.kind }} /> });
+    }
+  }
+  if (legacy === "till") paymentOptions.unshift({ id: "", name: "Cash", icon: <PaymentMethodIcon method={{ kind: "cash" }} /> });
+  if (legacy === "pocket") {
+    const loggedBy = expense?.by || "Staff";
+    memberOptions.unshift({ id: "", name: loggedBy, detail: "Originally recorded payer", icon: <Avatar name={loggedBy} small /> });
+  }
+  const missingSource = !deduction && source !== legacy;
+  const invalid = !label.trim() ? "Say what the expense was for."
+    : !value ? "Enter how much it cost."
+    : missingSource && (source === "till" ? "Choose a payment method." : "Choose a teammate.");
   const submitLabel = expense
     ? busy ? "Saving…" : "Save changes"
     : busy ? "Logging…" : value ? `Log ${formatMoney(value, currency)}` : "Log expense";
@@ -54,13 +102,13 @@ function ExpenseSheet({
               type="button"
               className="btn block"
               disabled={busy}
-              {...blocked(!label.trim() ? "Say what the expense was for." : !value && "Enter how much it cost.")}
+              {...blocked(invalid)}
               onClick={async () => {
-                if (busy || !label.trim() || !value) return;
+                if (busy || invalid || !value) return;
                 setBusy(true);
                 setError("");
                 try {
-                  await onSave({ label: label.trim(), amount: value, source });
+                  await onSave({ label: label.trim(), amount: value, source, deduction });
                   buzz.success();
                   onDismiss();
                 } catch (e) {
@@ -103,20 +151,18 @@ function ExpenseSheet({
         </div>
         <MoneyField label="Amount" value={amount} onChange={setAmount} currency={currency} big />
         <div className="stack gap-8">
-          <span className="label">Paid with</span>
-          <div className="segmented" role="group" aria-label="Paid with">
+          <span className="label">Deduct from</span>
+          <div className="segmented" role="group" aria-label="Deduct from">
             <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
-              Cash from the till
+              From till
             </button>
             <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
-              Own pocket
+              From team
             </button>
           </div>
-          <p className="label">
-            {source === "till"
-              ? "Takes it out of the cash expected in the drawer."
-              : `Leaves the drawer alone. The report says to pay back ${payee}.`}
-          </p>
+          {source === "till"
+            ? <SingleSelect key="till" label="Payment method" searchNoun="payment methods" items={paymentOptions} value={paymentId} onChange={setPaymentId} disabled={busy} />
+            : <SingleSelect key="team" label="Teammate" searchNoun="teammates" items={memberOptions} value={memberId} onChange={setMemberId} disabled={busy} />}
         </div>
         {error && (
           <p className="alert" role="alert">
@@ -151,7 +197,7 @@ function ExpenseRowContent({ expense, currency, time }: {
       <span className="grow stack">
         <span className="ellipsis">{expense.label}</span>
         <span className="label ellipsis">
-          {expense.source === "till" ? "From the till" : `Paid by ${expense.by ? expense.by.split(" ")[0] : "staff"}`}
+          {expenseSourceLabel(expense)}
           {" · "}
           {time.format(new Date(expense.createdAt))}
         </span>
@@ -161,7 +207,7 @@ function ExpenseRowContent({ expense, currency, time }: {
   );
 }
 
-export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, status, editableTillId, onEdit, onRemove, onClose }: {
+export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone, status, editableTillId, sources, onEdit, onRemove, onClose }: {
   title: string;
   expenses: Expense[];
   total: number;
@@ -169,6 +215,7 @@ export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone,
   timeZone: string;
   status?: ShiftRecordStatus;
   editableTillId?: string;
+  sources: ExpenseSources;
   onEdit?: (id: string, input: ExpenseInput) => Promise<void>;
   onRemove?: (id: string) => Promise<void>;
   onClose: () => void;
@@ -207,7 +254,7 @@ export function ShiftExpensesSheet({ title, expenses, total, currency, timeZone,
         <ExpenseSheet
           currency={currency}
           suggestions={[...new Set(expenses.map((expense) => expense.label))]}
-          name=""
+          sources={sources}
           expense={editing}
           onSave={(input) => onEdit(editing.id, input)}
           onRemove={onRemove && editing.shiftId === editableTillId ? () => onRemove(editing.id) : undefined}
@@ -224,7 +271,7 @@ export function ExpensesSection({
   expenses,
   currency,
   timeZone,
-  name,
+  sources,
   suggestions,
   disabled,
   onExpense,
@@ -234,7 +281,7 @@ export function ExpensesSection({
   expenses: Omit<Expense, "shiftId">[];
   currency: string;
   timeZone: string;
-  name: string;
+  sources: ExpenseSources;
   suggestions: string[];
   disabled?: boolean;
   onExpense: (input: ExpenseInput) => void | Promise<void>;
@@ -291,7 +338,7 @@ export function ExpensesSection({
         <ExpenseSheet
           currency={currency}
           suggestions={pastLabels}
-          name={name}
+          sources={sources}
           expense={editing}
           onSave={editing ? (input) => onEditExpense(editing.id, input) : onExpense}
           onRemove={editing && !disabled ? () => onUnexpense(editing.id) : undefined}

@@ -26,6 +26,7 @@ import {
 import { menuCategoryNames, type MenuCategoryChange } from "@/lib/menu-categories";
 import { itemPhotos } from "@/lib/item-photos";
 import { ItemPreview, ReceiptItemPreviews } from "./item-preview";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import { ItemSheet } from "./menu-settings";
 import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
@@ -45,7 +46,6 @@ import {
   usePin,
   formatMoney,
   haptic,
-  MethodIcon,
   Money,
   MoneyField,
   Notice,
@@ -844,7 +844,7 @@ function Checkout({
               setError("");
             }}
           >
-            <MethodIcon kind={m.kind} />
+            <PaymentMethodIcon method={m} />
             <span className="ellipsis">{m.name}</span>
           </button>
         ))}

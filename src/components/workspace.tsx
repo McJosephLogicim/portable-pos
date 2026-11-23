@@ -764,8 +764,8 @@ export function Workspace() {
       navigation.open({ tab });
     }
   };
-  async function upload(file: File, face = false) {
-    const photo = await compressPhoto(file);
+  async function upload(file: File, face = false, icon = false) {
+    const photo = icon ? await compressPhoto(file, 256, 0.85, "image/webp") : await compressPhoto(file);
     if (!key || key === DEMO) return blobToDataUrl(photo);
     if (!navigator.onLine) throw Error("Connect to add photos.");
     return uploadImage(key, photo, false, face);
@@ -1019,7 +1019,7 @@ export function Workspace() {
           break;
         case "sell":
           page = (
-            <div className="page">
+            <div className="page sell-page">
               {state.shift && !state.shift.closedAt ? (
                 <SellScreen
                   state={state} status={connection.text} online={online} pending={pending} onCart={cart}
@@ -1044,7 +1044,7 @@ export function Workspace() {
     <ProofProvider value={loadProof}>
     <PinProvider key={key} hint={demo ? "The demo PIN is 1234." : undefined}>
       {business && !showOnboarding && (
-        <header className="account-bar">
+        <header className="account-bar" data-sell={view === "sell" || undefined}>
           <button type="button" className="grow sell-brand" onClick={() => setSwitching(navigation.current.id)} aria-label={"Switch business, now " + business.name}>
             <BusinessMark name={business.name} logo={business.settings.logo} brand={business.settings.brand} ink={business.settings.ink} size={36} />
             <span className="strong ellipsis">{business.name}</span>

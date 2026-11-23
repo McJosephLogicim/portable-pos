@@ -278,7 +278,7 @@ export function mergeServer(
       else if (event.type === "editExpense") {
         const e = expenses.get(event.targetId);
         if (e && e.shiftId === event.shiftId && !e.voidedAt)
-          expenses.set(e.id, { ...e, ...event.changes });
+          expenses.set(e.id, applyExpenseChanges(e, event.changes));
       } else if (event.type === "unexpense") {
         const e = expenses.get(event.targetId);
         if (e) expenses.set(e.id, { ...e, voidedAt: e.voidedAt ?? new Date().toISOString() });
@@ -496,12 +496,20 @@ export async function uploadProofs(
   }
 }
 
-function expenseChanges({ label, amount, source }: ExpenseInput): ExpenseInput {
+function expenseChanges({ label, amount, source, deduction }: ExpenseInput): ExpenseInput {
   const cleanLabel = label.trim().slice(0, 80);
   if (!cleanLabel) throw new Error("Say what the money was for.");
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 2_147_483_647)
     throw new Error("Enter how much was spent.");
-  return { label: cleanLabel, amount, source };
+  if (deduction && (deduction.kind === "member") !== (source === "pocket"))
+    throw new Error("Choose where the expense was paid from.");
+  return { label: cleanLabel, amount, source, ...(deduction !== undefined ? { deduction } : {}) };
+}
+
+function applyExpenseChanges(expense: Expense, changes: ExpenseInput): Expense {
+  const next = { ...expense, ...changes };
+  if (changes.deduction === undefined && changes.source !== expense.source) delete next.deduction;
+  return next;
 }
 
 /** Log money spent during the shift. It syncs like a sale. */
@@ -541,7 +549,7 @@ export function editExpense(key: string, expenseId: string, input: ExpenseInput)
     };
     return {
       ...current,
-      expenses: (current.expenses ?? []).map((e) => e.id === expenseId ? { ...e, ...changes } : e),
+      expenses: (current.expenses ?? []).map((e) => e.id === expenseId ? applyExpenseChanges(e, changes) : e),
       pending: isPracticeKey(key) ? current.pending : [...current.pending, event],
     };
   });

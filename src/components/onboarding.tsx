@@ -14,6 +14,7 @@ import {
 import { isSimpleMode } from "@/lib/settings";
 import { dayOf } from "@/lib/team";
 import type { RegisterState } from "@/lib/types";
+import { expenseTeammates } from "./expenses";
 import { ItemSheet } from "./menu-settings";
 import { LoadingScreen } from "./loading-screen";
 import { Popo } from "./popo";
@@ -169,7 +170,7 @@ export function Onboarding({
               expenseProps={{
                 expenses: expenses.filter((expense) => expense.shiftId === till.id && !expense.voidedAt),
                 suggestions: expenses.map((expense) => expense.label),
-                name: live.me?.name ?? "",
+                sources: { payments: till.settings.payments, teammates: expenseTeammates(live) },
                 currency: till.settings.currency,
                 timeZone: business.timeZone,
                 onExpense: async (input) => setPractice(await logExpense(practiceKey, { ...input, by: live.me?.name })),

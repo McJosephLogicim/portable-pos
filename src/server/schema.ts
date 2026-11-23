@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { isNull, sql } from "drizzle-orm";
 import type {
+  Expense,
   Organizer,
   Place,
   Product,
@@ -155,6 +156,7 @@ export const expenses = register
       label: text().notNull(),
       amount: money("amount").notNull(),
       source: text().$type<"till" | "pocket">().notNull(),
+      deduction: jsonb().$type<NonNullable<Expense["deduction"]>>(),
       by: text(),
       voidedAt: date("voided_at"),
     },

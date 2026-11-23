@@ -33,16 +33,18 @@ import { ChecklistPage, TeamPage } from "./team";
 import { OrganizersPage } from "./organizer-settings";
 import { plural, useRecordSave } from "./records";
 import { currencyDigits, isSimpleMode, paymentKinds, slugId } from "@/lib/settings";
+import { paymentPreset, paymentPresets } from "@/lib/payment-presets";
 import { applyTheme, brandColors, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import { AddButton } from "./add-menu";
+import { SingleSelect } from "./multi-select";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import {
   buzz,
   ConfirmSheet,
   EmptyState,
   errorText,
   formatMoney,
-  MethodIcon,
   Money,
   MoneyField,
   Notice,
@@ -644,38 +646,56 @@ function BusinessPage(props: SettingsProps) {
 function MethodSheet({
   method,
   taken,
+  offline,
   onSave,
   onRemove,
   onClose,
   canRemove,
 }: {
   method?: PaymentMethod;
-  taken: string[];
+  taken: PaymentMethod[];
+  offline: boolean;
   onSave: (m: PaymentMethod) => void;
   onRemove?: () => void;
   onClose: () => void;
   canRemove: boolean;
 }) {
+  const existingPreset = method && paymentPreset(method);
+  const [mode, setMode] = useState<"preset" | "custom">(method && !existingPreset ? "custom" : "preset");
+  const [presetId, setPresetId] = useState(existingPreset?.id ?? "");
   const [name, setName] = useState(method?.name ?? "");
-  const [kind, setKind] = useState<PaymentKind>(method?.kind ?? "wallet");
+  const [customKind, setCustomKind] = useState<PaymentKind>(method?.kind ?? "wallet");
+  const [icon, setIcon] = useState(method?.icon);
+  const [uploading, setUploading] = useState(false);
   const [proof, setProof] = useState(Boolean(method?.proof));
   const [removing, setRemoving] = useState(false);
+  const usedPresets = new Set(taken.filter((entry) => entry.id !== method?.id).map((entry) => paymentPreset(entry)?.id));
+  const choices = paymentPresets.filter((entry) => !usedPresets.has(entry.id) || entry.id === existingPreset?.id);
+  const preset = mode === "preset" ? choices.find((entry) => entry.id === presetId) : undefined;
+  const kind = mode === "custom" ? customKind : preset?.kind;
+  const methodName = mode === "custom" ? name.trim() : preset?.name;
+  const invalid = !methodName && (mode === "custom" ? "Enter a payment method name." : "Choose a payment method.");
   return (
     <>
     <Sheet
       title={method ? "Edit method" : "New payment method"}
       onClose={onClose}
+      busy={uploading}
       footer={
         <>
           <button
             className="btn block"
-            {...blocked(!name.trim() && "Enter a payment method name.")}
+            disabled={uploading}
+            {...blocked(invalid)}
             onClick={() => {
+              if (!methodName || !kind || uploading) return;
               onSave({
-                id: method?.id ?? slugId(name, taken),
-                name: name.trim(),
+                id: method?.id ?? slugId(preset?.id ?? methodName, taken.map((entry) => entry.id)),
+                name: methodName,
                 kind,
                 on: method?.on ?? true,
+                presetId: preset?.id ?? null,
+                ...(icon ? { icon } : {}),
                 ...(proof && kind !== "cash" ? { proof: true } : {}),
               });
               onClose();
@@ -686,6 +706,7 @@ function MethodSheet({
           {method && onRemove && (
             <button
               className="btn ghost danger compact block"
+              disabled={uploading}
               {...blocked(!canRemove && "Keep at least one payment method on at checkout.")}
               onClick={() => setRemoving(true)}
             >
@@ -695,40 +716,58 @@ function MethodSheet({
         </>
       }
     >
-      <label className="field">
-        <span>Name customers hear</span>
-        <input
-          className="input"
-          maxLength={40}
-          autoFocus={!method}
-          placeholder="e.g. GoTyme, BPI, ShopeePay"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </label>
-      <div className="field">
-        <span>Type</span>
-        <div className="methods">
-          {paymentKinds.map((k) => (
-            <button
-              key={k.kind}
-              type="button"
-              className="method"
-              aria-pressed={kind === k.kind}
-              onClick={() => setKind(k.kind)}
-            >
-              <MethodIcon kind={k.kind} />
-              {k.name}
-            </button>
-          ))}
+      <div className="stack gap-8">
+        <span className="label">Select from</span>
+        <div className="segmented" role="group" aria-label="Select from">
+          <button type="button" aria-pressed={mode === "preset"} onClick={() => setMode("preset")}>Predefined</button>
+          <button type="button" aria-pressed={mode === "custom"} onClick={() => setMode("custom")}>Custom</button>
         </div>
-        <p className="label" style={{ marginTop: 4 }}>
-          {kind === "cash"
-            ? "Cash counts toward the drawer and asks how much was handed over."
-            : "Checkout asks you to confirm the exact amount arrived."}
-        </p>
       </div>
-      {kind !== "cash" && (
+      {mode === "preset" ? (
+        <SingleSelect label="Payment method" searchNoun="payment methods" value={presetId} onChange={setPresetId}
+          items={choices.map((entry) => ({
+            id: entry.id, name: entry.name, detail: entry.category, searchText: entry.searchText,
+            icon: <PaymentMethodIcon method={{ ...entry, presetId: entry.id }} />,
+          }))} />
+      ) : <>
+        <label className="field">
+          <span>Name customers hear</span>
+          <input
+            className="input"
+            maxLength={40}
+            placeholder="e.g. GoTyme, BPI, ShopeePay"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <div className="field">
+          <span>Type</span>
+          <div className="methods">
+            {paymentKinds.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                className="method"
+                aria-pressed={customKind === k.kind}
+                onClick={() => setCustomKind(k.kind)}
+              >
+                <PaymentMethodIcon method={k} />
+                {k.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </>}
+      {(preset || mode === "custom") && (
+        <PhotoPicker icon label="payment icon" value={icon} onChange={setIcon} onBusyChange={setUploading}
+          blockedReason={offline && OFFLINE} />
+      )}
+      {kind && <p className="label">
+        {kind === "cash"
+          ? "Cash counts toward the drawer and asks how much was handed over."
+          : "Checkout asks you to confirm the exact amount arrived."}
+      </p>}
+      {kind && kind !== "cash" && (
         <div className="card card-pad row gap-12">
           <span className="grow stack">
             <span className="strong">Require a payment photo</span>
@@ -796,7 +835,7 @@ function PaymentsPage(props: SettingsProps) {
               onClick={() => setEditing(m)}
             >
               <span className="well">
-                <MethodIcon kind={m.kind} size={18} />
+                <PaymentMethodIcon method={m} size={24} />
               </span>
               <span className="grow stack">
                 <span className={m.on ? "" : "g"}>{m.name}</span>
@@ -828,7 +867,8 @@ function PaymentsPage(props: SettingsProps) {
       {editing && (
         <MethodSheet
           method={editing === "new" ? undefined : editing}
-          taken={list.map((p) => p.id)}
+          taken={list}
+          offline={!props.online && !props.demo}
           canRemove={list.length > 1 && !(editing !== "new" && editing.on && on === 1)}
           onClose={() => setEditing(null)}
           onSave={(m) =>

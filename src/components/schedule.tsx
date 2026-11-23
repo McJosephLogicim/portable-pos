@@ -63,7 +63,7 @@ import { SuggestInput } from "./combobox";
 import { AddMenu } from "./add-menu";
 import { SalesSheet, ShiftSales, shiftReceipts } from "./insights";
 import type { ShiftRecordStatus } from "./shift-record-list";
-import { ShiftExpensesSheet } from "./expenses";
+import { ShiftExpensesSheet, expenseTeammates } from "./expenses";
 import { LiquidSegments } from "./liquid-segments";
 import type { SalesFocus } from "./sales";
 import { LocationPicker, MapPreview, mapsLink } from "./places";
@@ -767,6 +767,7 @@ function BookingSheet({
           timeZone={business.timeZone}
           status={expenseHistory.status}
           editableTillId={editableTillId}
+          sources={{ payments: state.shift?.settings.payments ?? [], teammates: expenseTeammates(state) }}
           onEdit={props.onEditExpense}
           onRemove={props.onUnexpense}
           onClose={() => setBreakdown(null)}

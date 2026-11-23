@@ -1,5 +1,5 @@
-/** Shrink a camera photo to a square-ish JPEG small enough to sync and cache offline. */
-export async function compressPhoto(file: File, size = 640, quality = 0.8): Promise<Blob> {
+/** Shrink an image so it can sync and cache offline. */
+export async function compressPhoto(file: File, size = 640, quality = 0.8, type = "image/jpeg"): Promise<Blob> {
   if (!file.type.startsWith("image/")) throw Error("Choose a photo.");
   const bitmap = await createImageBitmap(file).catch(() => {
     throw Error("That photo couldn't be read. Try another.");
@@ -13,7 +13,7 @@ export async function compressPhoto(file: File, size = 640, quality = 0.8): Prom
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
   for (let q = quality; q >= 0.4; q -= 0.15) {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", q));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, q));
     if (blob && blob.size <= 380_000) return blob;
   }
   throw Error("That photo is too large. Try another.");

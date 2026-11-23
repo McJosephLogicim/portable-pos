@@ -1,8 +1,9 @@
-import { currencyDigits, discountAmount } from "./settings";
+import { currencyDigits, discountAmount, legacyPayment } from "./settings";
 import { canMake, round, shiftStock, stockAmountFits, stockModel, withoutMenuCosts } from "./stock";
 import type {
   CartLine,
   Expense,
+  PaymentMethod,
   Product,
   ReceiptLine,
   ReceiptStockUse,
@@ -467,7 +468,13 @@ export function makeSale(input: SaleInput): Sale {
     ...(discount ? { discount } : {}),
     total,
     tender: method.id,
-    payment: { id: method.id, name: method.name, kind: method.kind },
+    payment: {
+      id: method.id,
+      name: method.name,
+      kind: method.kind,
+      ...(method.icon && { icon: method.icon }),
+      ...(method.presetId !== undefined && { presetId: method.presetId }),
+    },
     received: input.received,
     change: input.received - total,
   };
@@ -484,19 +491,17 @@ export function makeSale(input: SaleInput): Sale {
   return sale;
 }
 
-export interface MethodTotal {
-  id: string;
-  name: string;
-  kind: string;
+export interface MethodTotal extends Pick<PaymentMethod, "id" | "name" | "kind" | "icon" | "presetId"> {
   amount: number;
   count: number;
+  expenses: number;
 }
 
 export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = []) {
   const methods = new Map<string, MethodTotal>(
     shift.settings.payments
       .filter((p) => p.on)
-      .map((p) => [p.id, { ...p, amount: 0, count: 0 }]),
+      .map((p) => [p.id, { ...p, amount: 0, count: 0, expenses: 0 }]),
   );
   const result = {
     cash: 0,
@@ -506,15 +511,30 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     count: 0,
     reversed: 0,
     methods: [] as MethodTotal[],
-    /** Paid with cash from the till. */
+    /** Paid from any till payment method. */
     tillExpenses: 0,
+    cashExpenses: 0,
     /** Paid by someone out of pocket, owed back to them. */
     pocketExpenses: 0,
   };
   for (const e of expenses) {
     if (e.shiftId !== shift.id || e.voidedAt) continue;
-    if (e.source === "till") result.tillExpenses += e.amount;
-    else result.pocketExpenses += e.amount;
+    if (e.source === "pocket") {
+      result.pocketExpenses += e.amount;
+      continue;
+    }
+    result.tillExpenses += e.amount;
+    const deduction = e.deduction;
+    if (!deduction || deduction.kind === "cash") result.cashExpenses += e.amount;
+    if (deduction?.kind === "member") continue;
+    const saved = shift.settings.payments.find((method) => deduction
+      ? method.id === deduction.id
+      : method.id === "cash" && method.kind === "cash")
+      ?? (!deduction ? shift.settings.payments.find((method) => method.kind === "cash") : undefined);
+    const payment = saved ?? (deduction ? { ...deduction, kind: deduction.kind } : legacyPayment("cash"));
+    const row = methods.get(payment.id) ?? { ...payment, amount: 0, count: 0, expenses: 0 };
+    row.expenses += e.amount;
+    methods.set(row.id, row);
   }
   for (const sale of sales) {
     if (sale.shiftId !== shift.id) continue;
@@ -526,6 +546,7 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
       ...sale.payment,
       amount: 0,
       count: 0,
+      expenses: 0,
     };
     row.amount += sale.total;
     row.count++;
@@ -536,6 +557,6 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     result.count++;
   }
   result.methods = [...methods.values()];
-  result.expectedCash += result.cash - result.tillExpenses;
+  result.expectedCash += result.cash - result.cashExpenses;
   return result;
 }

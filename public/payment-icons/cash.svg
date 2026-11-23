@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <defs>
+    <linearGradient id="edge" x2="0.3" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#68af75"/>
+      <stop offset="1" stop-color="#1f6349"/>
+    </linearGradient>
+    <linearGradient id="note" x2="0.8" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#baf591"/>
+      <stop offset="1" stop-color="#54ac6d"/>
+    </linearGradient>
+    <linearGradient id="band" x2="0.4" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#fff4bb"/>
+      <stop offset="1" stop-color="#e1ab43"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="48" cy="75" rx="34" ry="8" fill="#173b30" opacity=".16"/>
+  <path d="M12 43 54 22 85 37v18a5 5 0 0 1-3 4L41 79a5 5 0 0 1-4 0L14 67a4 4 0 0 1-2-4z" fill="url(#edge)"/>
+  <path d="m12 51 27 14 46-22M12 56l27 14 46-22M12 61l27 14 46-22" fill="none" stroke="#b4eab1" stroke-opacity=".55" stroke-width="1.7"/>
+  <path d="M14 39 54 19a5 5 0 0 1 4 0l25 13a4 4 0 0 1 0 7L42 60a6 6 0 0 1-5 0L14 47a4 4 0 0 1 0-8z" fill="url(#note)" stroke="#d2ffab" stroke-width="1.2"/>
+  <path d="m24 43 33-16 17 8-34 17z" fill="none" stroke="#398d65" stroke-width="1.5"/>
+  <ellipse cx="48" cy="40" rx="9" ry="4.5" transform="rotate(-17 48 40)" fill="#438d61"/>
+  <path d="m38 27 30 15v23L57 71V48L27 32z" fill="url(#band)"/>
+  <path d="M57 49 68 43v22l-11 6z" fill="#c89136" opacity=".5"/>
+  <path d="m28 32 29 15 11-5" stroke="#ffefaf" stroke-width="1.5" fill="none"/>
+</svg>

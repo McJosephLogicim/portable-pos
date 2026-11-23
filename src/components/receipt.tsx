@@ -6,6 +6,7 @@ import type { Business, Sale, Shift } from "@/lib/types";
 import { ItemPreview } from "./item-preview";
 import { errorText, Money, Sheet, useProof, usePin } from "./ui";
 import { blocked } from "@/lib/reject";
+import { PaymentMethodIcon } from "./payment-method-icon";
 
 /** Proof photos kept with a sale. Only people on the business can load them. */
 function Proofs({ urls }: { urls: string[] }) {
@@ -160,7 +161,7 @@ export function ReceiptBody({
         </div>
         <div className="kv">
           <dt>Paid with</dt>
-          <dd>{sale.payment.name}</dd>
+          <dd className="row gap-6"><PaymentMethodIcon method={sale.payment} size={18} />{sale.payment.name}</dd>
         </div>
         {sale.payment.kind === "cash" && (
           <>

@@ -14,7 +14,8 @@ import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { Popo } from "./popo";
-import { ExpensesSection } from "./expenses";
+import { ExpensesSection, expenseTeammates } from "./expenses";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
@@ -25,7 +26,6 @@ import { blocked, OFFLINE, type Reason } from "@/lib/reject";
 import {
   errorText,
   formatMoney,
-  MethodIcon,
   Money,
   Notice,
   Sheet,
@@ -564,13 +564,13 @@ export function ShiftScreen({
   const remainingStock = replay ? Object.entries(replay.left) : [];
   const stockItems = shift ? shiftStock(shift).items : [];
   const stockPhotos = itemPhotos(shift?.menu ?? [], state.menu);
-  const paymentMethods = totals?.methods.filter((m) => m.count) ?? [];
+  const paymentMethods = totals?.methods.filter((m) => m.count || m.expenses) ?? [];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
   const expenseProps = {
     expenses: expenses.filter((e) => e.shiftId === shift?.id && !e.voidedAt),
     suggestions: expenses.map((e) => e.label),
-    name: state.me?.name ?? "",
+    sources: { payments: shift?.settings.payments ?? [], teammates: expenseTeammates(state) },
     timeZone: business.timeZone,
     currency,
     disabled: Boolean(state.closingShiftId),
@@ -632,7 +632,7 @@ export function ShiftScreen({
               <Money value={totals.expectedCash} currency={currency} className="big-num" />
               <span className="hero-label">
                 {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
-                {totals.tillExpenses ? ` − ${formatMoney(totals.tillExpenses, currency)} expenses` : ""}
+                {totals.cashExpenses ? ` − ${formatMoney(totals.cashExpenses, currency)} expenses` : ""}
               </span>
             </div>
             <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />
@@ -705,7 +705,7 @@ export function ShiftScreen({
           <div className="stack gap-10">
             <p className="group-title">By payment</p>
             <div className="card card-list">
-              {!totals.count && <EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
+              {!paymentMethods.length && <EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
               {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => (
                 <button
                   type="button"
@@ -717,15 +717,19 @@ export function ShiftScreen({
                   }}
                 >
                   <span className="well">
-                    <MethodIcon kind={m.kind as never} size={18} />
+                    <PaymentMethodIcon method={m} size={18} />
                   </span>
                   <span className="grow stack">
                     <span>{m.name}</span>
                     <span className="label">
                       {m.count} {m.count === 1 ? "sale" : "sales"}
+                      {m.expenses ? ` · ${formatMoney(m.expenses, currency)} expenses` : ""}
                     </span>
                   </span>
-                  <Money value={m.amount} currency={currency} />
+                  <span className="stack end">
+                    <Money value={m.amount - m.expenses} currency={currency} />
+                    {m.expenses > 0 && <span className="label">After expenses</span>}
+                  </span>
                   <ChevronRight size={18} className="chev" />
                 </button>
               ))}

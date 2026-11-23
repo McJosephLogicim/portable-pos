@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { makeSale, priceLines, shiftTotals, stockReplay, totalLines } from "../lib/domain";
 import type { Shift } from "../lib/types";
 import { isOnShift } from "../lib/team";
@@ -150,6 +150,7 @@ export async function applyEvents(
     if (event.type === "expense") {
       const e = event.expense;
       ensure(event.id === e.id && e.shiftId === shift.id, "This expense couldn't be saved. Try logging it again.");
+      ensure(!e.deduction || (e.deduction.kind === "member") === (e.source === "pocket"), "Choose where the expense was paid from.");
       await tx
         .insert(expenses)
         .values({
@@ -159,6 +160,7 @@ export async function applyEvents(
           label: e.label,
           amount: e.amount,
           source: e.source,
+          deduction: e.deduction,
           by: e.by ?? null,
         })
         .onConflictDoNothing();
@@ -166,9 +168,16 @@ export async function applyEvents(
       continue;
     }
     if (event.type === "editExpense" || event.type === "unexpense") {
+      const changes = event.type === "editExpense" ? event.changes : undefined;
+      ensure(!changes?.deduction || (changes.deduction.kind === "member") === (changes.source === "pocket"), "Choose where the expense was paid from.");
       await tx
         .update(expenses)
-        .set(event.type === "editExpense" ? event.changes : { voidedAt: new Date().toISOString() })
+        .set(changes ? {
+          ...changes,
+          deduction: changes.deduction === undefined
+            ? sql`case when ${expenses.source} = ${changes.source} then ${expenses.deduction} end`
+            : changes.deduction,
+        } : { voidedAt: new Date().toISOString() })
         .where(and(eq(expenses.id, event.targetId), eq(expenses.shiftId, shift.id), isNull(expenses.voidedAt)));
       recorded = true;
       continue;

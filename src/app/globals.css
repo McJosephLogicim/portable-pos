@@ -1812,10 +1812,28 @@ button.list-row:not(.sell-option):active {
 .inline-input:focus {
   outline: none;
 }
+:root {
+  --item-squircle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M50 0C91 0 100 9 100 50S91 100 50 100 0 91 0 50 9 0 50 0Z'/%3E%3C/svg%3E");
+}
 .item-preview,
-.item-photo-picker .photo-slot.has img {
-  --item-squircle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 0C91 0 100 9 100 50S91 100 50 100 0 91 0 50 9 0 50 0Z'/%3E%3C/svg%3E");
+.photo-slot.has,
+.photo-full,
+.check-photo,
+.proof-thumb,
+.receipt-logo,
+.mark,
+.avatar:not(.seat) {
   mask: var(--item-squircle) center / 100% 100% no-repeat;
+}
+.account-bar[data-sell="true"] :is(.mark, .avatar),
+.sell-page :is(.photo-slot.has, .photo-full, .proof-thumb, .receipt-logo, .mark, .avatar) {
+  mask: none;
+}
+.avatar:not(.seat), .proof-thumb, .check-photo {
+  border-radius: 0;
+}
+.account-bar[data-sell="true"] .avatar {
+  border-radius: 50%;
 }
 .item-preview {
   position: relative;
@@ -2538,6 +2556,7 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
 .photo-slot.has {
   border-style: solid;
   border-color: transparent;
+  border-radius: 0;
 }
 .photo-slot img {
   width: 100%;
@@ -2552,6 +2571,24 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   width: 44px;
   height: 44px;
   border-radius: 10px;
+}
+.small .photo-slot.has {
+  border-radius: 0;
+}
+.sell-page .photo-slot.has {
+  border-radius: var(--radius-sm);
+}
+.sell-page .proof-thumb {
+  border-radius: 14px;
+}
+.icon-picker .photo-slot img {
+  object-fit: contain;
+  padding: 10px;
+}
+.payment-icon {
+  display: block;
+  object-fit: contain;
+  flex: none;
 }
 .photo-busy {
   position: absolute;
@@ -2635,6 +2672,12 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   overflow: visible;
   margin: 0;
   padding: 0;
+}
+.select-pill {
+  max-width: 100%;
+}
+.select-pill > svg:last-child {
+  flex: none;
 }
 .filter-chips > button {
   color: var(--ink);
