@@ -188,7 +188,7 @@ export function Onboarding({
     case "report":
       if (closed) form = (
         <ReportSheet shift={closed} state={practice} business={practice.business!} justClosed
-          title={`Shift ${closed.number} closed`} continueLabel="Continue" onDismiss={finish} />
+          continueLabel="Continue" onDismiss={finish} />
       );
       break;
   }

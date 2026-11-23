@@ -19,7 +19,7 @@ export interface Plan {
   bookings: Booking[];
 }
 
-export type BookingInput = Omit<Booking, "sales" | "expenses">;
+export type BookingInput = Omit<Booking, "sales" | "expenses" | "shiftOfDay">;
 
 export function bookingTitle(b: Booking) {
   return b.event?.name ?? b.place?.name ?? b.organizer?.name ?? "Shift";

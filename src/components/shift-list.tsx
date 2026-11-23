@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { shiftTotals } from "@/lib/domain";
-import { bookingProfit, bookingTitle, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
+import { bookingProfit, dayOf, salesByBooking, seatsOpen } from "@/lib/team";
+import { shiftName } from "@/lib/shift-name";
 import type { Booking, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
 import { Avatar } from "./team";
@@ -85,7 +86,7 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
   const business = state.business!;
   const { time } = useShiftFormats(business.timeZone);
   const scheduled = "startsAt" in entry;
-  const title = scheduled ? bookingTitle(entry) : booking ? bookingTitle(booking) : `Shift ${entry.number}`;
+  const title = shiftName(booking ?? entry, state);
   const start = scheduled ? entry.startsAt : entry.openedAt;
   const end = scheduled ? entry.endsAt : entry.closedAt;
   const now = Date.now();
@@ -104,7 +105,7 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
           {end && <span className="label">{time.format(new Date(end))}</span>}
         </span>
         <span className="grow stack gap-4">
-          <span className="strong ellipsis">{title}</span>
+          <span className="strong" style={{ overflowWrap: "anywhere" }}>{title}</span>
           {booking && (
             <span className="label ellipsis">
               {[booking.place && booking.event ? booking.place.name : "", booking.organizer?.name].filter(Boolean).join(" · ") || "No location yet"}

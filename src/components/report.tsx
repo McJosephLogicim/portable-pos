@@ -15,7 +15,6 @@ export function ReportSheet({
   shift,
   state,
   business,
-  title,
   justClosed = false,
   continueLabel,
   onDismiss,
@@ -23,7 +22,6 @@ export function ReportSheet({
   shift: Shift;
   state: RegisterState;
   business: Business;
-  title?: string;
   justClosed?: boolean;
   continueLabel?: string;
   onDismiss: () => void;
@@ -33,6 +31,7 @@ export function ReportSheet({
   const report = useMemo(
     () => shiftReport(shift, state.sales, state.expenses ?? [], business, booking, {
         menu: state.menu,
+        bookings: state.bookings,
         faces: facesOf(state).byId,
         names: Object.fromEntries([
           ...(state.team ?? []).map((m) => [m.id, m.name]),
@@ -47,8 +46,8 @@ export function ReportSheet({
 
   return (
     <ImageShareSheet
-      title={title ?? `Shift ${shift.number} report`}
-      filename={`${business.name} shift ${shift.number}`}
+      title={`${report.name}${justClosed ? " closed" : " report"}`}
+      filename={report.name}
       text={text}
       build={build}
       onClose={onDismiss}

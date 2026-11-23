@@ -315,6 +315,8 @@ export interface Booking {
   place: Place | null;
   organizer: Tag | null;
   event: Tag | null;
+  /** Display order among shifts for the same event on this business day. */
+  shiftOfDay?: number;
   /** People needed. */
   seats: number;
   staff: StaffSlot[];

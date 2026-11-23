@@ -207,8 +207,8 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         text(ctx, initials(r.business.name), G + size / 2, t + size / 2 + 0.5, font(16, 500), onAccent, "center");
         ctx.textBaseline = "top";
       }
-      text(ctx, fit(r.business.name, font(16, 500), W - G * 2 - 60), G + size + 12, t + 3, font(16, 500), ink);
-      text(ctx, fit(`Shift ${r.number} · ${where}`, font(13), W - G * 2 - 60), G + size + 12, t + 25, font(13), ink2);
+      text(ctx, fit(r.name, font(16, 500), W - G * 2 - 60), G + size + 12, t + 3, font(16, 500), ink);
+      text(ctx, fit(where, font(13), W - G * 2 - 60), G + size + 12, t + 25, font(13), ink2);
     });
     y += 44 + 26;
   }
@@ -461,7 +461,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   {
     const t = y + 6;
     ops.push((ctx) => {
-      text(ctx, fit(`${r.business.name} · Shift ${r.number} · ${r.date}`, font(12.5), CARD), W / 2, t, font(12.5), ink3, "center");
+      text(ctx, fit(r.business.name, font(12.5), CARD), W / 2, t, font(12.5), ink3, "center");
       drawShareBrand(ctx, brandIcon, t + 26, family, ink2);
     });
     y = t + 26 + BRAND_SIZE + G;

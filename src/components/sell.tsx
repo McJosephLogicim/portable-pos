@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, CloudOff, Minus, Plus, Search, ShoppingBag, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, CloudOff, Eye, EyeOff, Minus, Plus, Search, ShoppingBag, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -12,7 +12,7 @@ import type {
   Tender,
 } from "@/lib/types";
 import { canMake, shiftStock } from "@/lib/stock";
-import { bookingTitle } from "@/lib/team";
+import { shiftName } from "@/lib/shift-name";
 import {
   makeSale,
   parseMoney,
@@ -53,6 +53,8 @@ import {
 } from "./ui";
 import { blocked as blockedBy } from "@/lib/reject";
 import styles from "./sell.module.css";
+
+const maskedValue = "****";
 
 /* Bills in major units. Quick cash buttons round the total up to the next bill. */
 const bills: Record<string, number[]> = {
@@ -171,6 +173,7 @@ function OrderLines({
 function ItemOptions({
   product,
   currency,
+  pricesHidden,
   soldOut,
   busy,
   onAdd,
@@ -178,6 +181,7 @@ function ItemOptions({
 }: {
   product: Product;
   currency: string;
+  pricesHidden: boolean;
   soldOut: string[];
   busy: boolean;
   onAdd: (options: string[], quantity: number) => Promise<boolean>;
@@ -202,6 +206,8 @@ function ItemOptions({
   const complete = product.groups.every(
     (g) => !g.required || g.options.some((o) => selected.includes(o.id)),
   );
+  const optionPrice = (price: number) =>
+    price ? (pricesHidden ? maskedValue : "+" + formatMoney(price, currency)) : undefined;
   return (
     <Sheet
       title={product.name}
@@ -223,7 +229,8 @@ function ItemOptions({
               else setError("Couldn't add that. Try again.");
             }}
           >
-            Add <Money value={unit * quantity} currency={currency} />
+            Add{" "}
+            {pricesHidden ? <span aria-hidden="true">{maskedValue}</span> : <Money value={unit * quantity} currency={currency} />}
           </button>
         </div>
       }
@@ -262,7 +269,7 @@ function ItemOptions({
                     </span>
                     <span className={"grow" + (out ? " g" : "")}>{option.name}</span>
                     <span className="label end">
-                      {out ? "Sold out" : option.price ? "+" + formatMoney(option.price, currency) : ""}
+                      {out ? "Sold out" : optionPrice(option.price)}
                     </span>
                   </label>
                 );
@@ -278,7 +285,7 @@ function ItemOptions({
                   id: option.id,
                   name: option.name,
                   disabled: out,
-                  note: out ? "Sold out" : option.price ? "+" + formatMoney(option.price, currency) : undefined,
+                  note: out ? "Sold out" : optionPrice(option.price),
                 };
               })}
               picked={selected.filter((id) => group.options.some((option) => option.id === id))}
@@ -966,11 +973,12 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
       </button>
     );
   const people = booking.staff.map((s) => s.name.split(" ")[0]).join(", ");
+  const name = shiftName(booking, state);
   return (
-    <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${bookingTitle(booking)}. ${onTillPage ? "Open the shift." : "Open the Till."}`}>
+    <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${name}. ${onTillPage ? "Open the shift." : "Open the Till."}`}>
       <CalendarDays size={16} strokeWidth={1.9} />
-      <span className="grow ellipsis">
-        <span className="strong">{bookingTitle(booking)}</span>
+      <span className="grow" style={{ paddingBlock: 6, overflowWrap: "anywhere" }}>
+        <span className="strong">{name}</span>
         <span className="g">
           {" · "}until {time.format(new Date(booking.endsAt))}
           {people ? " · " + people : ""}
@@ -1020,6 +1028,7 @@ export function SellScreen({
   const withPin = usePin();
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [pricesHidden, setPricesHidden] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [picked, setPicked] = useState<Product | null>(null);
@@ -1064,6 +1073,8 @@ export function SellScreen({
     count += line.quantity;
     quantities.set(line.productId, (quantities.get(line.productId) ?? 0) + line.quantity);
   }
+  const itemCount = `${count} ${count === 1 ? "item" : "items"}`;
+  const orderTotal = pricesHidden ? "" : formatMoney(total, currency);
   const blocked = state.cart.some((l) =>
     [l.productId, ...l.optionIds].some((id) => state.soldOut.includes(id)),
   );
@@ -1164,8 +1175,12 @@ export function SellScreen({
                 {!online ? <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-hidden="true" />
                   : status !== "Online" && <span className="dot" />}
                 <span className="ellipsis">
-                  Shift {shift.number} ·{" "}
-                  {shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}
+                  {pricesHidden ? (
+                    <>
+                      <span aria-hidden="true">{maskedValue} sales</span>
+                      <span className="sr-only">Sales count hidden</span>
+                    </>
+                  ) : shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}
                   {status !== "Online" ? " · " + status : ""}
                 </span>
               </span>
@@ -1185,14 +1200,26 @@ export function SellScreen({
             </button>
           )}
           {!preview && !practice && (
-            <button
-              className="round"
-              aria-label="Mark items sold out"
-              aria-pressed={marking}
-              onClick={() => setMarking(!marking)}
-            >
-              <Ban size={19} />
-            </button>
+            <>
+              <button
+                type="button"
+                className="round"
+                aria-label="Hide sales and prices"
+                aria-pressed={pricesHidden}
+                title={pricesHidden ? "Show sales and prices" : "Hide sales and prices"}
+                onClick={() => setPricesHidden((hidden) => !hidden)}
+              >
+                {pricesHidden ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
+              </button>
+              <button
+                className="round"
+                aria-label="Mark items sold out"
+                aria-pressed={marking}
+                onClick={() => setMarking(!marking)}
+              >
+                <Ban size={19} />
+              </button>
+            </>
           )}
         </div>
         {!preview && !practice && <ShiftStrip state={state} onTill={onTill} />}
@@ -1223,7 +1250,7 @@ export function SellScreen({
         </Notice>
       )}
       <span className="sr-only" role="status" aria-atomic="true">
-        {cartMenuError ? "" : count ? `Order: ${count} ${count === 1 ? "item" : "items"}. Total ${formatMoney(total, currency)}.` : "Order empty."}
+        {cartMenuError ? "" : count ? `Order: ${itemCount}.${orderTotal ? ` Total ${orderTotal}.` : ""}` : "Order empty."}
       </span>
       {cartMenuError && (
         <Notice
@@ -1251,6 +1278,7 @@ export function SellScreen({
               const making = canMake(model, afterCart, product.id);
               const qty = quantities.get(product.id) ?? 0;
               const adding = addingProduct === product.id;
+              const price = pricesHidden ? null : formatMoney(product.price, currency);
               return (
                 <button
                   key={product.id}
@@ -1262,8 +1290,7 @@ export function SellScreen({
                         : "Mark sold out: "
                       : "Add ") +
                     product.name +
-                    ", " +
-                    formatMoney(product.price, currency) +
+                    (price ? ", " + price : "") +
                     (!marking && qty ? `, ${qty} in order` : "")
                   }
                   aria-busy={adding}
@@ -1293,7 +1320,7 @@ export function SellScreen({
                     </span>
                   )}
                   <span className="name">{product.name}</span>
-                  <span className="price">{formatMoney(product.price, currency)}</span>
+                  <span className="price">{price ?? maskedValue}</span>
                   {out && <span className="out-tag">Sold out</span>}
                   {!out && making !== undefined && (
                     <span className={"stock-tag" + (making <= 3 ? " low" : "")}>
@@ -1356,13 +1383,13 @@ export function SellScreen({
           ref={fadeOnExit}
           disabled={busy}
           onClick={() => { setPaid(false); setCharging(true); }}
-          aria-label={blocked ? "Review order with sold-out items" : preview ? "Test checkout" : `Charge ${formatMoney(total, currency)} for ${count} ${count === 1 ? "item" : "items"}`}
+          aria-label={blocked ? "Review order with sold-out items" : preview ? "Test checkout" : `Charge${orderTotal ? ` ${orderTotal}` : ""} for ${itemCount}`}
         >
           <span className="badge">{count}</span>
           <span className="grow" style={{ textAlign: "left" }}>
             {blocked ? "Review order" : preview ? "Test checkout" : "Charge"}
           </span>
-          <Money value={total} currency={currency} />
+          {pricesHidden ? <span className="num" aria-hidden="true">{maskedValue}</span> : <Money value={total} currency={currency} />}
           <span style={{ width: 8 }} />
         </button>
       )}
@@ -1379,6 +1406,7 @@ export function SellScreen({
           <ItemOptions
             product={picked}
             currency={currency}
+            pricesHidden={pricesHidden}
             soldOut={state.soldOut}
             busy={busy}
             onAdd={(ids, qty) => add(picked, ids, qty)}

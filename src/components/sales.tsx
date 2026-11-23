@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, CloudOff, ReceiptText, Search, X } from "lucid
 import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
+import { shiftName } from "@/lib/shift-name";
 import {
   activeCount,
   filterKeys,
@@ -63,17 +64,18 @@ export function SalesScreen({
   const shiftFacets = useMemo(() => {
     const facets = new Map<string, Facet>();
     for (const till of shifts.values()) {
-      const facet = shiftFacet(till, till.bookingId ? bookings.get(till.bookingId) : undefined);
+      const booking = till.bookingId ? bookings.get(till.bookingId) : undefined;
+      const facet = shiftFacet(till, shiftName(booking ?? till, { business, bookings: state.bookings }), booking);
       facets.set(facet.value, facet);
     }
     return facets;
-  }, [shifts, bookings]);
+  }, [shifts, bookings, business, state.bookings]);
   const all = useMemo(
     () =>
       state.sales
         .filter((s) => shifts.has(s.shiftId))
-        .map((sale) => ({ sale, facets: saleFacets(sale, shifts, bookings) })),
-    [state.sales, shifts, bookings],
+        .map((sale) => ({ sale, facets: saleFacets(sale, shifts, bookings, shiftFacets) })),
+    [state.sales, shifts, bookings, shiftFacets],
   );
   const options = useMemo(() => filterOptions(all, filter, shiftFacets), [all, filter, shiftFacets]);
   const pending = new Set(state.pending.map((e) => e.id));

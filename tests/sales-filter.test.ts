@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { filterOptions, matchesFilter, saleFacets, shiftKey } from "../src/lib/sales-filter";
+import { filterOptions, matchesFilter, saleFacets, shiftFacet, shiftKey } from "../src/lib/sales-filter";
+import { shiftName } from "../src/lib/shift-name";
 import type { Booking, Sale, Shift } from "../src/lib/types";
 
 const booking = (id: string, event: string, organizer: string): Booking => ({
@@ -30,12 +31,16 @@ const sale = (id: string, shiftId: string, items: string[], payment: string) =>
 
 const shifts = new Map([till("t1", "b1"), till("t2", "b2"), till("t3")].map((s) => [s.id, s]));
 const bookings = new Map([booking("b1", "Ube Takeover", "Weekend Co"), booking("b2", "Night Bazaar", "Weekend Co")].map((b) => [b.id, b]));
+const shiftFacets = new Map([...shifts.values()].map((s) => {
+  const facet = shiftFacet(s, shiftName(s, { business: { name: "Sunday Supply", timeZone: "Asia/Manila" }, bookings: [...bookings.values()] }), bookings.get(s.bookingId ?? ""));
+  return [facet.value, facet];
+}));
 const all = [
   sale("s1", "t1", ["matcha"], "cash"),
   sale("s2", "t1", ["matcha", "ube"], "gcash"),
   sale("s3", "t2", ["ube"], "cash"),
   sale("s4", "t3", ["matcha"], "cash"),
-].map((s) => ({ sale: s, facets: saleFacets(s, shifts, bookings) }));
+].map((s) => ({ sale: s, facets: saleFacets(s, shifts, bookings, shiftFacets) }));
 const ids = (filter: Parameters<typeof matchesFilter>[1]) =>
   all.filter((x) => matchesFilter(x.facets, filter)).map((x) => x.sale.id);
 

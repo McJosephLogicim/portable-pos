@@ -296,7 +296,7 @@ export async function runCommand(
       const running = await openShifts();
       const joined = bookingId && running.find((s) => s.bookingId === bookingId);
       const mine = await tillShift(running);
-      ensure(!mine || (joined && mine.id === joined.id), `Close shift ${mine?.number} on this phone before starting another.`, 409);
+      ensure(!mine || (joined && mine.id === joined.id), "Close the current shift on this phone before starting another.", 409);
       const settings = business.settings ?? defaultSettings(business.currency);
       const checklist = settings.checklist ?? [];
       let stock, openingCount;

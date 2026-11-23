@@ -135,7 +135,7 @@ test("menu items use stock items, sales draw them down, and closing reports the 
   assert.deepEqual(report.payBack, [{ name: "Eunice Cruz", amount: 11000 }]);
   const text = reportText(report, fmt);
   for (const part of [
-    "Berry Good · Shift 4",
+    "Berry Good • Nov 16 • 10:00 AM",
     "Eunice",
     "SALES ₱1,680 (2 sales)",
     "GCash ₱480",
@@ -346,7 +346,7 @@ test(
     assert.equal(shiftTotals(first.shift!, first.sales, first.expenses).expectedCash, 8000);
     // The same phone can't start a second shift while its first one runs.
     const other = await at(-1, 3);
-    await assert.rejects(open(other), /Close shift 1 on this phone/);
+    await assert.rejects(open(other), /Close the current shift on this phone/);
     // Retrying the opening joins the same till and keeps the original expense once.
     const retry = await cmd(opening);
     assert.equal(retry.shift!.id, first.shift!.id);

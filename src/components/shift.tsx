@@ -17,7 +17,8 @@ import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
-import { bookingTitle, isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
+import { isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
+import { shiftName } from "@/lib/shift-name";
 import { blocked, type Reason } from "@/lib/reject";
 import {
   errorText,
@@ -39,26 +40,23 @@ import styles from "./operations.module.css";
 
 export type CloseInput = Omit<Closing, "action" | "pin">;
 
-function BookingRow({ booking: b, zone, note, onClick, refuse }: {
+function BookingRow({ booking: b, state, note, onClick, refuse }: {
   booking: Booking;
-  zone: string;
+  state: RegisterState;
   note?: string;
   onClick?: () => void;
   /** Why it can't be tapped yet. The row stays tappable so it can say so. */
   refuse?: Reason;
 }) {
-  const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
-  const day = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "short", month: "short", day: "numeric" });
-  const today = day.format(Date.now()) === day.format(new Date(b.startsAt));
+  const time = new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" });
   const body = (
     <>
       <span className="well">
         <CalendarDays size={18} strokeWidth={1.8} />
       </span>
       <span className="grow stack">
-        <span className="ellipsis">{bookingTitle(b)}</span>
+        <span>{shiftName(b, state)}</span>
         <span className="label ellipsis">
-          {today ? "" : day.format(new Date(b.startsAt)) + " · "}
           {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
           {b.place && b.event ? " · " + b.place.name : ""}
         </span>
@@ -139,8 +137,8 @@ function NoShift({
                 <BookingRow
                   key={b.id}
                   booking={b}
-                  zone={zone}
-                  note={`Shift ${till.number}${till.openedBy ? " · opened by " + till.openedBy.split(" ")[0] : ""}`}
+                  state={state}
+                  note={till.openedBy && `Opened by ${till.openedBy.split(" ")[0]}`}
                   onClick={onJoin ? () => setJoining(till) : undefined}
                 />
               );
@@ -149,14 +147,14 @@ function NoShift({
         </div>
       )}
       {joining && onJoin && (
-        <JoinTillSheet till={joining} onClose={() => setJoining(null)} onJoin={onJoin} />
+        <JoinTillSheet till={joining} name={shiftName(joining, state)} onClose={() => setJoining(null)} onJoin={onJoin} />
       )}
       {ready.length > 0 && (
         <div className="stack gap-10">
           <p className="group-title">Ready to start</p>
           <div className="card card-list">
             {ready.map((b) => (
-              <BookingRow key={b.id} booking={b} zone={zone} onClick={() => onStart(b.id)} />
+              <BookingRow key={b.id} booking={b} state={state} onClick={() => onStart(b.id)} />
             ))}
           </div>
         </div>
@@ -167,7 +165,7 @@ function NoShift({
           <div className="card card-list">
             <BookingRow
               booking={next}
-              zone={zone}
+              state={state}
               note={`Till opens from ${time.format(opensAt)}`}
               refuse={`Not yet. The till opens ${opensToday ? "" : weekday.format(opensAt) + " "}at ${time.format(opensAt)}.`}
             />
@@ -179,7 +177,7 @@ function NoShift({
           <p className="group-title">Missed shifts</p>
           <div className="card card-list">
             {missed.map((b) => (
-              <BookingRow key={b.id} booking={b} zone={zone} onClick={() => onStart(b.id)} />
+              <BookingRow key={b.id} booking={b} state={state} onClick={() => onStart(b.id)} />
             ))}
           </div>
         </div>
@@ -239,13 +237,13 @@ function OpenShift({
     return (
       <div className="stack gap-18">
         <h1 className="headline">This shift is already open</h1>
-        <div className="card card-list"><BookingRow booking={booking} zone={business.timeZone} /></div>
+        <div className="card card-list"><BookingRow booking={booking} state={state} /></div>
         <p className="muted">The till is using the opening counts from the other device.</p>
         <button type="button" className="btn block" aria-haspopup="dialog" disabled={!online} onClick={() => setConfirmJoin(true)}>
           Join till
         </button>
         <button type="button" className="btn ghost compact" onClick={onBack}>Change shift</button>
-        {confirmJoin && <JoinTillSheet till={openTill} onClose={() => setConfirmJoin(false)} onJoin={onJoin} />}
+        {confirmJoin && <JoinTillSheet till={openTill} name={shiftName(booking, state)} onClose={() => setConfirmJoin(false)} onJoin={onJoin} />}
       </div>
     );
   }
@@ -273,7 +271,7 @@ function OpenShift({
           </button>
         </div>
         <div className="card card-list">
-          <BookingRow booking={booking} zone={business.timeZone} />
+          <BookingRow booking={booking} state={state} />
         </div>
       </div>
       <CashCounter currency={currency} label="Starting cash" onChange={setCash} />
@@ -428,7 +426,7 @@ export function CloseSheet({
   const uncounted = tracked.filter((i) => limits.has(i.id) && countOf(counts[i.id]) === undefined).length;
   return (
     <Sheet
-      title={`Close shift ${shift.number}`}
+      title="Close shift"
       onClose={onDismiss}
       busy={busy}
       footer={
@@ -472,6 +470,7 @@ export function CloseSheet({
         </div>
       }
     >
+      <p className="strong">{shiftName(shift, state)}</p>
       <div className="tile">
         <span className="label">Expected in the drawer</span>
         <Money value={expected} currency={currency} className="big-num" />
@@ -784,7 +783,7 @@ export function ShiftScreen({
                 {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till."))}
                 onClick={() => setClosing(record.id)}>
                 <Wallet size={17} aria-hidden="true" />
-                <span className="grow">Close shift {record.number}</span>
+                <span className="grow">{shiftName(record, state)}</span>
                 <ChevronRight size={16} className="chev" />
               </button>
             ))}
@@ -832,7 +831,6 @@ export function ShiftScreen({
           state={state}
           business={business}
           justClosed
-          title={`Shift ${justClosed.number} closed`}
           onDismiss={() => setClosedId(null)}
         />
       )}

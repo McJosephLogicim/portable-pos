@@ -2,6 +2,7 @@ import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockReplay } from "./domain";
 import { brandShareText } from "./share-brand";
+import { shiftName } from "./shift-name";
 import { round, stockModel, unitText } from "./stock";
 import { bookingTitle, dayOf, seatsOpen, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
@@ -22,7 +23,7 @@ export interface StockRow {
 export interface ShiftReport {
   business: { name: string; logo?: string; brand?: string };
   currency: string;
-  number: number;
+  name: string;
   date: string;
   hours: string;
   place?: string;
@@ -64,7 +65,7 @@ export function shiftReport(
   business: Business,
   booking?: Booking,
   /** The menu to find item photos in, and each team member's current name and photo, by member id. */
-  extra: { menu?: Product[]; faces?: Record<string, string>; names?: Record<string, string> } = {},
+  extra: { menu?: Product[]; faces?: Record<string, string>; names?: Record<string, string>; bookings?: Booking[] } = {},
 ): ShiftReport {
   const currency = shift.settings?.currency ?? business.currency;
   const sales = allSales.filter((s) => s.shiftId === shift.id);
@@ -142,7 +143,7 @@ export function shiftReport(
   return {
     business: { name: business.name, logo: business.settings.logo, brand: business.settings.brand },
     currency,
-    number: shift.number,
+    name: shiftName(booking ?? shift, { business, bookings: extra.bookings }),
     date: day.format(new Date(shift.openedAt)),
     hours:
       time.format(new Date(shift.openedAt)) +
@@ -201,7 +202,7 @@ export function countText(count: CashCount | undefined, fmt: Format) {
 /** The report as plain text to paste in a group chat. */
 export function reportText(r: ShiftReport, fmt: Format) {
   const out: string[] = [];
-  out.push(`${r.business.name} · Shift ${r.number}`);
+  out.push(r.name);
   out.push([r.date, r.hours].join(" · "));
   if (r.place) out.push(r.place);
   if (r.people.length) out.push(r.people.map((p) => (r.roles[p] ? `${p} (${r.roles[p]})` : p)).join(", "));

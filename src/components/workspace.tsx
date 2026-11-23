@@ -532,18 +532,18 @@ export function Workspace() {
 
   // Another phone can close the shift this one is selling on. Say so instead of
   // silently swapping the till for the opening screen.
-  const openShift = useRef<{ id: string; number: number; business?: string } | null>(null),
+  const openShift = useRef<{ id: string; business?: string } | null>(null),
     closingHere = useRef(false);
   const live = state?.shift && !state.shift.closedAt ? state.shift : null;
   useEffect(() => {
     const before = openShift.current;
     if (!state) return;
-    openShift.current = live ? { id: live.id, number: live.number, business: state.business?.id } : null;
+    openShift.current = live ? { id: live.id, business: state.business?.id } : null;
     if (before && before.business === state.business?.id && before.id !== live?.id && !closingHere.current) {
       const stillOpen = state.shifts.some((shift) => shift.id === before.id && !shift.closedAt);
       setNotice(stillOpen
-        ? `You're no longer assigned to shift ${before.number}. Anything sold here still counts toward it.`
-        : `Shift ${before.number} was closed on another phone. Anything sold here still counts toward it.`);
+        ? "You're no longer assigned to this shift. Anything sold here still counts toward it."
+        : "This shift was closed on another phone. Anything sold here still counts toward it.");
     }
     closingHere.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -690,7 +690,7 @@ export function Workspace() {
       await syncRegister(key);
       await locked("sync-" + key, async () => {
         const s = await loadRegister(key);
-        if (s.shift && !s.shift.closedAt) throw Error(`Close shift ${s.shift.number} on this phone first.`);
+        if (s.shift && !s.shift.closedAt) throw Error("Close the current shift on this phone first.");
         const data = await api(key, { action: "bootstrap", deviceId: s.deviceId, till: shiftId });
         show(key, await mergeServer(key, data));
         if (data.shift?.id !== shiftId) {

@@ -22,6 +22,7 @@ import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
 import { blocked, OFFLINE } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
+import { shiftName } from "@/lib/shift-name";
 import { slugId } from "@/lib/settings";
 import {
   addDays,
@@ -350,15 +351,16 @@ function useBookingHistory(
   return { status: { kind: "loading" } };
 }
 
-export function JoinTillSheet({ till, onClose, onJoin }: {
+export function JoinTillSheet({ till, name, onClose, onJoin }: {
   till: Shift;
+  name: string;
   onClose: () => void;
   onJoin: (shiftId: string) => Promise<void>;
 }) {
   return (
     <ConfirmSheet
-      title={`Join till for shift ${till.number}?`}
-      detail="Sales from this phone go to that shift's drawer. Any phone on it can close it."
+      title="Join till?"
+      detail={<> <strong>{name}</strong><br />Sales from this phone go to that shift's drawer. Any phone on it can close it.</>}
       confirmLabel="Join till"
       destructive={false}
       onClose={onClose}
@@ -419,7 +421,7 @@ function BookingSheet({
   const runningTill = till && !till.closedAt ? till : null;
   const tillClosed = !runningTill && (b.tillClosed || Boolean(till?.closedAt));
   const joinable = !mine && open > 0 && !over && !tillClosed;
-  const tillBlock = !online ? OFFLINE : localTill ? `Close shift ${localTill.number} on this phone first.` : null;
+  const tillBlock = !online ? OFFLINE : localTill ? "Close the current shift on this phone first." : null;
   const { onStart, onJoin } = props;
   const tillButton = `btn block${joinable ? " secondary" : ""}`;
   const tillAction = onLinkTill ? (
@@ -483,7 +485,7 @@ function BookingSheet({
       (!recent || (Boolean(till?.closedAt) && expenses !== cachedExpenses.reduce((sum, entry) => sum + entry.amount, 0))),
     online, props.onLoadBookingRecords,
   );
-  const title = bookingTitle(b);
+  const title = shiftName(b, state);
   const receipts = salesHistory.records
     ? [...salesHistory.records.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     : cachedSales;
@@ -524,7 +526,7 @@ function BookingSheet({
   return (
     <>
       <Sheet
-        title={bookingTitle(b)}
+        title={title}
         onClose={onClose}
         busy={busy}
         action={me.owner && (
@@ -764,7 +766,7 @@ function BookingSheet({
           onClose={() => setBreakdown(null)}
         />
       )}
-      {joiningTill && onJoin && <JoinTillSheet till={joiningTill} onClose={() => setJoiningTill(null)} onJoin={onJoin} />}
+      {joiningTill && onJoin && <JoinTillSheet till={joiningTill} name={title} onClose={() => setJoiningTill(null)} onJoin={onJoin} />}
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
@@ -1648,7 +1650,7 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
   const [showSales, setShowSales] = useState(false);
   const business = state.business!;
   const { long, time } = useShiftFormats(business.timeZone);
-  const title = `Shift ${till.number}`;
+  const title = shiftName(till, state);
   const date = long.format(new Date(till.openedAt));
   const hours = time.format(new Date(till.openedAt)) + (till.closedAt ? ` to ${time.format(new Date(till.closedAt))}` : "");
   const currency = shiftCurrency(till, business);

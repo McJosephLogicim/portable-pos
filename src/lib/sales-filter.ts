@@ -1,6 +1,5 @@
 import type { Booking, Sale, Shift } from "./types";
 import { countFilterOptions, matchesFilters, type FilterSelection } from "./filters";
-import { bookingTitle } from "./team";
 
 /** The ways the Sales page can narrow its list. Values within one are "any of"; across them, "all of". */
 export type FilterKey = "shift" | "event" | "organizer" | "place" | "item" | "payment";
@@ -28,10 +27,10 @@ export function shiftKey(shift: Shift) {
   return shift.bookingId ?? "till:" + shift.id;
 }
 
-export function shiftFacet(shift: Shift, booking?: Booking): Facet {
+export function shiftFacet(shift: Shift, label: string, booking?: Booking): Facet {
   return {
     value: shiftKey(shift),
-    label: booking ? bookingTitle(booking) : "Shift " + shift.number,
+    label,
     at: booking?.startsAt ?? shift.openedAt,
   };
 }
@@ -41,13 +40,15 @@ export function saleFacets(
   sale: Sale,
   shifts: Map<string, Shift>,
   bookings: Map<string, Booking>,
+  shiftFacets: ReadonlyMap<string, Facet>,
 ): Record<FilterKey, Facet[]> {
   const till = shifts.get(sale.shiftId);
   const b = till?.bookingId ? bookings.get(till.bookingId) : undefined;
+  const shift = till && shiftFacets.get(shiftKey(till));
   const items = new Map<string, Facet>();
   for (const line of sale.lines) items.set(line.productId, { value: line.productId, label: line.name });
   return {
-    shift: till ? [shiftFacet(till, b)] : [],
+    shift: shift ? [shift] : [],
     event: b?.event ? [{ value: b.event.id, label: b.event.name }] : [],
     organizer: b?.organizer ? [{ value: b.organizer.id, label: b.organizer.name }] : [],
     place: b?.place ? [{ value: b.place.name, label: b.place.name }] : [],

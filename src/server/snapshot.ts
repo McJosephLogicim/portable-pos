@@ -11,7 +11,8 @@ import {
   legacyShiftSettings,
 } from "../lib/settings";
 import { bookings, businesses, expenses, members, sales, shifts } from "./schema";
-import { isOnShift, redactBooking } from "../lib/team";
+import { addDays, dayOf, isOnShift, redactBooking, zonedInstant } from "../lib/team";
+import { bookingShiftNumbers } from "../lib/shift-name";
 import { presentBooking, presentMe, presentMember } from "./team";
 
 export function presentShift(
@@ -259,7 +260,7 @@ export async function snapshot(
     .select()
     .from(bookings)
     .where(and(eq(bookings.businessId, business.id), gte(bookings.endsAt, since)))
-    .orderBy(bookings.startsAt)
+    .orderBy(bookings.startsAt, bookings.id)
     .limit(1000);
   const recentTillBookingIds = [...running, ...closed].flatMap((shift) => shift.bookingId ? [shift.bookingId] : []);
   const otherBookings = await tx.select().from(bookings).where(and(eq(bookings.businessId, business.id), or(
@@ -274,6 +275,21 @@ export async function snapshot(
   const bookingsById = new Map([...recentBookings, ...otherBookings].map((booking) => [booking.id, booking]));
   const bookingRows = [...bookingsById.values()];
   const bookingIds = bookingRows.map((booking) => booking.id);
+  // Count all shifts on a visible day, even when the calendar window cuts through that day.
+  const sinceDayEnd = Date.parse(zonedInstant(addDays(dayOf(since, business.timeZone), 1), "00:00", business.timeZone));
+  const lastDay = recentBookings.length === 1000 ? dayOf(recentBookings.at(-1)!.startsAt, business.timeZone) : undefined;
+  const cappedDayStart = lastDay ? Date.parse(zonedInstant(lastDay, "00:00", business.timeZone)) : Infinity;
+  const partialDays = new Set(bookingRows.filter(({ startsAt }) => {
+    const start = Date.parse(startsAt);
+    return start < sinceDayEnd || start >= cappedDayStart;
+  }).map((row) => dayOf(row.startsAt, business.timeZone)));
+  const peers = partialDays.size ? await tx.select({
+    id: bookings.id, startsAt: bookings.startsAt, event: bookings.event, place: bookings.place, organizer: bookings.organizer,
+  }).from(bookings).where(and(eq(bookings.businessId, business.id), or(...[...partialDays].map((day) => and(
+    gte(bookings.startsAt, zonedInstant(day, "00:00", business.timeZone)),
+    lt(bookings.startsAt, zonedInstant(addDays(day, 1), "00:00", business.timeZone)),
+  ))))) : [];
+  const shiftNumbers = bookingShiftNumbers([...new Map([...bookingRows, ...peers].map((row) => [row.id, row])).values()], business.timeZone);
   const closedBookings = new Set(bookingIds.length ? (await tx
     .selectDistinct({ bookingId: shifts.bookingId })
     .from(shifts)
@@ -337,6 +353,7 @@ export async function snapshot(
     bookings: bookingRows.map((row) =>
       redactBooking({
         ...presentBooking(row),
+        shiftOfDay: shiftNumbers.get(row.id),
         sales: takings.get(row.id) ?? 0,
         expenses: spent.get(row.id) ?? 0,
         ...(closedBookings.has(row.id) ? { tillClosed: true } : {}),
