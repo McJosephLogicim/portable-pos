@@ -408,6 +408,63 @@ test.describe("account-enabled link entry", () => {
     await expect(page.getByRole("textbox", { name: "Verification code" })).toBeVisible();
   });
 
+  test("account link fields match the main sign-in fields on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockAuth(page);
+    const business = { name: "Bettercup", brand: "#6927d8" };
+    await page.route(`**/api/links/invite/${inviteCode}`, (route) => route.fulfill({
+      json: { business, invite: { name: "Test", owner: false, invitedBy: "Mc Joseph" } },
+    }));
+    await page.route("**/api/links/shift/*", (route) => route.fulfill({
+      json: { business, shift: {
+        startsAt: "2026-11-20T01:00:00Z", endsAt: "2026-11-20T05:00:00Z",
+        timeZone: "Asia/Manila", seats: 3, taken: 1,
+      } },
+    }));
+
+    await page.goto(appUrl);
+    const emailField = page.getByLabel("Email", { exact: true });
+    await expect(emailField).toBeVisible();
+    await expect(emailField).not.toHaveCSS("box-shadow", "none");
+    const rest = await emailField.evaluate((input) => {
+      const css = getComputedStyle(input);
+      return Object.fromEntries(["background-color", "box-shadow", "border-radius", "min-height"]
+        .map((property) => [property, css.getPropertyValue(property)]));
+    });
+    await emailField.focus();
+    const focus = await emailField.evaluate((input) => getComputedStyle(input).boxShadow);
+    const accountMode = page.getByRole("group", { name: "Account" });
+
+    for (const [link, title, changeMode] of [
+      [new URL(`/i/${inviteCode}`, appUrl).href, "Create your account to join", "Sign in"],
+      [joinLink(appUrl, teamId), "Open your team’s shifts", "Create account"],
+      [joinLink(appUrl, teamId, shiftId), "Sign in to take a seat", "Create account"],
+    ]) {
+      await page.goto(link);
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      for (const field of [emailField, page.getByLabel("Password", { exact: true })]) {
+        for (const [property, value] of Object.entries(rest)) await expect(field).toHaveCSS(property, value);
+        await field.focus();
+        await expect(field).toHaveCSS("box-shadow", focus);
+        await field.blur();
+      }
+
+      await accountMode.getByRole("button", { name: changeMode, exact: true }).click();
+      await expect(emailField).toHaveCSS("box-shadow", rest["box-shadow"]);
+      if (changeMode === "Sign in") {
+        await expect(page.getByRole("heading", { name: "Sign in to join" })).toBeVisible();
+        await accountMode.getByRole("button", { name: "Create account", exact: true }).click();
+      }
+      await enterCredentials(page);
+      await page.locator("button[type=submit]").click();
+      const code = page.getByRole("textbox", { name: "Verification code" });
+      await expect(code).toBeFocused();
+      await expect(code).toHaveCSS("box-shadow", focus);
+      await code.blur();
+      for (const [property, value] of Object.entries(rest)) await expect(code).toHaveCSS(property, value);
+    }
+  });
+
   test("canceling a new business returns to the switcher, then to the same register", async ({ page }) => {
     await mockAuth(page);
     await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
@@ -779,6 +836,8 @@ test("creates an account from Settings and switches without mixing saved registe
     } });
   });
   await page.goto(appUrl);
+  const fieldOutline = await page.getByLabel("Email", { exact: true })
+    .evaluate((input) => getComputedStyle(input).boxShadow);
   await enterCredentials(page);
   await page.locator("button[type=submit]").click();
   await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
@@ -794,13 +853,18 @@ test("creates an account from Settings and switches without mixing saved registe
   await add.getByRole("button", { name: "Close", exact: true }).click();
   await expect(accounts).toBeVisible();
   await addAccount.click();
+  await expect(add.getByLabel("Email", { exact: true })).toHaveCSS("box-shadow", fieldOutline);
+  await expect(add.getByLabel("Password", { exact: true })).toHaveCSS("box-shadow", fieldOutline);
   await add.getByRole("group", { name: "Account" }).getByRole("button", { name: "Create account" }).click();
   await add.getByLabel("Email", { exact: true }).fill("secondary@example.test");
   await add.getByLabel("Password", { exact: true }).fill("fixture-password");
   await add.locator("button[type=submit]").click();
   const confirmation = page.getByRole("dialog", { name: "Check your email" });
   await expect(confirmation.getByText("secondary@example.test")).toBeVisible();
-  await confirmation.getByRole("textbox", { name: "Verification code" }).fill("012 345");
+  const code = confirmation.getByRole("textbox", { name: "Verification code" });
+  await code.blur();
+  await expect(code).toHaveCSS("box-shadow", fieldOutline);
+  await code.fill("012 345");
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
