@@ -198,6 +198,35 @@ test.describe("account-enabled link entry", () => {
   );
   test.use({ serviceWorkers: "block" });
 
+  for (const access of ["member", "co-owner"] as const) {
+    test(`${access} can see this phone's connection status in Settings`, async ({ page, context }) => {
+      const snapshot = teamSnapshot();
+      const [primary, teammate] = snapshot.team!;
+      const owner = access === "co-owner";
+      snapshot.team = [{ ...primary, primaryOwner: true }, { ...teammate, owner }];
+      snapshot.me = { memberId: teammate.id, name: teammate.name, roles: teammate.roles, owner };
+      await mockAuth(page);
+      await page.route("**/api/pos", (route) => route.fulfill({ json: snapshot }));
+
+      await page.goto(appUrl);
+      await enterCredentials(page);
+      await page.locator("button[type=submit]").click();
+      await page.getByRole("button", { name: "Account and settings" }).click();
+      const phone = page.getByRole("region", { name: "This phone" });
+      await expect(phone.getByRole("heading", { name: "This phone" })).toBeVisible();
+      await expect(phone.getByText("Connection", { exact: true })).toBeVisible();
+      await expect(phone.getByText("Online", { exact: true })).toBeVisible();
+      await expect(phone.getByText("Works offline", { exact: true })).toBeVisible();
+      await expect(phone.getByText("Getting ready", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Payment methods/ })).toHaveCount(owner ? 1 : 0);
+
+      await context.setOffline(true);
+      await expect(phone.getByText("Offline", { exact: true })).toBeVisible();
+      await context.setOffline(false);
+      await expect(phone.getByText("Online", { exact: true })).toBeVisible();
+    });
+  }
+
   test("a co-owner can view the primary owner's name only as read-only", async ({ page }) => {
     const snapshot = teamSnapshot();
     const [primary, coOwner, member] = snapshot.team!;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -1282,6 +1282,33 @@ function ProfileCard(props: SettingsProps) {
 
 /* ---------- home ---------- */
 
+function PhoneSettings({ connection, offlineReady }: Pick<SettingsProps, "connection" | "offlineReady">) {
+  const title = useId();
+  return (
+    <section className="stack gap-18" aria-labelledby={title}>
+      <h2 id={title} className="group-title">This phone</h2>
+      <div className="card card-list">
+        <div className="list-row">
+          <span className="grow">Connection</span>
+          <span className="record-end row gap-6 sync-status">
+            <span className={"dot " + connection.dot} aria-hidden="true" />
+            {connection.text}
+          </span>
+        </div>
+        <div className="list-row">
+          <span className="grow row gap-6">
+            Works offline
+            <Explain title="Works offline">
+              Sales save on this phone first and sync when you're back online.
+            </Explain>
+          </span>
+          <span className="record-end">{offlineReady ? "Ready" : "Getting ready"}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function SettingsScreen(props: SettingsProps) {
   const { state, page, onPage, demo } = props;
   const business = state.business!;
@@ -1306,6 +1333,7 @@ export function SettingsScreen(props: SettingsProps) {
             onClick={props.onBusinesses}
           />
         </div>
+        <PhoneSettings connection={props.connection} offlineReady={props.offlineReady} />
         <div className="card card-pad">
           <button className="btn secondary block" onClick={props.onSignOut}>
             Sign out
@@ -1389,25 +1417,7 @@ export function SettingsScreen(props: SettingsProps) {
           onClick={() => onPage("organizers")}
         />
       </div>
-      <h2 className="group-title">This phone</h2>
-      <div className="card card-list">
-        <div className="list-row">
-          <span className="grow">Connection</span>
-          <span className="record-end row gap-6 sync-status">
-            <span className={"dot " + props.connection.dot} aria-hidden="true" />
-            {props.connection.text}
-          </span>
-        </div>
-        <div className="list-row">
-          <span className="grow row gap-6">
-            Works offline
-            <Explain title="Works offline">
-              Sales save on this phone first and sync when you're back online.
-            </Explain>
-          </span>
-          <span className="record-end">{props.offlineReady ? "Ready" : "Getting ready"}</span>
-        </div>
-      </div>
+      <PhoneSettings connection={props.connection} offlineReady={props.offlineReady} />
       <div className="card card-pad stack gap-12">
         {demo ? (
           <>
