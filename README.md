@@ -27,11 +27,13 @@ The owner turns **Advanced mode** on or off in Settings › Register setup. Befo
 
 ## Opening, running and closing a shift
 
-In both modes, select a scheduled shift before opening the till. You can open up to 30 minutes before the scheduled start. The top of Sell and Till shows which shift the till is selling for.
+In both modes, select a scheduled shift before opening the till. You can open up to 30 minutes before the scheduled start. If the scheduled end has passed and its till never opened, look under **Till › Missed shifts**. The top of Sell and Till shows which shift the till is selling for.
 
 Opening asks for the cash float, counted by coin and bill (for example ₱5 × 15) or typed as a total, a count of every stock item, and the opening checklist. During the shift, anyone on the till logs expenses from the Till page: paid with cash from the till, which lowers the cash expected in the drawer, or out of their own pocket, which the report lists as owed back to them. Closing asks for the cash on hand, again by coin and bill or as a total, and what is left of each stock item. The server checks that coin counts add up to the amount sent.
 
 After closing, the shift report opens: sales by payment method, what sold, stock with start, used, left and the gap from expected, expenses, the cash reconciliation, and who to pay back. **Share** shares a PNG made on the phone. If file sharing is unavailable, use **Save**. **Copy** copies a plain version for a group chat. Past shifts on the Till page open the same report, and **Report so far** shows it before closing.
+
+Close the till before deleting its scheduled shift or removing its last assigned worker. Owners can count and close an existing stranded till under **Till › Tills needing closure**. If sync cannot verify access for an older offline queue, its records stay on the phone. An owner can restore the worker’s shift assignment so they can retry sync.
 
 The Shifts page's share button previews the schedule grouped by place and event. Each line shows the date, who works the shift, and a link to that shift. Use **Copy** to paste the preview into a chat. A shared schedule or shift opens after sign-in or email confirmation for teammates with access. Before sign-in, a shift link shows the business's name and branding, the date, hours, place, event and open seats (from `/api/links/shift/<code>`). It never shows pay, rent, quotas or who is on the shift. Team-only links are short enough to guess, so they show no preview. To invite someone new to the team, send them a business invitation from Settings › Team.
 

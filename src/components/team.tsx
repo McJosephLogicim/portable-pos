@@ -297,6 +297,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
   const canLeave = !props.demo && me && (!me.owner || team.some((m) => m.id === me.memberId && !m.primaryOwner));
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [editing, setEditing] = useState<Member | "new" | null>(props.startAdding ? "new" : null);
+  const canChangeName = !editing || editing === "new" || !editing.primaryOwner || editing.id === me?.memberId;
   // After an invite, open the new person so their link is ready to share.
   const invited = useRef<Set<string> | null>(null);
   useEffect(() => {
@@ -396,7 +397,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
             <MemberSheet
               key={editing === "new" ? "new" : editing.id}
               member={editing === "new" ? undefined : editing}
-              canChangeName={editing === "new" || !editing.primaryOwner || editing.id === props.state.me?.memberId}
+              canChangeName={canChangeName}
               canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
               link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
               currency={business.currency}
@@ -409,7 +410,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
                       return done;
                     }))
                   : act(
-                      { action: "member", memberId: editing.id, name: input.name, rate: input.rate, owner: input.owner },
+                      { action: "member", memberId: editing.id, ...(canChangeName ? { name: input.name } : {}), rate: input.rate, owner: input.owner },
                       "Saved " + input.name,
                     ).then(
                       async (done) =>

@@ -4,7 +4,7 @@ import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftSto
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
 import { changeMenuCategories, menuCategoryNames, type MenuCategoryChange } from "./menu-categories";
 import { demoPlan } from "./demo-plan";
-import { applyPlan, isOnShift, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
+import { applyPlan, checkOpenShiftRoster, isOnShift, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
 import { currencyDigits, defaultSettings, mergeShiftSettings } from "./settings";
 import type {
@@ -134,6 +134,7 @@ export interface WalkIn {
 }
 export interface Closing {
   action: "close";
+  shiftId?: string;
   countedCash: number;
   closingCount?: CashCount;
   closingStock?: Record<string, number>;
@@ -387,6 +388,7 @@ export function demoAction(
         ...state,
         shift: null,
         shifts: state.shifts.map((s) => (s.id === closed.id ? closed : s)),
+        bookings: state.bookings?.map((booking) => booking.id === closed.bookingId ? { ...booking, tillClosed: true } : booking),
         soldOut: [],
       };
     }
@@ -417,15 +419,15 @@ export function demoAction(
     default: {
       const me = state.me!;
       try {
-        const plan = applyPlan(
-          {
-            members: state.team ?? [],
-            organizers: state.organizers ?? [],
-            bookings: state.bookings ?? [],
-          },
-          me,
-          input,
-        );
+        const closedBookings = new Set(state.shifts.filter((shift) => shift.closedAt).map((shift) => shift.bookingId));
+        const before = {
+          members: state.team ?? [],
+          organizers: state.organizers ?? [],
+          bookings: (state.bookings ?? []).map((booking) => closedBookings.has(booking.id) ? { ...booking, tillClosed: true } : booking),
+        };
+        const plan = applyPlan(before, me, input);
+        checkOpenShiftRoster(before, plan, before.bookings.filter((booking) =>
+          state.shifts.some((shift) => !shift.closedAt && shift.bookingId === booking.id)));
         return {
           ...state,
           deletedRecord: input.action === "deleteBooking"

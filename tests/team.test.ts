@@ -574,6 +574,10 @@ test(
       const unchanged = await asBeaAtNight(ownerDetails);
       assert.equal(unchanged.team!.find((m) => m.id === originalOwner.id)?.name, originalOwner.name);
       assert.equal((await night(renameOwner)).me?.name, renameOwner.name);
+      const afterPay = await asBeaAtNight({ action: "member", memberId: originalOwner.id, rate: 500, pin: "9999" });
+      const savedOwner = afterPay.team!.find((person) => person.id === originalOwner.id)!;
+      assert.equal(savedOwner.name, renameOwner.name);
+      assert.equal(savedOwner.rate, 500);
       assert.equal((await night(ownerDetails)).me?.name, originalOwner.name);
 
       await night({ ...promote, owner: false });

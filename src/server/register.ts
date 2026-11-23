@@ -92,6 +92,7 @@ export async function runCommand(
   }
 
   const data = await getDb().transaction(async (tx) => {
+    let joinedExistingTill = false;
     const snapshot = async (access: Parameters<typeof baseSnapshot>[1]) => {
       const [completion] = await tx.select({ userId: completedOnboarding.userId })
         .from(completedOnboarding).where(eq(completedOnboarding.userId, actor.id));
@@ -99,6 +100,7 @@ export async function runCommand(
         ...(await baseSnapshot(tx, access, view)),
         businesses: await listBusinesses(tx, actor),
         onboardingComplete: Boolean(completion),
+        ...(joinedExistingTill ? { joinedExistingTill } : {}),
       };
     };
     if (cmd.action === "deleteBusiness") return snapshot(null);
@@ -145,6 +147,7 @@ export async function runCommand(
     ensure(access, "Create your business first.", 404);
     const { business, member } = access;
     const me = presentMe(member);
+    const primaryOwner = member.userId === business.ownerId;
     if (cmd.action === "completeOnboarding") {
       ensure(me.owner, "Only a business owner can finish this setup.", 403);
       await tx.insert(completedOnboarding).values({ userId: actor.id }).onConflictDoNothing();
@@ -156,7 +159,7 @@ export async function runCommand(
       tx.select().from(shifts).where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
     /** The open shift this phone is running, if any. */
     const tillShift = async (running?: Awaited<ReturnType<typeof openShifts>>) =>
-      activeTill(tx, running ?? await openShifts(), view, me.memberId);
+      activeTill(tx, running ?? await openShifts(), view, { id: me.memberId, primaryOwner });
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
       const deleted = await runPlan(tx, business, me, cmd as PlanCommand);
@@ -285,7 +288,7 @@ export async function runCommand(
           .where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "sync") {
-      await applyEvents(tx, business.id, business.currency, cmd.events);
+      await applyEvents(tx, business.id, business.currency, cmd.events, { memberId: member.id, deviceId: cmd.deviceId, primaryOwner });
     } else if (cmd.action === "open") {
       const { bookingId } = cmd;
       // Booths run side by side, each on its own phone. A shift already open on another
@@ -316,8 +319,10 @@ export async function runCommand(
         .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
       ensure(booking, "That scheduled shift was removed.", 404);
       ensure(isOnShift(booking, me.memberId), "You need to be on this shift to use its till.", 403);
-      if (joined) view.till = joined.id;
-      else {
+      if (joined) {
+        view.till = joined.id;
+        joinedExistingTill = true;
+      } else {
         const [closed] = await tx
           .select({ id: shifts.id })
           .from(shifts)
@@ -341,6 +346,7 @@ export async function runCommand(
           stock: stock && Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,
           openedBy: me.name || null,
+          tillDevices: { [member.id]: [cmd.deviceId] },
           bookingId,
           checklist: checklist.map((c) => c.text),
           businessId: business.id,
@@ -364,7 +370,7 @@ export async function runCommand(
           id: expense.id,
           shiftId,
           expense: { ...expense, shiftId, by },
-        })));
+        })), { memberId: member.id, deviceId: cmd.deviceId, primaryOwner });
       }
     } else if (cmd.action === "mergeStock") {
       const rows = await tx
@@ -411,11 +417,8 @@ export async function runCommand(
         await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "linkBooking") {
-      const [open] = await tx
-        .select()
-        .from(shifts)
-        .where(and(eq(shifts.businessId, business.id), eq(shifts.id, cmd.shiftId), isNull(shifts.closedAt)));
-      ensure(open, "The till changed. Open Shifts again to choose a shift.", 409);
+      const open = await tillShift();
+      ensure(open?.id === cmd.shiftId, "The till changed. Open Shifts again to choose a shift.", 409);
       if (open.bookingId === cmd.bookingId) return snapshot(access);
       ensure(!open.bookingId, "This till is already on another shift.", 409);
       const [booking] = await tx
@@ -441,12 +444,14 @@ export async function runCommand(
       await tx.update(shifts).set({ bookingId: booking.id }).where(eq(shifts.id, open.id));
     } else if (cmd.action === "reverse") {
       const [found] = await tx
-        .select({ sale: sales, closedAt: shifts.closedAt })
+        .select({ sale: sales, shift: shifts })
         .from(sales)
         .innerJoin(shifts, eq(sales.shiftId, shifts.id))
         .where(and(eq(sales.id, cmd.saleId), eq(shifts.businessId, business.id)));
       ensure(found, "That receipt isn't on this account anymore.", 404);
-      ensure(!found.closedAt, "Only sales on an open shift can be reversed.", 409);
+      ensure(!found.shift.closedAt, "Only sales on an open shift can be reversed.", 409);
+      ensure(me.owner || await activeTill(tx, [found.shift], { till: found.shift.id, deviceId: cmd.deviceId }, { id: member.id, primaryOwner }),
+        "Only the shift’s staff or a business owner can reverse a sale on its till.", 403);
       const { sale } = found;
       if (!sale.reversedAt) {
         await tx
@@ -462,8 +467,10 @@ export async function runCommand(
           and(eq(shifts.id, cmd.shiftId), eq(shifts.businessId, business.id)),
         );
       ensure(shift, "That shift isn't on this account anymore.", 404);
-      // Any phone can close. Sales still on other phones are added when they sync.
       if (!shift.closedAt) {
+        ensure(me.owner || await activeTill(tx, [shift], { till: shift.id, deviceId: cmd.deviceId }, { id: member.id, primaryOwner }),
+          "Only the shift’s staff or a business owner can close its till.", 403);
+        // Sales still on other authorized phones are added when they sync.
         const present = presentShift(shift, business.currency);
         let closingStock, closingCount;
         try {

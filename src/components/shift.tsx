@@ -112,10 +112,13 @@ function NoShift({
   // Booths other phones are running now. This phone can sell on one, or start its own.
   const running = new Map(state.shifts.flatMap((s) => (!s.closedAt && s.bookingId ? [[s.bookingId, s] as const] : [])));
   const memberId = state.me?.memberId;
-  const list = upcomingBookings(state).filter((b) => isOnShift(b, memberId));
+  const now = Date.now();
+  const list = upcomingBookings(state, -Infinity).filter((b) => isOnShift(b, memberId));
   const live = (state.bookings ?? []).filter((b) => running.has(b.id) && isOnShift(b, memberId));
-  const ready = list.filter((b) => !running.has(b.id) && !startProblem(b, zone));
-  const next = list.find((b) => !running.has(b.id) && startProblem(b, zone));
+  const scheduled = list.filter((b) => !running.has(b.id) && Date.parse(b.endsAt) > now);
+  const missed = list.filter((b) => !running.has(b.id) && Date.parse(b.endsAt) <= now).reverse();
+  const ready = scheduled.filter((b) => !startProblem(b, zone, now));
+  const next = scheduled.find((b) => startProblem(b, zone, now));
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
   const weekday = new Intl.DateTimeFormat("en", { timeZone: zone, weekday: "long" });
   const opensAt = next ? Date.parse(next.startsAt) - OPEN_EARLY : 0;
@@ -171,6 +174,16 @@ function NoShift({
           </div>
         </div>
       )}
+      {missed.length > 0 && (
+        <div className="stack gap-10">
+          <p className="group-title">Missed shifts</p>
+          <div className="card card-list">
+            {missed.map((b) => (
+              <BookingRow key={b.id} booking={b} zone={zone} onClick={() => onStart(b.id)} />
+            ))}
+          </div>
+        </div>
+      )}
       {!list.length && !live.length ? (
         <EmptyState
           pose="plan"
@@ -192,12 +205,16 @@ function OpenShift({
   booking,
   online,
   onOpen,
+  openTill,
+  onJoin,
   onBack,
 }: {
   state: RegisterState;
   booking: Booking;
   online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
+  openTill?: Shift;
+  onJoin?: (shiftId: string) => Promise<void>;
   onBack: () => void;
 }) {
   const business = state.business!;
@@ -205,6 +222,7 @@ function OpenShift({
   const [cash, setCash] = useState<CashValue>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmJoin, setConfirmJoin] = useState(false);
   const { items: tracked, limits } = stockModel(business.settings.stockItems, state.menu);
   const checklist = business.settings.checklist ?? [];
   const saved = Object.fromEntries(tracked.flatMap((i) => (i.onHand === undefined ? [] : [[i.id, i.onHand]])));
@@ -217,6 +235,20 @@ function OpenShift({
   const OpeningClipboard = value !== undefined && !unticked && !uncounted ? ClipboardCheck : ClipboardList;
   const celebrate = useCelebrate();
   const [photo, setPhoto] = useState<{ text: string; image?: string } | null>(null);
+  if (openTill && onJoin) {
+    return (
+      <div className="stack gap-18">
+        <h1 className="headline">This shift is already open</h1>
+        <div className="card card-list"><BookingRow booking={booking} zone={business.timeZone} /></div>
+        <p className="muted">The till is using the opening counts from the other device.</p>
+        <button type="button" className="btn block" aria-haspopup="dialog" disabled={!online} onClick={() => setConfirmJoin(true)}>
+          Join till
+        </button>
+        <button type="button" className="btn ghost compact" onClick={onBack}>Change shift</button>
+        {confirmJoin && <JoinTillSheet till={openTill} onClose={() => setConfirmJoin(false)} onJoin={onJoin} />}
+      </div>
+    );
+  }
   return (
     <div className="stack gap-18">
       <h1 className="headline">Open till</h1>
@@ -503,7 +535,7 @@ export function ShiftScreen({
 }) {
   const schedule = { ...scheduleProps, onEditExpense, onUnexpense };
   const { state, online, onSales } = schedule;
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [closedId, setClosedId] = useState<string | null>(null);
   const [pastShifts, setPastShifts] = useState(false);
@@ -516,9 +548,12 @@ export function ShiftScreen({
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
-  const startingBooking = openingId && !state.shifts.some((s) => s.bookingId === openingId)
+  const openingTill = openingId ? state.shifts.find((record) => record.bookingId === openingId) : undefined;
+  const startingBooking = openingId && !openingTill?.closedAt
     ? state.bookings?.find((b) => b.id === openingId && !b.tillClosed && isOnShift(b, state.me?.memberId))
     : undefined;
+  const recoveryTills = state.shifts.filter((record) => !record.closedAt && state.recoveryTillIds?.includes(record.id));
+  const closingTill = closing === shift?.id ? shift : recoveryTills.find((record) => record.id === closing);
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const replay = shift ? stockReplay(shift, state.sales) : undefined;
@@ -710,7 +745,7 @@ export function ShiftScreen({
                 className="btn secondary block"
                 {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the shift."))}
                 aria-haspopup="dialog"
-                onClick={() => setClosing(true)}
+                onClick={() => setClosing(shift.id)}
               >
                 Count drawer and close
               </button>
@@ -732,11 +767,29 @@ export function ShiftScreen({
             booking={startingBooking}
             online={online}
             onOpen={onOpen}
+            openTill={openingTill}
+            onJoin={onJoin}
             onBack={onBack}
           />
         ) : (
           <NoShift state={state} onStart={onStart} onJoin={onJoin} onSchedule={onSchedule} onGoMenu={onGoMenu} />
         )
+      )}
+      {recoveryTills.length > 0 && !startingBooking && (
+        <div className="stack gap-10">
+          <p className="group-title">Tills needing closure</p>
+          <div className="card card-list">
+            {recoveryTills.map((record) => (
+              <button key={record.id} type="button" className="list-row" aria-haspopup="dialog"
+                {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till."))}
+                onClick={() => setClosing(record.id)}>
+                <Wallet size={17} aria-hidden="true" />
+                <span className="grow">Close shift {record.number}</span>
+                <ChevronRight size={16} className="chev" />
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {bookingId && <ShiftDetailsSheet {...schedule} bookingId={bookingId} onClose={() => setBookingId(null)} />}
       {pastShifts && (
@@ -747,20 +800,24 @@ export function ShiftScreen({
       {pastTillId && (
         <ShiftDetailsSheet {...schedule} tillId={pastTillId} onClose={() => setPastTillId(null)} />
       )}
-      {closing && shift && totals && (
+      {closingTill && (
         <CloseSheet
-          key={shift.id}
-          shift={shift}
+          key={closingTill.id}
+          shift={closingTill}
           state={state}
-          expected={totals.expectedCash}
-          currency={currency}
-          expenseProps={expenseProps}
-          onClose={async (closing, pin) => {
-            await onClose(closing, pin);
-            buzz.success();
-            setClosedId(shift.id);
+          expected={shiftTotals(closingTill, state.sales, expenses).expectedCash}
+          currency={shiftCurrency(closingTill, business)}
+          expenseProps={closingTill.id === shift?.id ? expenseProps : {
+            ...expenseProps,
+            expenses: expenses.filter((expense) => expense.shiftId === closingTill.id && !expense.voidedAt),
+            disabled: true,
           }}
-          onDismiss={() => setClosing(false)}
+          onClose={async (closing, pin) => {
+            await onClose({ ...closing, shiftId: closingTill.id }, pin);
+            buzz.success();
+            setClosedId(closingTill.id);
+          }}
+          onDismiss={() => setClosing(null)}
         />
       )}
       {linking && (

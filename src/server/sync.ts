@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { makeSale, priceLines, shiftTotals, stockReplay, totalLines } from "../lib/domain";
 import type { Shift } from "../lib/types";
+import { isOnShift } from "../lib/team";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
-import { expenses, sales, shifts, syncedEvents } from "./schema";
+import { bookings, expenses, sales, shifts, syncedEvents } from "./schema";
 import { presentExpense, presentSale, presentShift } from "./snapshot";
 
 /** Price offline receipts using the menu the device had when it checked out. */
@@ -68,6 +69,7 @@ export async function applyEvents(
   businessId: string,
   currency: string,
   events: InputEvent[],
+  recorder: { memberId: string; deviceId: string; primaryOwner: boolean },
 ) {
   if (!events.length) return;
   const shiftId = events[0].shiftId;
@@ -80,6 +82,16 @@ export async function applyEvents(
     .from(shifts)
     .where(and(eq(shifts.id, shiftId), eq(shifts.businessId, businessId)));
   ensure(shift, "That shift isn't on this account anymore.", 409);
+  const knownDevice = shift.tillDevices?.[recorder.memberId]?.includes(recorder.deviceId);
+  if (!knownDevice) {
+    const bookingId = shift.bookingId;
+    const [booking] = bookingId ? await tx.select({ staff: bookings.staff }).from(bookings)
+      .where(and(eq(bookings.businessId, businessId), eq(bookings.id, bookingId))) : [];
+    // Existing offline queues may predate device registration. Current assignees can still sync them.
+    const legacyOwner = !booking && !shift.tillDevices && recorder.primaryOwner && recorder.deviceId === shift.deviceId;
+    ensure(isOnShift(booking, recorder.memberId) || legacyOwner,
+      "This phone couldn’t verify till access. Unsynced records are still saved here. Ask an owner to restore your shift assignment, then retry sync.", 403);
+  }
   const current = presentShift(shift, currency);
   const closed = Boolean(current.closedAt);
   const unavailable = new Set(shift.soldOut);

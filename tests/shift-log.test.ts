@@ -367,7 +367,8 @@ test(
     assert.equal(next.shift!.number, 2);
     assert.equal(next.shift!.bookingId, other);
     await cmd({ action: "close", shiftId: next.shift!.id, countedCash: 0, deviceId, pin });
-    const missed = await at(-32, -26);
+    const missed = await at(-70 * 24, -70 * 24 + 6);
+    assert.ok((await cmd({ action: "bootstrap" })).bookings?.some((booking) => booking.id === missed));
     const late = await open(missed);
     assert.equal(late.shift!.bookingId, missed);
     assert.ok(late.shift!.openedAt > late.bookings!.find((booking) => booking.id === missed)!.endsAt);

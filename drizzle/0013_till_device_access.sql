@@ -1,0 +1,1 @@
+ALTER TABLE "portable_pos"."shifts" ADD COLUMN "till_devices" jsonb;

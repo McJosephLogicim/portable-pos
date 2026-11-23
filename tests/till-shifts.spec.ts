@@ -57,6 +57,7 @@ async function seedTill(
             state.me!.owner = person.owner = staffAs !== "member";
             person.primaryOwner = staffAs === "owner";
             second.staff = [{ memberId: "demo-bea", name: "Bea Santos", role: "cashier" }];
+            closed.endsAt = "2026-11-21T06:00:00Z";
           }
           if (rankedAs) {
             const names = ["Mika Reyes", "Bea Cruz", "Paolo Tan", "Jules Lim", "Sam Flores", "Ana Cruz", "Tess Ong", "Lia Uy", "Marco Go", "Nico Lao"];

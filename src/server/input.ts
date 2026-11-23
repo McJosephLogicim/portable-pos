@@ -251,7 +251,7 @@ export const planCommand = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("member"),
     memberId: z.uuid(),
-    name,
+    name: name.optional(),
     rate: amount,
     owner: z.boolean().optional(),
     pin: ownerPin,

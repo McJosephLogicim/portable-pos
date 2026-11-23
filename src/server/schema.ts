@@ -83,6 +83,7 @@ export const shifts = register
       checklist: jsonb().$type<string[]>(),
       closingStock: jsonb("closing_stock").$type<Record<string, number>>(),
       openedBy: text("opened_by"),
+      tillDevices: jsonb("till_devices").$type<Record<string, string[]>>(),
       openingCount: jsonb("opening_count").$type<Record<string, number>>(),
       closingCount: jsonb("closing_count").$type<Record<string, number>>(),
       usedStock: jsonb("used_stock").$type<Record<string, number>>(),

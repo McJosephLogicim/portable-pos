@@ -90,9 +90,10 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
   const end = scheduled ? entry.endsAt : entry.closedAt;
   const now = Date.now();
   const running = till && !till.closedAt;
-  const closed = till ? Boolean(till.closedAt) : Boolean(booking?.tillClosed || (end && Date.parse(end) <= now));
+  const tillClosed = Boolean(till?.closedAt || booking?.tillClosed);
+  const closed = tillClosed || (!till && Boolean(end && Date.parse(end) <= now));
   const mine = booking?.staff.some((s) => s.memberId === state.me?.memberId);
-  const open = booking ? seatsOpen(booking) : 0;
+  const open = booking && !tillClosed ? seatsOpen(booking) : 0;
   const profit = scheduled && closed && sales !== undefined ? bookingProfit({ ...entry, sales, expenses }) : null;
   const currency = shiftCurrency(till, business);
   return (
@@ -113,7 +114,7 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
             <span className="row booking-meta gap-6 faces">
               {booking.staff.slice(0, 4).map((s) => <Avatar key={s.memberId} id={s.memberId} name={s.name} small />)}
               {Array.from({ length: Math.min(3, open) }, (_, i) => <span key={i} className="avatar small seat" aria-hidden="true" />)}
-              <span className="label">{mine ? "You're on" : open ? `${open} open` : "Full"}</span>
+              <span className="label">{tillClosed ? "Closed" : mine ? "You're on" : open ? `${open} open` : "Full"}</span>
             </span>
           )}
           {!booking && till?.openedBy && <span className="label ellipsis">{till.openedBy}</span>}

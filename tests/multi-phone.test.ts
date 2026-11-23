@@ -40,6 +40,9 @@ test(
     const foreignTill = { action: "bootstrap", deviceId: randomUUID(), till: shift.id };
     assert.equal((await outsider(foreignTill)).shift, null);
     assert.equal((await outsider({ action: "bootstrap" })).shift, null);
+    await assert.rejects(outsider({ action: "sync", deviceId: foreignTill.deviceId, events: [
+      { type: "availability", id: randomUUID(), shiftId: shift.id, targetId: "tea", soldOut: false },
+    ] }), { status: 403 });
     await assert.rejects(
       outsider({ action: "open", deviceId: foreignTill.deviceId, till: null, bookingId, openingCash: 0 }),
       { status: 403 },
@@ -53,6 +56,7 @@ test(
     assert.equal((await outsider(foreignTill)).shift?.id, shift.id);
     await cmd({ action: "leave", bookingId, memberId: invite.id, pin });
     assert.equal((await outsider(foreignTill)).shift, null);
+    await assert.rejects(cmd({ action: "leave", bookingId, memberId: opened.me!.memberId, pin }), /last person/);
 
     // The same assigned account on a fresh phone sees the open shift before picking a till.
     const discovery = await cmd({ action: "bootstrap", deviceId: phoneB, till: null });
@@ -68,6 +72,7 @@ test(
       expenses: [{ id: randomUUID(), createdAt: new Date().toISOString(), label: "Extra float supplies", amount: 500, source: "till" }],
     });
     assert.equal(stalePhone.shift!.id, shift.id);
+    assert.equal(stalePhone.joinedExistingTill, true);
     assert.equal(stalePhone.shift!.openingCash, 50000);
     assert.deepEqual(stalePhone.shift!.stock, { tea: 3 });
     assert.deepEqual(stalePhone.expenses, []);
@@ -90,7 +95,9 @@ test(
     const b = [sale(shift, 1, "gcash"), sale(shift, 2)];
     const sync = (deviceId: string, events: RegisterEvent[]) => cmd({ action: "sync", deviceId, events });
     await sync(phoneA, a);
-    const both = await sync(phoneB, b);
+    // A previously authorized device can settle a receipt after its worker leaves the roster.
+    await outsider({ action: "sync", deviceId: foreignTill.deviceId, events: [b[0]] });
+    const both = await sync(phoneB, [b[1]]);
     const numbers = both.sales.filter((s) => s.shiftId === shift.id).map((s) => s.sequence).sort();
     assert.deepEqual(numbers, [1, 2, 3, 4]);
     // Retrying a batch never doubles it.
@@ -122,6 +129,7 @@ test(
     });
     assert.equal(closed.shift, null);
     assert.equal(closed.shifts[0].difference, 10000);
+    await assert.rejects(outsider({ action: "join", bookingId, role: "cashier" }), /already closed/);
 
     // The late sale lands on the closed shift and the drawer adds up again.
     const settled = await sync(phoneA, [late]);

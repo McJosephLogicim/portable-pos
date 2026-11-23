@@ -35,7 +35,7 @@ export function isOnShift(booking: Pick<Booking, "staff"> | undefined, memberId:
 
 export type PlanCommand =
   | { action: "invite"; name: string; email: string; rate: number }
-  | { action: "member"; memberId: string; name: string; rate: number; owner?: boolean }
+  | { action: "member"; memberId: string; name?: string; rate: number; owner?: boolean }
   | { action: "removeMember"; memberId: string }
   | { action: "leaveTeam"; businessId: string; memberId: string }
   | { action: "organizers"; organizers: Organizer[] }
@@ -189,7 +189,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     case "member": {
       const member = members.find((m) => m.id === cmd.memberId);
       check(member, "That person left the team.", 404);
-      const name = cmd.name.trim();
+      const name = cmd.name?.trim() ?? member.name;
       check(!member.primaryOwner || member.id === me.memberId || name === member.name, "Only the primary owner can change their name.", 403);
       const owner = cmd.owner ?? member.owner;
       if (owner !== member.owner) {
@@ -305,6 +305,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
     }
     case "join": {
       const booking = find(cmd.bookingId);
+      check(!booking.tillClosed, "This shift has already closed.", 409);
       check(Date.parse(booking.endsAt) > now, "This shift is over.", 409);
       if (booking.staff.some((s) => s.memberId === me.memberId)) return plan;
       check(booking.staff.length < booking.seats, "This shift just filled up.", 409);
@@ -324,6 +325,22 @@ export function bookingIds(cmd: PlanCommand): string[] {
   if (cmd.action === "bulkBookings") return cmd.bookings.map((b) => b.id);
   if ("bookingId" in cmd) return [cmd.bookingId];
   return [];
+}
+
+export function checkOpenShiftRoster(before: Plan, after: Plan, openBookings: Pick<Booking, "id" | "staff">[]) {
+  const joinedBefore = new Set(before.members.filter((member) => member.joined).map((member) => member.id));
+  const joinedAfter = new Set(after.members.filter((member) => member.joined).map((member) => member.id));
+  const edited = new Set(before.bookings.map((booking) => booking.id));
+  const remaining = new Map(after.bookings.map((booking) => [booking.id, booking]));
+  for (const booking of openBookings) {
+    const next = edited.has(booking.id) ? remaining.get(booking.id) : booking;
+    check(next, "Close the till before deleting this shift.", 409);
+    check(
+      !booking.staff.some((slot) => joinedBefore.has(slot.memberId)) || next.staff.some((slot) => joinedAfter.has(slot.memberId)),
+      "Assign another teammate or close the till before removing the last person on this shift.",
+      409,
+    );
+  }
 }
 
 /** What a teammate who isn't the owner may see. */

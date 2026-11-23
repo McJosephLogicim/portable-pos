@@ -1,4 +1,4 @@
-import { and, asc, between, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sum } from "drizzle-orm";
+import { and, asc, between, desc, eq, gte, inArray, isNotNull, isNull, lt, notExists, or, sql, sum } from "drizzle-orm";
 import { legacyStockUses } from "../lib/domain";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
 import { stockModel, withoutMenuCosts, withoutStockCosts } from "../lib/stock";
@@ -50,17 +50,22 @@ export async function activeTill(
   tx: Transaction,
   running: (typeof shifts.$inferSelect)[],
   view: { till?: string | null; deviceId?: string },
-  memberId: string,
+  member: { id: string; primaryOwner: boolean },
   knownBookings: Pick<typeof bookings.$inferSelect, "id" | "staff">[] = [],
 ) {
   const shift = view.till !== undefined
     ? running.find((row) => row.id === view.till)
     : running.length === 1 ? running[0] : running.find((row) => row.deviceId === view.deviceId);
   if (!shift) return;
-  if (!shift.bookingId) return view.till === undefined || shift.deviceId === view.deviceId ? shift : undefined;
+  if (!shift.bookingId) {
+    const deviceId = view.deviceId;
+    if (deviceId === shift.deviceId && (shift.tillDevices?.[member.id]?.includes(deviceId) ||
+      (!shift.tillDevices && member.primaryOwner))) return shift;
+    return;
+  }
   const booking = knownBookings.find((row) => row.id === shift.bookingId) ?? (await tx.select({ staff: bookings.staff })
     .from(bookings).where(and(eq(bookings.businessId, shift.businessId), eq(bookings.id, shift.bookingId))))[0];
-  if (isOnShift(booking, memberId)) return shift;
+  if (isOnShift(booking, member.id)) return shift;
 }
 
 export function presentExpense(row: typeof expenses.$inferSelect): Expense {
@@ -241,14 +246,33 @@ export async function snapshot(
   if (!business) return empty;
   const me = presentMe(member ?? access.member);
 
+  const running = await tx.select().from(shifts)
+    .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)))
+    .orderBy(desc(shifts.number));
+  const closed = await tx.select().from(shifts)
+    .where(and(eq(shifts.businessId, business.id), isNotNull(shifts.closedAt)))
+    .orderBy(desc(shifts.number))
+    .limit(30);
   // Two months back for the books, and everything ahead.
   const since = new Date(Date.now() - 62 * 86400000).toISOString();
-  const bookingRows = await tx
+  const recentBookings = await tx
     .select()
     .from(bookings)
     .where(and(eq(bookings.businessId, business.id), gte(bookings.endsAt, since)))
     .orderBy(bookings.startsAt)
     .limit(1000);
+  const recentTillBookingIds = [...running, ...closed].flatMap((shift) => shift.bookingId ? [shift.bookingId] : []);
+  const otherBookings = await tx.select().from(bookings).where(and(eq(bookings.businessId, business.id), or(
+    inArray(bookings.id, recentTillBookingIds),
+    and(
+      lt(bookings.endsAt, since),
+      sql`${bookings.staff} @> ${JSON.stringify([{ memberId: me.memberId }])}::jsonb`,
+      notExists(tx.select({ id: shifts.id }).from(shifts)
+        .where(and(eq(shifts.businessId, business.id), eq(shifts.bookingId, bookings.id)))),
+    ),
+  )));
+  const bookingsById = new Map([...recentBookings, ...otherBookings].map((booking) => [booking.id, booking]));
+  const bookingRows = [...bookingsById.values()];
   const bookingIds = bookingRows.map((booking) => booking.id);
   const closedBookings = new Set(bookingIds.length ? (await tx
     .selectDistinct({ bookingId: shifts.bookingId })
@@ -323,20 +347,21 @@ export async function snapshot(
   const currentSettings = business.settings ?? defaultSettings(currency);
   const settings = me.owner ? currentSettings : withoutStockCosts(currentSettings);
 
-  // Every booth still open, plus the last 30 closed.
-  const running = await tx
-    .select()
-    .from(shifts)
-    .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)))
-    .orderBy(desc(shifts.number));
-  const closed = await tx
-    .select()
-    .from(shifts)
-    .where(and(eq(shifts.businessId, business.id), isNotNull(shifts.closedAt)))
-    .orderBy(desc(shifts.number))
-    .limit(30);
   const recent = [...running, ...closed].sort((a, b) => b.number - a.number);
-  const active = await activeTill(tx, running, view, me.memberId, bookingRows);
+  const active = await activeTill(tx, running, view, { id: me.memberId, primaryOwner: access.member.userId === business.ownerId }, bookingRows);
+  // Remember the phone before checkout can go offline. Keep its existing receipts syncable if staffing changes.
+  if (active?.bookingId && view.deviceId) {
+    const devices = active.tillDevices?.[me.memberId] ?? [];
+    if (!devices.includes(view.deviceId)) {
+      await tx.update(shifts).set({
+        tillDevices: { ...active.tillDevices, [me.memberId]: [...devices, view.deviceId] },
+      }).where(eq(shifts.id, active.id));
+    }
+  }
+  const joinedIds = new Set(plan.team.filter((person) => person.joined).map((person) => person.id));
+  const recoveryTillIds = me.owner ? running.filter((shift) => shift.id !== active?.id &&
+    (!shift.bookingId || !bookingsById.get(shift.bookingId)?.staff.some((slot) => joinedIds.has(slot.memberId))))
+    .map((shift) => shift.id) : [];
   const history = recent.length
     ? await receiptsPage(
         tx,
@@ -351,6 +376,7 @@ export async function snapshot(
     menu: me.owner ? menu : withoutMenuCosts(menu),
     shift: active ? presentShift(active, currency) : null,
     soldOut: active?.soldOut ?? [],
+    recoveryTillIds,
     shifts: recent.map((row) =>
       row.closedAt ? closedShift(row, currency) : presentShift(row, currency),
     ),

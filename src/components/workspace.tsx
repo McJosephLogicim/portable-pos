@@ -575,7 +575,7 @@ export function Workspace() {
           if (s.cart.length)
             throw Error("Finish or clear the current order before continuing.");
         }
-        const closingId = input.action === "close" ? s.shift?.id : undefined;
+        const closingId = input.action === "close" && (!input.shiftId || input.shiftId === s.shift?.id) ? s.shift?.id : undefined;
         if (closingId) closingHere.current = true;
         if (closingId) show(key, await beginClose(key, closingId));
         try {
@@ -588,9 +588,10 @@ export function Workspace() {
                   till: s.shift?.id ?? null,
                   ...(closingId ? { shiftId: closingId } : {}),
                 });
-          const { inviteDelivery, deletedRecord, ...snapshot } = data;
+          const { inviteDelivery, deletedRecord, joinedExistingTill, ...snapshot } = data;
           show(key, await mergeServer(key, snapshot));
           setSyncError(null);
+          if (joinedExistingTill) setNotice("This shift was already open. You joined its till using the saved opening counts.");
           if (deletedRecord && active.current === key) {
             const item = deletedRecord.kind === "menuItem";
             const undoNotice: UndoNotice = {

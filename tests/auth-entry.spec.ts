@@ -136,9 +136,9 @@ test("a missed shift can be started and joined from another phone by members, ow
   };
 
   await signIn(page);
-  await showMissedShift(page);
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await expect(page.getByText("Missed shifts", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Saturday market/ }).click();
-  await page.getByRole("dialog", { name: "Saturday market" }).getByRole("button", { name: "Start shift" }).click();
   await page.getByRole("button", { name: "Type the total" }).click();
   await page.getByRole("textbox", { name: "Starting cash" }).fill("100");
   await page.getByRole("button", { name: "Open till", exact: true }).click();
@@ -181,6 +181,72 @@ test("a missed shift can be started and joined from another phone by members, ow
     await unassigned.close();
   }
   expect(deviceIds.size).toBe(5);
+});
+
+test("a phone opening after another phone uses the saved cash and shows the handoff", async ({ page }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app with test Supabase settings and POS_TEST_MOCK_AUTH=1.");
+  const initial = teamSnapshot();
+  const business = initial.business!;
+  business.timeZone = "Asia/Manila";
+  business.settings.checklist = [];
+  initial.menu = [{ id: "tea", name: "Tea", category: "Drinks", price: 10000, groups: [] }];
+  const [booking] = initial.bookings!;
+  booking.startsAt = "2026-11-20T01:00:00Z";
+  booking.endsAt = "2026-11-20T03:00:00Z";
+  booking.staff = [{ memberId: initial.me!.memberId, name: initial.me!.name, role: "cashier" }];
+  const existing = {
+    ...newShift("other-phone", business.id, 1, 1000, initial.menu, { ...business.settings, currency: business.currency }),
+    bookingId: booking.id,
+  };
+  await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
+  await mockAuth(page);
+  await page.route("**/api/pos", async (route) => {
+    const command = route.request().postDataJSON();
+    if (command.action !== "open") return route.fulfill({ json: initial });
+    expect(command.openingCash).toBe(2500);
+    return route.fulfill({ json: { ...initial, shift: existing, shifts: [existing], joinedExistingTill: true } });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /Saturday market/ }).click();
+  await page.getByRole("button", { name: "Type the total" }).click();
+  await page.getByRole("textbox", { name: "Starting cash" }).fill("25");
+  await page.getByRole("button", { name: "Open till", exact: true }).click();
+  await expect(page.getByText("This shift was already open. You joined its till using the saved opening counts.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
+});
+
+test("an owner can close a stranded till without joining it", async ({ page }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app with test Supabase settings and POS_TEST_MOCK_AUTH=1.");
+  const initial = teamSnapshot();
+  const till = newShift("other-phone", initial.business!.id, 8, 1000, initial.menu, {
+    currency: "PHP", payments: initial.business!.settings.payments, discounts: [], receiptNote: "",
+  });
+  await mockAuth(page);
+  await page.route("**/api/pos", async (route) => {
+    const command = route.request().postDataJSON();
+    if (command.action === "close") {
+      expect(command).toMatchObject({ till: null, shiftId: till.id, countedCash: 1000, pin: "1234" });
+      return route.fulfill({ json: { ...initial, shifts: [{ ...till, closedAt: new Date().toISOString(), countedCash: 1000 }], recoveryTillIds: [] } });
+    }
+    return route.fulfill({ json: { ...initial, shifts: [till], recoveryTillIds: [till.id] } });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: "Close shift 8", exact: true }).click();
+  const close = page.getByRole("dialog", { name: "Close shift 8", exact: true });
+  await close.getByRole("button", { name: "Type the total" }).click();
+  await close.getByRole("textbox", { name: "Cash on hand" }).fill("10");
+  await close.getByRole("button", { name: "Close shift and see report" }).click();
+  const pin = page.getByRole("dialog", { name: "Owner PIN" });
+  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
+  await pin.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByRole("dialog", { name: "Shift 8 closed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close shift 8", exact: true })).toHaveCount(0);
 });
 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {

@@ -356,6 +356,8 @@ export interface Bootstrap {
   bookings?: Booking[];
   menu: Product[];
   shift: Shift | null;
+  /** Open tills without an accessible roster, for owner-assisted closing. */
+  recoveryTillIds?: string[];
   soldOut: string[];
   sales: Sale[];
   shifts: Shift[];
@@ -369,6 +371,7 @@ export type DeletedRecord =
   | { kind: "booking"; booking: Booking };
 
 export type RegisterResponse = Bootstrap & {
+  joinedExistingTill?: boolean;
   inviteDelivery?: "sent" | "failed" | "unavailable";
   deletedRecord?: DeletedRecord;
 };

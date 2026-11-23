@@ -6,7 +6,7 @@ import { makeSale } from "../src/lib/domain";
 import type { RegisterEvent, Tender } from "../src/lib/types";
 import { authenticatedOwner } from "../src/server/auth";
 import { getDb } from "../src/server/db";
-import { shifts } from "../src/server/schema";
+import { bookings, shifts } from "../src/server/schema";
 import { historyPage } from "../src/server/snapshot";
 import { runCommand } from "../src/server/register";
 import { shiftNow } from "./schedule";
@@ -31,7 +31,8 @@ test(
     const coffee = { ...tea, id: "coffee", name: "Coffee", costing: { sku: "COFFEE" } };
     await call({ action: "menu", menu: [tea, coffee] });
     const bookingId = await shiftNow(call, pin);
-    const opened = await call({ action: "open", openingCash: 0, deviceId: randomUUID(), bookingId });
+    const deviceId = randomUUID();
+    const opened = await call({ action: "open", openingCash: 0, deviceId, bookingId });
 
     const removed = await call({ action: "removeMenuItem", productId: tea.id });
     assert.deepEqual(removed.menu, [coffee]);
@@ -46,17 +47,36 @@ test(
     assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
     await assert.rejects(call({ ...restoreItem, item: { ...tea, price: 350 } }), { status: 409 });
 
+    await assert.rejects(call({ action: "deleteBooking", bookingId }), /Close the till before deleting/);
+    await call({ action: "close", shiftId: opened.shift!.id, deviceId, countedCash: 0 });
     const deleted = await call({ action: "deleteBooking", bookingId });
     assert.equal(deleted.bookings!.some((entry) => entry.id === bookingId), false);
     assert.equal(deleted.deletedRecord?.kind, "booking");
     const booking = deleted.deletedRecord.booking;
     const restoreShift = { action: "restoreBooking", booking };
     const restored = await call(restoreShift);
-    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0, expenses: 0 });
-    assert.equal(restored.shift!.id, opened.shift!.id);
-    assert.equal(restored.shift!.bookingId, bookingId);
+    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0, expenses: 0, tillClosed: true });
+    assert.equal(restored.shifts.find((shift) => shift.id === opened.shift!.id)?.bookingId, bookingId);
     assert.equal((await call(restoreShift)).bookings!.filter((entry) => entry.id === bookingId).length, 1);
     await assert.rejects(call({ ...restoreShift, booking: { ...booking, seats: 3 } }), { status: 409 });
+
+    const orphanBookingId = await shiftNow(call, pin);
+    const orphan = (await call({ action: "open", openingCash: 200, deviceId, bookingId: orphanBookingId })).shift!;
+    // Recreate a stranded till left by the previous release.
+    await getDb().update(shifts).set({ tillDevices: null }).where(eq(shifts.id, orphan.id));
+    await getDb().delete(bookings).where(eq(bookings.id, orphanBookingId));
+    const recovery = await call({ action: "bootstrap", deviceId, till: null });
+    assert.equal(recovery.shift, null);
+    assert.deepEqual(recovery.recoveryTillIds, [orphan.id]);
+    const receipt = makeSale({
+      id: randomUUID(), shift: orphan, sequence: 1, soldOut: [], tender: "cash", received: 250,
+      cart: [{ productId: tea.id, quantity: 1, optionIds: [] }], createdAt: orphan.openedAt,
+    });
+    const settled = await call({ action: "sync", deviceId, events: [{ type: "sale", id: receipt.id, shiftId: orphan.id, sale: receipt }] });
+    assert.ok(settled.sales.some((sale) => sale.id === receipt.id));
+    const recovered = await call({ action: "close", deviceId, shiftId: orphan.id, countedCash: 450 });
+    assert.deepEqual(recovered.recoveryTillIds, []);
+    assert.equal(recovered.shifts.find((shift) => shift.id === orphan.id)?.difference, 0);
   },
 );
 
@@ -139,7 +159,7 @@ test(
     const other = { ...booking, id: randomUUID() };
     await cmd({ action: "booking", booking, pin });
     await cmd({ action: "booking", booking: other, pin });
-    const link = { action: "linkBooking", shiftId: shift.id, bookingId: booking.id };
+    const link = { action: "linkBooking", shiftId: shift.id, bookingId: booking.id, deviceId };
     await assert.rejects(cmd({ ...link, shiftId: randomUUID() }), { status: 409 });
     await assert.rejects(cmd({ ...link, bookingId: randomUUID() }), { status: 404 });
     const [linked, retried] = await Promise.all([cmd(link), cmd(link)]);

@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { applyPlan, bookingIds, PlanError, type PlanCommand } from "../lib/team";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { applyPlan, bookingIds, checkOpenShiftRoster, PlanError, type PlanCommand } from "../lib/team";
 import type { Booking, BusinessSummary, Me, Member } from "../lib/types";
 import type { Transaction } from "./db";
 import { RegisterError } from "./errors";
-import { bookings, businesses, members } from "./schema";
+import { bookings, businesses, members, shifts } from "./schema";
 
 /** The signed-in person. Email is set only once Supabase has confirmed it. */
 export interface Actor {
@@ -223,6 +223,13 @@ export async function runPlan(
       : []),
   ];
   for (const row of rows) loaded.set(row.id, presentBooking(row));
+  if (cmd.action === "join") {
+    const booking = loaded.get(cmd.bookingId);
+    const [closed] = await tx.select({ id: shifts.id }).from(shifts).where(and(
+      eq(shifts.businessId, business.id), eq(shifts.bookingId, cmd.bookingId), isNotNull(shifts.closedAt),
+    )).limit(1);
+    if (booking && closed) booking.tillClosed = true;
+  }
   if (me.owner && cmd.action === "restoreBooking" &&
     isDeepStrictEqual(loaded.get(cmd.booking.id), { ...cmd.booking, rent: cmd.booking.rent ?? 0 }))
     return;
@@ -234,6 +241,12 @@ export async function runPlan(
   let after;
   try {
     after = applyPlan(before, me, cmd);
+    if (["booking", "deleteBooking", "assign", "leave", "leaveTeam", "removeMember"].includes(cmd.action)) {
+      const openBookings = await tx.select({ id: bookings.id, staff: bookings.staff }).from(shifts)
+        .innerJoin(bookings, and(eq(bookings.id, shifts.bookingId), eq(bookings.businessId, shifts.businessId)))
+        .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt), ids.length ? inArray(bookings.id, ids) : undefined));
+      checkOpenShiftRoster(before, after, openBookings);
+    }
   } catch (error) {
     if (error instanceof PlanError) throw new RegisterError(error.status, error.message);
     throw error;

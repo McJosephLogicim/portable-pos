@@ -406,7 +406,6 @@ function BookingSheet({
   const over = Date.parse(b.endsAt) <= Date.now();
   const p = me.owner ? bookingProfit({ ...b, sales: sales ?? 0, expenses }) : null;
   const team = state.team ?? [];
-  const joinable = !mine && open > 0 && !over;
   const [joining, setJoining] = useState(false);
   const [joiningTill, setJoiningTill] = useState<Shift | null>(null);
   const [roleFor, setRoleFor] = useState<StaffSlot | null>(null);
@@ -419,6 +418,7 @@ function BookingSheet({
   const localTill = state.shift && !state.shift.closedAt ? state.shift : null;
   const runningTill = till && !till.closedAt ? till : null;
   const tillClosed = !runningTill && (b.tillClosed || Boolean(till?.closedAt));
+  const joinable = !mine && open > 0 && !over && !tillClosed;
   const tillBlock = !online ? OFFLINE : localTill ? `Close shift ${localTill.number} on this phone first.` : null;
   const { onStart, onJoin } = props;
   const tillButton = `btn block${joinable ? " secondary" : ""}`;
@@ -596,7 +596,7 @@ function BookingSheet({
                 </Row>
               );
             })}
-            {Array.from({ length: open }, (_, i) => (
+            {Array.from({ length: tillClosed ? 0 : open }, (_, i) => (
               <div className="list-row" key={"open" + i}>
                 <span className="avatar seat" aria-hidden="true" />
                 <span className="grow g">Open seat</span>
@@ -612,7 +612,7 @@ function BookingSheet({
                 )}
               </div>
             ))}
-            {me.owner && !open && (
+            {me.owner && (tillClosed || !open) && (
               <button type="button" className="list-row" aria-label="Add someone" disabled={!online || busy} onClick={() => setPicking({})}>
                 <span className="avatar seat" aria-hidden="true">
                   <Plus size={16} />
@@ -733,7 +733,7 @@ function BookingSheet({
           till={till}
           shareText={() => scheduledShiftText(b, business, location.origin)}
           busy={busy}
-          onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
+          onDelete={me.owner && !runningTill ? () => setConfirmDelete(true) : undefined}
           deleteDisabled={!online}
         />
       </Sheet>
@@ -1732,6 +1732,7 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
   );
   const salesOf = useBookingSales(state, demo);
   const expensesOf = useBookingExpenses(state);
+  const closedBookings = useMemo(() => new Set(state.shifts.filter((shift) => shift.closedAt).map((shift) => shift.bookingId)), [state.shifts]);
 
   const marks = useMemo(() => {
     const map = new Map<string, { count: number; open: boolean; mine: boolean }>();
@@ -1739,15 +1740,15 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
       const day = dayOf(b.startsAt, zone);
       const m = map.get(day) ?? { count: 0, open: false, mine: false };
       m.count++;
-      if (seatsOpen(b) > 0 && Date.parse(b.endsAt) > Date.now()) m.open = true;
+      if (!b.tillClosed && !closedBookings.has(b.id) && seatsOpen(b) > 0 && Date.parse(b.endsAt) > Date.now()) m.open = true;
       if (b.staff.some((s) => s.memberId === me?.memberId)) m.mine = true;
       map.set(day, m);
     }
     return map;
-  }, [bookings, zone, me?.memberId]);
+  }, [bookings, closedBookings, zone, me?.memberId]);
 
   const upcoming = bookings.filter((b) => Date.parse(b.endsAt) > Date.now());
-  const openSeats = upcoming.filter((b) => seatsOpen(b) > 0 && !b.staff.some((s) => s.memberId === me?.memberId));
+  const openSeats = upcoming.filter((b) => !b.tillClosed && !closedBookings.has(b.id) && seatsOpen(b) > 0 && !b.staff.some((s) => s.memberId === me?.memberId));
   const mineNext = upcoming.filter((b) => b.staff.some((s) => s.memberId === me?.memberId));
   const list =
     filter === "open" ? openSeats : filter === "mine" ? mineNext : bookings.filter((b) => dayOf(b.startsAt, zone) === selected);
