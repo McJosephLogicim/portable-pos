@@ -5,9 +5,10 @@ import { blocked } from "@/lib/reject";
 import { expenseSourceLabel } from "@/lib/report";
 import type { Expense, ExpenseDeduction, ExpenseInput, PaymentMethod, RegisterState, TeamRosterMember } from "@/lib/types";
 import { AddButton } from "./add-menu";
-import { SuggestInput } from "./combobox";
-import { FilterSelect } from "./filter-select";
+import { SuggestInput, type Suggestion } from "./combobox";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
+import { Avatar } from "./team";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -41,6 +42,7 @@ function ExpenseSheet({
   const [label, setLabel] = useState(expense?.label ?? "");
   const [amount, setAmount] = useState(expense ? amountText(expense.amount, currency) : "");
   const [source, setSource] = useState<Expense["source"]>(expense?.source ?? "till");
+  const [sourceQuery, setSourceQuery] = useState<string | null>(null);
   const cash = sources.payments.find((method) => method.on && method.kind === "cash");
   const legacy = expense && !expense.deduction ? expense.source : undefined;
   const [paymentId, setPaymentId] = useState(expense?.source === "till" ? expense.deduction?.id ?? "" : cash?.id ?? "");
@@ -61,20 +63,23 @@ function ExpenseSheet({
   const deduction: ExpenseDeduction | null = source === "till"
     ? oldDeduction ?? (payment ? { id: payment.id, name: payment.name, kind: payment.kind } : null)
     : oldDeduction ?? (member ? { id: member.id, name: member.name, kind: "member" } : null);
-  const paymentOptions = payments.map((method) => ({ id: method.id, name: method.name }));
-  const memberOptions = sources.teammates.map((person) => ({
-    id: person.id,
-    name: `${person.name} · ${person.primaryOwner ? "Owner" : person.owner ? "Co-owner" : "Member"}`,
+  const paymentOptions: Suggestion[] = payments.map((method) => ({ key: method.id, name: method.name, icon: <PaymentMethodIcon method={method} /> }));
+  const memberOptions: Suggestion[] = sources.teammates.map((person) => ({
+    key: person.id,
+    name: person.name,
+    detail: person.primaryOwner ? "Owner" : person.owner ? "Co-owner" : "Member",
+    icon: <Avatar id={person.id} name={person.name} small />,
   }));
   const options = source === "till" ? paymentOptions : memberOptions;
   if (expense?.deduction && expense.source === source) {
     const saved = expense.deduction;
-    if (!options.some((option) => option.id === saved.id)) options.push({ id: saved.id, name: saved.name });
+    if (!options.some((option) => option.key === saved.id)) options.push({ key: saved.id, name: saved.name });
   }
-  if (legacy === "till") paymentOptions.unshift({ id: "", name: "Cash" });
-  if (legacy === "pocket") memberOptions.unshift({ id: "", name: expense?.by || "Staff" });
+  if (legacy === "till") paymentOptions.unshift({ key: "", name: "Cash", detail: "Originally from the drawer" });
+  if (legacy === "pocket") memberOptions.unshift({ key: "", name: expense?.by || "Staff", detail: "Originally recorded payer" });
   const sourceLabel = source === "till" ? "Payment method" : "Teammate";
   const sourceId = source === "till" ? paymentId : memberId;
+  const selectedSource = options.find((option) => option.key === sourceId);
   const sourcePlaceholder = options.length
     ? `Select ${sourceLabel.toLowerCase()}`
     : source === "till" ? "No payment methods available" : "No teammates available";
@@ -148,19 +153,25 @@ function ExpenseSheet({
         <div className="stack gap-8">
           <span className="label">Deduct from</span>
           <div className="segmented" role="group" aria-label="Deduct from">
-            <button type="button" aria-pressed={source === "till"} onClick={() => setSource("till")}>
+            <button type="button" aria-pressed={source === "till"} onClick={() => { setSource("till"); setSourceQuery(null); }}>
               From till
             </button>
-            <button type="button" aria-pressed={source === "pocket"} onClick={() => setSource("pocket")}>
+            <button type="button" aria-pressed={source === "pocket"} onClick={() => { setSource("pocket"); setSourceQuery(null); }}>
               From team
             </button>
           </div>
           <div className="field">
             <span>{sourceLabel}</span>
-            <FilterSelect label={sourceLabel} value={sourceId} onChange={source === "till" ? setPaymentId : setMemberId} disabled={busy || !options.length}>
-              {legacy !== source && <option value="" disabled>{sourcePlaceholder}</option>}
-              {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-            </FilterSelect>
+            <SuggestInput key={source} label={sourceLabel} placeholder={sourcePlaceholder} inFlow newText={false}
+              value={sourceQuery ?? selectedSource?.name ?? ""}
+              suggestions={options} disabled={busy || !options.length}
+              onChange={setSourceQuery} onDismiss={() => setSourceQuery(null)}
+              onPick={(option) => {
+                buzz.tap();
+                if (source === "till") setPaymentId(option.key);
+                else setMemberId(option.key);
+                setSourceQuery(null);
+              }} />
           </div>
         </div>
         {error && (

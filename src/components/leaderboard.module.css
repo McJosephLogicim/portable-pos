@@ -37,6 +37,7 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
 
 .back,
 .share:global(.btn),
+.filterControl::before,
 .jump {
   color: var(--board-ink);
   border: 1px solid rgb(193 218 255 / 0.18);
@@ -100,16 +101,48 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
 }
 
 .filterControl {
-  --filter-select-width: 102px;
-  --filter-select-color: var(--board-ink);
-  --filter-select-border: rgb(193 218 255 / 0.18);
-  --filter-select-background: linear-gradient(170deg, rgb(193 218 255 / 0.19), rgb(193 218 255 / 0.07));
-  --filter-select-option-background: var(--board-surface);
-  color-scheme: dark;
+  position: relative;
+  display: flex;
+  width: 102px;
 }
 
 .filterControl + .filterControl {
-  --filter-select-width: 124px;
+  width: 124px;
+}
+
+.filterControl::before {
+  position: absolute;
+  inset: 6px 0;
+  border-radius: 999px;
+  content: "";
+  pointer-events: none;
+}
+
+.filter {
+  position: relative;
+  appearance: none;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 28px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--board-ink);
+  color-scheme: dark;
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.filter option {
+  background: var(--board-surface);
+}
+
+.filterChevron {
+  position: absolute;
+  inset: 50% 11px auto auto;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .podium {
@@ -500,6 +533,15 @@ main[data-active-screen]:has(> .page) ~ :global(.tabbar) {
 }
 
 @media (forced-colors: active) {
+  .filter {
+    appearance: auto;
+    padding-inline-end: 14px;
+  }
+
+  .filterChevron {
+    display: none;
+  }
+
   .portrait,
   .appIcon {
     outline: 1px solid CanvasText;

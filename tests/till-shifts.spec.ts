@@ -190,10 +190,12 @@ test("Opening and closing tills can review stock, with expenses available after 
   const pickPayer = async (form: Locator) => {
     await form.getByRole("button", { name: "From team", exact: true }).click();
     const teammates = form.getByRole("combobox", { name: "Teammate", exact: true });
-    await expect(teammates).toHaveClass("filter-select-input");
-    await expect(teammates.locator("option").filter({ hasText: "Ana Cruz · Owner" })).toHaveCount(1);
-    await expect(teammates.locator("option").filter({ hasText: "Kim Dela Cruz" })).toHaveCount(0);
-    await teammates.selectOption({ label: "Bea Santos · Member" });
+    await teammates.click();
+    const options = form.getByRole("listbox", { name: "Teammate" });
+    await expect(options.getByRole("option", { name: "Ana Cruz Owner" })).toBeVisible();
+    await expect(options.getByRole("option", { name: /Kim Dela Cruz/ })).toHaveCount(0);
+    await options.getByRole("option", { name: "Bea Santos Member" }).click();
+    await expect(teammates).toHaveValue("Bea Santos");
   };
   const logExpense = async (label: string, amount: string, source: "cash" | "gcash" | "team", within: Page | Locator = page) => {
     const add = within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true });
@@ -205,7 +207,16 @@ test("Opening and closing tills can review stock, with expenses available after 
     await form.getByRole("textbox", { name: "Amount" }).fill(amount);
     if (source === "team") await pickPayer(form);
     else if (source === "gcash") {
-      await form.getByRole("combobox", { name: "Payment method", exact: true }).selectOption({ label: "GCash" });
+      const method = form.getByRole("combobox", { name: "Payment method", exact: true });
+      await method.fill("Not a payment method");
+      await method.press("Escape");
+      await expect(method).toHaveValue("Cash");
+      await method.fill("GCash");
+      const option = form.getByRole("listbox", { name: "Payment method" }).getByRole("option", { name: "GCash", exact: true });
+      await expect(option).toBeInViewport({ ratio: 0.8 });
+      await method.press("ArrowDown");
+      await method.press("Enter");
+      await expect(form.getByRole("listbox", { name: "Payment method" })).toBeHidden();
     }
     await form.getByRole("button", { name: /^Log ₱/ }).click();
     await expect(form).toBeHidden();
@@ -240,7 +251,7 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(edit.getByRole("combobox", { name: "What for" })).toHaveValue("Till supplies");
   await expect(edit.getByRole("textbox", { name: "Amount" })).toHaveValue("20.00");
   await expect(edit.getByRole("button", { name: "From till" })).toHaveAttribute("aria-pressed", "true");
-  await expect(edit.getByRole("combobox", { name: "Payment method" })).toHaveValue("cash");
+  await expect(edit.getByRole("combobox", { name: "Payment method" })).toHaveValue("Cash");
   await edit.getByRole("combobox", { name: "What for" }).fill("Ice packs");
   await edit.getByRole("textbox", { name: "Amount" }).fill("25.50");
   await edit.getByRole("button", { name: "Save changes" }).click();

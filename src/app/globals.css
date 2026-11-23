@@ -2344,10 +2344,10 @@ button.booking-body:active {
   color: var(--ink-secondary);
   pointer-events: none;
 }
-.payment-preset-search .suggest-chevron {
+.suggest.in-flow .suggest-chevron {
   top: 26px;
 }
-.payment-preset-search .combo-drop {
+.suggest.in-flow .combo-drop {
   position: static;
 }
 /* The suggestion list hangs right under its field and covers what follows, like a native
@@ -2678,60 +2678,6 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   overflow: visible;
   margin: 0;
   padding: 0;
-}
-.filter-select {
-  position: relative;
-  display: flex;
-  width: var(--filter-select-width, fit-content);
-  max-width: 100%;
-  color: var(--filter-select-color, var(--ink));
-}
-.filter-select::before {
-  position: absolute;
-  inset: 6px 0;
-  border: 1px solid var(--filter-select-border, var(--line-strong));
-  border-radius: 999px;
-  background: var(--filter-select-background, var(--surface));
-  content: "";
-  pointer-events: none;
-}
-.filter-select-input {
-  position: relative;
-  appearance: none;
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 28px 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font-size: 14px;
-  text-align: center;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.filter-select-input option {
-  background: var(--filter-select-option-background, var(--surface));
-}
-.filter-select-input:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.filter-select-chevron {
-  position: absolute;
-  inset: 50% 11px auto auto;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-@media (forced-colors: active) {
-  .filter-select-input {
-    appearance: auto;
-    padding-inline-end: 14px;
-  }
-  .filter-select-chevron {
-    display: none;
-  }
 }
 .filter-chips > button {
   color: var(--ink);

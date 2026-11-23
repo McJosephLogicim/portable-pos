@@ -22,11 +22,13 @@ export function SuggestInput({
   suggestions,
   onChange,
   onPick,
+  onDismiss,
   label,
   placeholder,
   maxLength = 60,
   autoFocus,
-  openOnFocus = true,
+  inFlow = false,
+  disabled,
   className = "",
   newText = "New",
 }: {
@@ -35,11 +37,14 @@ export function SuggestInput({
   onChange: (text: string) => void;
   /** Called when a suggestion is picked; defaults to filling in its name. */
   onPick?: (s: Suggestion) => void;
+  onDismiss?: () => void;
   label: string;
   placeholder?: string;
   maxLength?: number;
   autoFocus?: boolean;
-  openOnFocus?: boolean;
+  /** Reserve space in the form for the dropdown when it opens. */
+  inFlow?: boolean;
+  disabled?: boolean;
   className?: string;
   newText?: string | false;
 }) {
@@ -51,13 +56,13 @@ export function SuggestInput({
   const hasMatch = suggestions.some((s) => s.name.toLocaleLowerCase() === q);
   const search = editing || !hasMatch ? q : "";
   const shown = suggestions
-    .filter((s) => s.name.toLocaleLowerCase() !== search || s.detail)
+    .filter((s) => newText === false || s.name.toLocaleLowerCase() !== search || s.detail)
     .filter((s) => {
       if (!search) return true;
       const text = s.searchText ? `${s.name} ${s.searchText}`.toLocaleLowerCase() : s.name.toLocaleLowerCase();
       return text.includes(search);
     });
-  const visible = open && shown.length > 0;
+  const visible = !disabled && open && shown.length > 0;
   const activeSuggestion = visible ? shown[active] : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -94,8 +99,13 @@ export function SuggestInput({
     close();
   }
 
+  function dismiss() {
+    close();
+    onDismiss?.();
+  }
+
   return (
-    <div className={"suggest " + (visible ? "open " : "") + className}>
+    <div className={`suggest${visible ? " open" : ""}${inFlow ? " in-flow" : ""} ${className}`}>
       <input
         id={id}
         ref={inputRef}
@@ -108,12 +118,13 @@ export function SuggestInput({
         aria-activedescendant={activeSuggestion ? `${id}-s${active}` : undefined}
         autoComplete="off"
         autoFocus={autoFocus}
+        disabled={disabled}
         maxLength={maxLength}
         placeholder={placeholder}
         value={value}
-        onFocus={() => { if (openOnFocus) setOpen(true); }}
+        onFocus={() => { if (!inFlow) setOpen(true); }}
         onClick={() => setOpen(true)}
-        onBlur={close}
+        onBlur={dismiss}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
@@ -121,7 +132,14 @@ export function SuggestInput({
           setEditing(true);
         }}
         onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing || !shown.length) return;
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === "Escape" && (visible || (open && onDismiss))) {
+            e.stopPropagation();
+            e.preventDefault();
+            dismiss();
+            return;
+          }
+          if (!shown.length) return;
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
             setOpen(true);
@@ -130,10 +148,6 @@ export function SuggestInput({
           } else if (e.key === "Enter" && activeSuggestion) {
             e.preventDefault();
             pick(activeSuggestion);
-          } else if (e.key === "Escape" && visible) {
-            e.stopPropagation();
-            e.preventDefault();
-            close();
           }
         }}
       />

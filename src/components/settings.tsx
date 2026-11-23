@@ -727,8 +727,8 @@ function MethodSheet({
       {mode === "preset" ? (
         <div className="field">
           <span>Payment method</span>
-          <SuggestInput label="Payment method" placeholder="Search payment methods" className="payment-preset-search"
-            value={presetQuery} maxLength={100} newText={false} openOnFocus={false}
+          <SuggestInput label="Payment method" placeholder="Search payment methods" inFlow
+            value={presetQuery} maxLength={100} newText={false}
             onChange={(query) => { setPresetQuery(query); setPresetId(""); }}
             onPick={(entry) => { setPresetQuery(entry.name); setPresetId(entry.key); }}
             suggestions={choices.map((entry) => ({
