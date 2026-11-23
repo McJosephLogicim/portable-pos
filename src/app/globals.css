@@ -1855,6 +1855,12 @@ button.list-row:not(.sell-option):active {
 .item-preview-more {
   background: var(--line);
 }
+/* Let a single photo use the row padding while keeping the compact stack's footprint. */
+.sales-receipts .item-preview-layer:only-child > .item-preview {
+  width: 44px;
+  margin: -7px;
+  font-size: 15px;
+}
 @media (max-width: 360px) {
   .order-line {
     gap: 6px;
@@ -1869,6 +1875,11 @@ button.list-row:not(.sell-option):active {
   }
   .sale-receipt-row .item-preview-layer + .item-preview-layer {
     margin-left: -10px;
+  }
+  .sales-receipts .item-preview-layer:only-child > .item-preview {
+    width: 38px;
+    margin-inline: -9px -5px;
+    font-size: 13px;
   }
   .sales-receipts {
     --receipt-photo-width: 52px;
