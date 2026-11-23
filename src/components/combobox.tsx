@@ -182,8 +182,8 @@ const EDGE = 8;
  * scrolls with the field and the keyboard can't pull them apart. When there isn't room under
  * the field, the field's scroll box scrolls up to make room; the list never moves above it.
  */
-function useAnchoredList(
-  inputRef: React.RefObject<HTMLInputElement | null>,
+export function useAnchoredList(
+  inputRef: React.RefObject<HTMLElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
   rows: number,

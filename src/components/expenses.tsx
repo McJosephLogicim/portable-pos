@@ -6,7 +6,7 @@ import { expenseSourceLabel } from "@/lib/report";
 import type { Expense, ExpenseDeduction, ExpenseInput, PaymentMethod, RegisterState, TeamRosterMember } from "@/lib/types";
 import { AddButton } from "./add-menu";
 import { SuggestInput } from "./combobox";
-import { SingleSelect } from "./multi-select";
+import { SingleSelect } from "./single-select";
 import { PaymentMethodIcon } from "./payment-method-icon";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
 import { Avatar } from "./team";

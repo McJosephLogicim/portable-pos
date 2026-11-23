@@ -189,11 +189,17 @@ test("Opening and closing tills can review stock, with expenses available after 
   };
   const pickPayer = async (form: Locator) => {
     await form.getByRole("button", { name: "From team", exact: true }).click();
-    await form.getByRole("button", { name: "Teammate", exact: true }).click();
-    const teammates = page.getByRole("dialog", { name: "Teammate", exact: true });
-    await expect(teammates.getByRole("button", { name: "Ana Cruz Owner" })).toBeVisible();
-    await expect(teammates.getByRole("button", { name: /Kim Dela Cruz/ })).toHaveCount(0);
-    await teammates.getByRole("button", { name: "Bea Santos Member" }).click();
+    const trigger = form.getByRole("button", { name: "Teammate", exact: true });
+    await trigger.click();
+    const teammates = form.getByRole("listbox", { name: "Teammate", exact: true });
+    await expect(teammates.getByRole("option", { name: "Ana Cruz Owner" })).toBeVisible();
+    await expect(teammates.getByRole("option", { name: /Kim Dela Cruz/ })).toHaveCount(0);
+    await expect.poll(async () => {
+      const button = await trigger.boundingBox();
+      const list = await teammates.boundingBox();
+      return button && list && list.y - (button.y + button.height);
+    }).toBeGreaterThanOrEqual(0);
+    await teammates.getByRole("option", { name: "Bea Santos Member" }).click();
   };
   const logExpense = async (label: string, amount: string, source: "cash" | "gcash" | "team", within: Page | Locator = page) => {
     const add = within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true });
@@ -206,7 +212,7 @@ test("Opening and closing tills can review stock, with expenses available after 
     if (source === "team") await pickPayer(form);
     else if (source === "gcash") {
       await form.getByRole("button", { name: "Payment method: Cash", exact: true }).click();
-      await page.getByRole("dialog", { name: "Payment method" }).getByRole("button", { name: "GCash", exact: true }).click();
+      await form.getByRole("listbox", { name: "Payment method" }).getByRole("option", { name: "GCash", exact: true }).click();
     }
     await form.getByRole("button", { name: /^Log ₱/ }).click();
     await expect(form).toBeHidden();

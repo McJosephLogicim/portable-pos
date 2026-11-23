@@ -2679,6 +2679,24 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
 .select-pill > svg:last-child {
   flex: none;
 }
+.select-dropdown {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.select-dropdown > .record-search {
+  flex: none;
+  margin: 3px 3px 5px;
+}
+.select-dropdown-options {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.select-dropdown-options .combo-pick:focus-visible {
+  outline-offset: -2px;
+}
 .filter-chips > button {
   color: var(--ink);
   max-width: 100%;

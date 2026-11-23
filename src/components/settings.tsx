@@ -37,7 +37,7 @@ import { paymentPreset, paymentPresets } from "@/lib/payment-presets";
 import { applyTheme, brandColors, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import { AddButton } from "./add-menu";
-import { SingleSelect } from "./multi-select";
+import { SingleSelect } from "./single-select";
 import { PaymentMethodIcon } from "./payment-method-icon";
 import {
   buzz,

@@ -1,8 +1,8 @@
 "use client";
 
 import { blocked, type Reason } from "@/lib/reject";
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { ItemPreview } from "./item-preview";
 import { fold, RecordSearch, SEARCH_FROM } from "./records";
 import { buzz, Sheet } from "./ui";
@@ -17,7 +17,6 @@ type MultiSelectOption<Id extends string> = {
   searchText?: string;
   count?: number;
   image?: string;
-  icon?: ReactNode;
   note?: string;
   blockedReason?: Reason;
 };
@@ -165,44 +164,9 @@ export function MultiSelect<Id extends string>({
   );
 }
 
-export function SingleSelect<Id extends string>({ label, searchNoun, items, value, onChange, disabled }: {
-  label: string;
-  searchNoun: string;
-  items: MultiSelectOption<Id>[];
-  value?: Id;
-  onChange: (value: Id) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = items.find((item) => item.id === value);
-  return (
-    <div className="stack gap-6">
-      <span className="label">{label}</span>
-      <div className="chips filter-chips">
-        <button type="button" className="filter-open select-pill" aria-haspopup="dialog"
-          aria-label={selected ? `${label}: ${selected.name}` : label} disabled={disabled || !items.length}
-          onClick={() => setOpen(true)}>
-          {selected?.icon}
-          <span className="ellipsis">{selected?.name ?? (items.length ? `Select ${label.toLowerCase()}` : `No ${searchNoun} available`)}</span>
-          <ChevronDown size={15} aria-hidden="true" />
-        </button>
-      </div>
-      {open && (
-        <PickerSheet label={label} searchNoun={searchNoun} items={items} picked={value !== undefined ? [value] : []}
-          onChange={() => setOpen(false)} onClose={() => setOpen(false)}
-          onPick={(id) => {
-            buzz.tap();
-            onChange(id);
-            setOpen(false);
-          }} />
-      )}
-    </div>
-  );
-}
-
 function PickerSheet<Id extends string>({
-  label, searchNoun, items, picked, onChange, showThumbnails, disabled, onClose, onPick,
-}: MultiSelectProps<Id> & { searchNoun: string; onClose: () => void; onPick?: (id: Id) => void }) {
+  label, searchNoun, items, picked, onChange, showThumbnails, disabled, onClose,
+}: MultiSelectProps<Id> & { searchNoun: string; onClose: () => void }) {
   const [draft, setDraft] = useState(picked);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -227,11 +191,11 @@ function PickerSheet<Id extends string>({
     <Sheet
       title={label}
       onClose={onClose}
-      footer={!onPick && (
+      footer={
         <button type="button" className="btn block" disabled={disabled} onClick={() => onChange(draft)}>
           {draft.length ? `Done · ${draft.length} selected` : "Done"}
         </button>
-      )}
+      }
     >
       <div
         ref={toolbar}
@@ -243,7 +207,7 @@ function PickerSheet<Id extends string>({
           onClose();
         }}
       >
-        {(!onPick || items.length >= SEARCH_FROM) && <RecordSearch
+        <RecordSearch
           count={items.length}
           noun={searchNoun}
           query={query}
@@ -252,7 +216,7 @@ function PickerSheet<Id extends string>({
             goToPage(0);
           }}
           alwaysSearch
-        />}
+        />
         <div className="picker-meta">
           <p className="label" role="status">
             {matches.length
@@ -272,11 +236,10 @@ function PickerSheet<Id extends string>({
               disabled={disabled}
               {...blocked(item.blockedReason)}
               className="list-row"
-              onClick={() => onPick ? onPick(item.id) : setDraft(toggle(draft, item.id))}
+              onClick={() => setDraft(toggle(draft, item.id))}
             >
               <span className="picker-check" aria-hidden="true">{selected.has(item.id) && <Check size={14} strokeWidth={2.5} />}</span>
               {showThumbnails && <ItemPreview name={item.name} image={item.image} size={36} />}
-              {item.icon}
               <span className="stack grow">
                 <span>{item.name}</span>
                 {item.detail && <span className="label">{item.detail}</span>}
