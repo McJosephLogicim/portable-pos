@@ -30,6 +30,15 @@ export interface SalesFocus {
   filter: SalesFilter;
 }
 
+function HiddenSalesValue({ label, className }: { label: string; className?: string }) {
+  return (
+    <>
+      <span className={className} aria-hidden="true">****</span>
+      <span className="sr-only">{label}</span>
+    </>
+  );
+}
+
 function SalesAmount({ hidden, value, currency, className = "" }: {
   hidden: boolean;
   value: number;
@@ -37,12 +46,7 @@ function SalesAmount({ hidden, value, currency, className = "" }: {
   className?: string;
 }) {
   if (!hidden) return <Money value={value} currency={currency} className={className} />;
-  return (
-    <>
-      <span className={`num ${className}`} aria-hidden="true">****</span>
-      <span className="sr-only">Amount hidden</span>
-    </>
-  );
+  return <HiddenSalesValue label="Amount hidden" className={`num ${className}`} />;
 }
 
 export function SalesScreen({
@@ -69,7 +73,7 @@ export function SalesScreen({
   const [filter, setFilter] = useState<SalesFilter>(() => focus?.filter ?? (shift ? { shift: [shiftKey(shift)] } : {}));
   const [filtering, setFiltering] = useState(false);
   const [searching, setSearching] = useState(false);
-  const [amountsHidden, setAmountsHidden] = useState(false);
+  const [figuresHidden, setFiguresHidden] = useState(false);
   const searchButton = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState("");
   const shifts = useMemo(
@@ -139,6 +143,9 @@ export function SalesScreen({
   const onlyThisShift = active === 1 && Boolean(shift) && filter.shift?.[0] === shiftKey(shift!);
   const open = state.sales.find((s) => s.id === openId);
   const openShift = open && shifts.get(open.shiftId);
+  const saleCount = figuresHidden
+    ? <><HiddenSalesValue label="an undisclosed number of" /> sales.</>
+    : `${live.length} ${live.length === 1 ? "sale" : "sales"}.`;
   return (
     <div className="page">
       <div className="page-top">
@@ -148,18 +155,15 @@ export function SalesScreen({
         <h1 className="headline grow">
           {picked.length && live.length ? (
             <>
-              {itemQty} sold{" "}
+              {figuresHidden ? <HiddenSalesValue label="Undisclosed quantity" /> : itemQty} sold{" "}
               <span className="g">
-                for <SalesAmount hidden={amountsHidden} value={itemRevenue} currency={currency} />, in {live.length}{" "}
-                {live.length === 1 ? "sale." : "sales."}
+                for <SalesAmount hidden={figuresHidden} value={itemRevenue} currency={currency} />, in {saleCount}
               </span>
             </>
           ) : sales.length ? (
             <>
-              <SalesAmount hidden={amountsHidden} value={sum} currency={currency} />{" "}
-              <span className="g">
-                from {live.length} {live.length === 1 ? "sale." : "sales."}
-              </span>
+              <SalesAmount hidden={figuresHidden} value={sum} currency={currency} />{" "}
+              <span className="g">from {saleCount}</span>
             </>
           ) : active && !onlyThisShift ? (
             <>
@@ -175,12 +179,12 @@ export function SalesScreen({
           <button
             type="button"
             className="round"
-            aria-label="Hide sales amounts"
-            aria-pressed={amountsHidden}
-            title={amountsHidden ? "Show sales amounts" : "Hide sales amounts"}
-            onClick={() => setAmountsHidden((hidden) => !hidden)}
+            aria-label="Hide sales figures"
+            aria-pressed={figuresHidden}
+            title={figuresHidden ? "Show sales figures" : "Hide sales figures"}
+            onClick={() => setFiguresHidden((hidden) => !hidden)}
           >
-            {amountsHidden ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
+            {figuresHidden ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
           </button>
         )}
         {state.sales.length > 0 && (
@@ -227,7 +231,7 @@ export function SalesScreen({
       {hours.length >= 2 && (
         <details className={`card ${styles.details} ${styles.analytics}`}>
           <summary>Sales by hour</summary>
-          <HourChart hours={hours} currency={currency} title={active ? "Filtered sales" : "All shifts"} amountsHidden={amountsHidden} />
+          <HourChart hours={hours} currency={currency} title={active ? "Filtered sales" : "All shifts"} amountsHidden={figuresHidden} />
         </details>
       )}
       {sales.length ? (
@@ -264,7 +268,7 @@ export function SalesScreen({
                 </span>
                 <span className="end">
                   <SalesAmount
-                    hidden={amountsHidden}
+                    hidden={figuresHidden}
                     value={sale.total}
                     currency={shiftCurrency(sh, business)}
                     className={sale.reversedAt ? "struck" : ""}
