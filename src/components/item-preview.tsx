@@ -45,9 +45,15 @@ export function ReceiptItemPreviews({ lines, photos, fallbackPhotos, max = 2, an
       aria-hidden={announce ? undefined : true}
     >
       {[...items].slice(0, max).map(([id, name]) => (
-        <ItemPreview key={id} name={name} image={photos?.get(id) ?? fallbackPhotos?.get(id)} />
+        <span key={id} className="item-preview-layer">
+          <ItemPreview name={name} image={photos?.get(id) ?? fallbackPhotos?.get(id)} />
+        </span>
       ))}
-      {rest > 0 && <span className="item-preview item-preview-more" aria-hidden="true">+{rest}</span>}
+      {rest > 0 && (
+        <span className="item-preview-layer" aria-hidden="true">
+          <span className="item-preview item-preview-more">+{rest}</span>
+        </span>
+      )}
     </span>
   );
 }

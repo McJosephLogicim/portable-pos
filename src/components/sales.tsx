@@ -250,7 +250,7 @@ export function SalesScreen({
         </details>
       )}
       {sales.length ? (
-        <div className="card card-list">
+        <div className="card card-list sales-receipts">
           {sales.map((sale) => {
             const sh = shifts.get(sale.shiftId)!;
             const items = sale.lines
@@ -267,7 +267,7 @@ export function SalesScreen({
               >
                 <span className="sr-only">Receipt {receiptNumber(sh.number, sale.sequence)}</span>
                 <ReceiptItemPreviews lines={sale.lines} photos={shiftPhotos.get(sale.shiftId)} fallbackPhotos={photos} />
-                <span className="grow stack gap-4">
+                <span className="sale-receipt-details stack gap-4">
                   <span className="sale-item-names">
                     {items}
                   </span>
@@ -282,7 +282,7 @@ export function SalesScreen({
                     {sale.discount ? " · " + sale.discount.name : ""}
                   </span>
                 </span>
-                <span className="end">
+                <span className="sale-receipt-amount">
                   <SalesAmount
                     hidden={figuresHidden}
                     value={sale.total}

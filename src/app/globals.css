@@ -1459,6 +1459,36 @@ button.list-row:not(.sell-option):active {
   overflow-wrap: anywhere;
   font-weight: 500;
 }
+.sales-receipts {
+  --receipt-photo-width: 64px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content 18px;
+  column-gap: 10px;
+}
+.sales-receipts > .sale-receipt-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: var(--receipt-photo-width) minmax(0, 1fr) auto 18px;
+  grid-template-columns: subgrid;
+  column-gap: inherit;
+}
+.sales-receipts .item-preview-stack {
+  grid-column: 1;
+  justify-self: start;
+}
+.sale-receipt-details {
+  grid-column: 2;
+  min-width: 0;
+}
+.sale-receipt-amount {
+  grid-column: 3;
+  justify-self: end;
+  white-space: nowrap;
+}
+.sales-receipts .sale-receipt-row .chev {
+  grid-column: 4;
+  margin-right: 0;
+}
 .stepper {
   display: flex;
   align-items: center;
@@ -1814,12 +1844,13 @@ button.list-row:not(.sell-option):active {
   flex: none;
   align-items: center;
 }
-.item-preview-stack > .item-preview {
+.item-preview-layer > .item-preview {
   width: 30px;
   font-size: 11px;
 }
-.item-preview-stack > .item-preview + .item-preview {
-  margin-left: -6px;
+.item-preview-layer + .item-preview-layer {
+  margin-left: -13px;
+  filter: drop-shadow(-2px 0 0 var(--surface));
 }
 .item-preview-more {
   background: var(--line);
@@ -1832,9 +1863,16 @@ button.list-row:not(.sell-option):active {
     width: 30px;
     font-size: 11px;
   }
-  .sale-receipt-row .item-preview-stack > .item-preview {
+  .sale-receipt-row .item-preview-layer > .item-preview {
     width: 24px;
     font-size: 9px;
+  }
+  .sale-receipt-row .item-preview-layer + .item-preview-layer {
+    margin-left: -10px;
+  }
+  .sales-receipts {
+    --receipt-photo-width: 52px;
+    column-gap: 6px;
   }
 }
 .item-photo-picker .photo-slot.has {
