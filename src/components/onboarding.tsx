@@ -137,6 +137,8 @@ export function Onboarding({
           simple={isSimpleMode(business.settings)}
           currency={business.currency}
           menu={live.menu}
+          menuCategories={business.settings.menuCategories}
+          onAddCategory={(name, itemIds) => withPin((pin) => onAction({ action: "saveMenuCategory", name, itemIds, pin }))}
           stockItems={business.settings.stockItems}
           pricing={business.settings.pricing}
           onSave={(item) => withPin((pin) => onAction({ action: "menu", menu: saveMenuItem(live.menu, item), pin }))}

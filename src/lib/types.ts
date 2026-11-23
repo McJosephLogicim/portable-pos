@@ -40,6 +40,8 @@ export interface Settings {
   stockItems?: StockItem[];
   /** Reusable names, including choices that are not assigned to an item yet. */
   stockLists?: Partial<Record<StockListField, string[]>>;
+  /** Menu categories kept even when they have no items. */
+  menuCategories?: string[];
   pricing?: PricingRules;
   /** The business logo, an image address. */
   logo?: string;
@@ -53,7 +55,7 @@ export interface Settings {
   ink?: string;
 }
 /** What a shift sells with. Copied when the shift opens, like its menu. */
-export interface ShiftSettings extends Omit<Settings, "mode"> {
+export interface ShiftSettings extends Omit<Settings, "mode" | "menuCategories"> {
   currency: string;
 }
 export interface Option {

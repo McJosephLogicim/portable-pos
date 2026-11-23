@@ -15,6 +15,7 @@ const notes = z.string().trim().max(400).optional();
 const margin = z.number().min(0).lt(100);
 const stockListName = (field: keyof typeof stockListFields) =>
   z.string().trim().max(stockListFields[field].maxLength);
+const menuCategory = z.string().trim().min(1).max(100);
 const stockUse = z.object({ stockId: key, amount: z.number().positive().max(100000), notes: z.string().trim().max(160).optional() });
 const product = z.object({
   id: key,
@@ -315,6 +316,14 @@ const command = z.discriminatedUnion("action", [
     deviceId: key.optional(),
     stock: counts.optional(),
   }),
+  z.object({
+    action: z.literal("saveMenuCategory"),
+    name: menuCategory,
+    previous: menuCategory.optional(),
+    itemIds: z.array(key).max(1000).optional(),
+    pin,
+  }),
+  z.object({ action: z.literal("removeMenuCategories"), names: z.array(menuCategory).min(1), pin }),
   z.object({ action: z.literal("removeMenuItem"), productId: key, pin }),
   z.object({ action: z.literal("restoreMenuItem"), item: product, index: z.number().int().min(0).max(999), pin }),
   z.object({

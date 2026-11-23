@@ -39,6 +39,7 @@ import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
+import type { MenuCategoryChange } from "@/lib/menu-categories";
 import type { BookingRecordKind, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
@@ -855,6 +856,7 @@ export function Workspace() {
     content = <main><Setup onboarding={state.onboardingComplete === false} onSave={owner} onSignOut={() => setConfirmSignOut(true)} /></main>;
   else {
     const onMenu: EditorProps["onMenu"] = (menu, pin, stock) => owner({ action: "menu", menu, pin, stock });
+    const onMenuCategory = (change: MenuCategoryChange, pin: string) => owner({ ...change, pin });
     const editor: EditorProps = {
       state, online, onSaved: setToast, onMenu,
       onSave: (input, pin) => owner({ action: "settings", ...input, pin }),
@@ -903,6 +905,7 @@ export function Workspace() {
               {...editor}
               page={screen.page ?? null} onPage={(page) => open({ tab: "recipes", page })}
               onBack={back} backLabel={backLabel}
+              onMenuCategory={onMenuCategory}
               onRemoveMenuItem={(productId, pin) => owner({ action: "removeMenuItem", productId, pin })}
               onMergeStock={(shiftIds, pin) => owner({ action: "mergeStock", shiftIds, pin })}
             />
@@ -947,7 +950,7 @@ export function Workspace() {
                 <SellScreen
                   state={state} status={status} online={online} pending={pending} onCart={cart}
                   onCheckout={sell} onAvailability={available} onReverse={reverse}
-                  onMenu={onMenu} onSaved={setToast} onTill={() => go("shift")}
+                  onMenu={onMenu} onMenuCategory={onMenuCategory} onSaved={setToast} onTill={() => go("shift")}
                 />
               ) : (
                 <ClosedSellScreen onTill={() => go("shift")} />

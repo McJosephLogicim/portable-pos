@@ -72,6 +72,7 @@ for (const mode of ["simple", "advanced"] as const) {
     await page.getByRole("button", { name: "Open till", exact: true }).click();
     await page.getByRole("button", { name: /^Opening test/ }).click();
     await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Expenses", exact: true })).toHaveCount(0);
     const progress = page.getByRole("list", { name: "Before you open" }).locator("..");
     await expect(progress.locator('img[src$="/plan.webp"]')).toBeAttached();
     await expect(progress.locator(".lucide-clipboard-list")).toBeVisible();
@@ -96,6 +97,7 @@ for (const mode of ["simple", "advanced"] as const) {
     await open.click();
     await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
     await page.getByRole("button", { name: "Till", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Expenses", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Count drawer and close", exact: true }).click();
     await expect(page.getByRole("button", { name: "Coins and bills", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "Type the total", exact: true }).click();
