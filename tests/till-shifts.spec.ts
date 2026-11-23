@@ -11,7 +11,7 @@ async function seedTill(
   page: Page,
   withShifts: boolean,
   withPastSale: boolean | "unscheduled" = false,
-  { opening = false, rankedAs, withExpenses = false, staffAs }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess } = {},
+  { opening = false, rankedAs, withExpenses = false, staffAs, linked = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
@@ -24,7 +24,7 @@ async function seedTill(
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses, staffAs }) => {
+  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses, staffAs, linked }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -36,7 +36,7 @@ async function seedTill(
         get.onsuccess = () => {
           const state = get.result as RegisterState;
           state.business!.timeZone = "Asia/Manila";
-          const shift = { ...state.shift!, number: 3, bookingId: undefined };
+          const shift = { ...state.shift!, number: 3, bookingId: linked ? "booking-1" : undefined };
           const booking = (name: string, startsAt: string, endsAt: string): Booking => ({
             id: name, place: { name }, startsAt, endsAt, organizer: null, event: null,
             seats: 1, staff: [], quota: 0, incentive: 0,
@@ -52,6 +52,7 @@ async function seedTill(
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
           if (!staffAs && state.me)
             first.staff = [{ memberId: state.me.memberId, name: state.me.name, role: "cashier" }];
+          if (linked) second.staff = first.staff;
           if (staffAs) {
             const person = state.team!.find((person) => person.id === state.me!.memberId)!;
             state.me!.owner = person.owner = staffAs !== "member";
@@ -96,7 +97,7 @@ async function seedTill(
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, opening, rankedAs, withExpenses, staffAs });
+  }, { withShifts, sales, opening, rankedAs, withExpenses, staffAs, linked });
   await page.reload();
 }
 
@@ -105,7 +106,7 @@ for (const staffAs of ["member", "co-owner", "owner"] as const) {
     await seedTill(page, true, false, { staffAs });
     await page.getByRole("button", { name: "Shifts", exact: true }).click();
     await page.getByRole("button", { name: /Atrium/ }).click();
-    const details = page.getByRole("dialog", { name: "Atrium", exact: true });
+    const details = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1", exact: true });
     await details.getByRole("button", { name: "Join shift", exact: true }).click();
     const role = page.getByRole("dialog", { name: "Join shift", exact: true });
     await role.getByRole("button", { name: "Cashier", exact: true }).click();
@@ -116,12 +117,12 @@ for (const staffAs of ["member", "co-owner", "owner"] as const) {
     await details.getByRole("button", { name: "Close", exact: true }).click();
 
     await page.getByRole("button", { name: /Garden/ }).click();
-    const full = page.getByRole("dialog", { name: "Garden", exact: true });
+    const full = page.getByRole("dialog", { name: "Garden • Nov 21 • Shift 1", exact: true });
     await expect(full.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
     await full.getByRole("button", { name: "Close", exact: true }).click();
 
     await page.getByRole("button", { name: /Closed market/ }).click();
-    const ended = page.getByRole("dialog", { name: "Closed market", exact: true });
+    const ended = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1", exact: true });
     await expect(ended.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
   });
 }
@@ -195,7 +196,7 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(page.getByRole("button", { name: /^Ice packs.*25\.50/ })).toBeVisible();
 
   await page.getByRole("button", { name: /^Selling for Atrium/ }).click();
-  const activeShift = page.getByRole("dialog", { name: "Atrium", exact: true });
+  const activeShift = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1", exact: true });
   await activeShift.getByRole("button", { name: /Expenses.*25\.50/ }).click();
   const shiftExpenses = page.getByRole("dialog", { name: "Expenses", exact: true });
   await shiftExpenses.getByRole("button", { name: /^Ice packs/ }).click();
@@ -235,13 +236,47 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(report.locator("pre")).not.toContainText("Closing fare");
 });
 
+test("Deleting an open till's shift requires relinking before closing", async ({ page }) => {
+  await seedTill(page, true, false, { linked: true });
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /Selling for Atrium/ }).click();
+  await page.getByRole("dialog", { name: /^Atrium/ }).getByRole("button", { name: "Delete", exact: true }).click();
+  const deletion = page.getByRole("dialog", { name: "Delete shift?" });
+  await expect(deletion.getByText(/Its till stays open/)).toBeVisible();
+  await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+  const pin = page.getByRole("dialog", { name: "Owner PIN" });
+  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
+  await pin.getByRole("button", { name: "Confirm" }).click();
+
+  const close = page.getByRole("button", { name: "Count drawer and close" });
+  await expect(close).toBeDisabled();
+  await expect(page.getByText("Link this till to a shift before closing.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /Not on a shift yet/ }).click();
+  const shifts = page.getByRole("dialog", { name: "Shifts", exact: true });
+  await expect(shifts.getByRole("button", { name: /Atrium|Closed market/ })).toHaveCount(0);
+  await shifts.getByRole("button", { name: /Garden/ }).click();
+  await page.getByRole("dialog", { name: /^Garden/ }).getByRole("button", { name: "Add till", exact: true }).click();
+  await page.getByRole("dialog", { name: "Add till to this shift?" }).getByRole("button", { name: "Add till", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: /Selling for Garden/ })).toBeVisible();
+  await expect(close).toBeEnabled();
+  await close.click();
+  const closing = page.getByRole("dialog", { name: "Close shift", exact: true });
+  await closing.getByRole("button", { name: "Type the total" }).click();
+  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("2500");
+  await closing.getByRole("button", { name: "Close shift and see report" }).click();
+  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
+  await pin.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByRole("dialog", { name: /^Garden.*closed$/ })).toBeVisible();
+});
+
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
   await seedTill(page, true, true);
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   const today = page.getByRole("article").filter({ hasText: "Atrium" });
   await expect(today.getByRole("button")).toHaveCount(1);
   const todayCard = await today.innerText();
-  const details = page.getByRole("dialog", { name: "Atrium", exact: true });
+  const details = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1", exact: true });
   await today.getByRole("button", { name: /Atrium/ }).click();
   const actions = details.getByRole("group", { name: "Shift actions" }).getByRole("button");
   await expect(actions).toHaveText(["Share", "Report", "Delete"]);
@@ -269,13 +304,13 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await choice.getByRole("button", { name: /Atrium/ }).click();
   await expect(actions).toHaveText(["Share", "Report", "Delete"]);
   await details.getByRole("button", { name: "Report", exact: true }).click();
-  const emptyReport = page.getByRole("dialog", { name: "Atrium report", exact: true });
+  const emptyReport = page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1 report", exact: true });
   await expect(emptyReport.getByText("No till report is available for this shift.")).toBeVisible();
   await emptyReport.getByRole("button", { name: "Close", exact: true }).click();
 
   await details.getByRole("button", { name: "Add till", exact: true }).click();
   const confirmation = page.getByRole("dialog", { name: "Add till to this shift?" });
-  await expect(confirmation.getByText("Atrium", { exact: true })).toBeVisible();
+  await expect(confirmation.getByText("Atrium • Nov 21 • Shift 1", { exact: true })).toBeVisible();
   await confirmation.getByRole("button", { name: "Cancel" }).click();
   await details.getByRole("button", { name: "Close", exact: true }).click();
   await shifts.getByRole("button", { name: "Close", exact: true }).click();
@@ -287,7 +322,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await confirmation.getByRole("button", { name: "Add till", exact: true }).click();
   await expect(page.getByRole("button", { name: /Selling for Atrium/ })).toBeVisible();
   await page.getByRole("button", { name: "Sales", exact: true }).click();
-  const activeShift = page.getByRole("button", { name: "Remove shift Atrium", exact: true });
+  const activeShift = page.getByRole("button", { name: "Remove shift Atrium • Nov 21 • Shift 1", exact: true });
   await expect(activeShift).toBeVisible();
   await page.getByRole("button", { name: "Filters · 1", exact: true }).click();
   const filters = page.getByRole("dialog", { name: "Filter sales" });
@@ -301,7 +336,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await page.getByRole("button", { name: "Shifts", exact: true }).click();
   await today.getByRole("button", { name: /Atrium/ }).click();
   await details.getByRole("button", { name: "Report", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Shift 3 report" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Atrium • Nov 21 • Shift 1 report" })).toBeVisible();
 });
 
 test("Past shift cards open details for both scheduled and unscheduled tills", async ({ page }) => {
@@ -311,24 +346,24 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   const past = page.getByRole("dialog", { name: "Past shifts" });
   await expect(past.getByRole("article")).toHaveCount(2);
   await past.getByRole("button", { name: /Closed market/ }).click();
-  const scheduled = page.getByRole("dialog", { name: "Closed market", exact: true });
+  const scheduled = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1", exact: true });
   await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report", "Delete"]);
   await scheduled.getByRole("button", { name: "Report", exact: true }).click();
-  const report = page.getByRole("dialog", { name: "Shift 2 report" });
-  await expect(report.getByRole("img", { name: "Shift 2 report" })).toBeVisible();
+  const report = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1 report" });
+  await expect(report.getByRole("img", { name: "Closed market • Nov 21 • Shift 1 report" })).toBeVisible();
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toHaveText(/POP POS$/);
   await report.getByRole("button", { name: "Close", exact: true }).click();
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
-  await past.getByRole("button", { name: /Shift 1/ }).click();
-  const unscheduled = page.getByRole("dialog", { name: "Shift 1", exact: true });
+  await past.getByRole("button", { name: /Sunday Supply • Nov 20 • 11:00 AM/ }).click();
+  const unscheduled = page.getByRole("dialog", { name: "Sunday Supply • Nov 20 • 11:00 AM", exact: true });
   await unscheduled.getByRole("button", { name: "All 1 sale" }).click();
   const sales = page.getByRole("dialog", { name: "Sales", exact: true });
   await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
   await sales.getByRole("button", { name: "Close", exact: true }).click();
   await expect(unscheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Share", "Report"]);
   await unscheduled.getByRole("button", { name: "Report", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Shift 1 report" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Sunday Supply • Nov 20 • 11:00 AM report" })).toBeVisible();
 });
 
 test("Leaderboard Share keeps its accessible name when the visible label collapses", async ({ page }) => {
@@ -456,7 +491,7 @@ test("Back from Sales restores the item sheet, then each underlying shift view",
   await page.getByRole("button", { name: /^Past shifts/ }).click();
   const past = page.getByRole("dialog", { name: "Past shifts" });
   await past.getByRole("button", { name: /Closed market/ }).click();
-  const details = page.getByRole("dialog", { name: "Closed market", exact: true });
+  const details = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1", exact: true });
   const seller = details.getByRole("button", { name: /Espresso.*1 sold/ });
   await seller.scrollIntoViewIfNeeded();
   const body = details.locator(".sheet-body").first();

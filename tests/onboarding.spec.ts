@@ -55,11 +55,11 @@ test("onboarding saves the real setup, keeps till practice local, and completes 
   await page.getByRole("dialog", { name: "Shifts" }).getByRole("button", { name: /Test Coffee Pop-up/ }).click();
   await page.getByRole("dialog", { name: "Add till to this shift?" }).getByRole("button", { name: "Add till" }).click();
   await page.getByRole("button", { name: "Count and close" }).click();
-  const close = page.getByRole("dialog", { name: "Close shift 1" });
+  const close = page.getByRole("dialog", { name: "Close shift" });
   await close.getByRole("button", { name: "Type the total" }).click();
   await close.getByRole("textbox", { name: "Cash on hand" }).fill("170");
   await close.getByRole("button", { name: "Close shift and see report" }).click();
-  const report = page.getByRole("dialog", { name: "Shift 1 closed" });
+  const report = page.getByRole("dialog", { name: "Test Coffee Pop-up • Jan 2 • Shift 1 closed" });
   await expect(report.getByText("Drawer balanced")).toBeVisible();
   await expect(report.getByText("1 sale recorded")).toBeVisible();
   await report.getByRole("button", { name: "Continue" }).click();

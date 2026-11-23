@@ -552,7 +552,8 @@ export function ShiftScreen({
     ? state.bookings?.find((b) => b.id === openingId && !b.tillClosed && isOnShift(b, state.me?.memberId))
     : undefined;
   const recoveryTills = state.shifts.filter((record) => !record.closedAt && state.recoveryTillIds?.includes(record.id));
-  const closingTill = closing === shift?.id ? shift : recoveryTills.find((record) => record.id === closing);
+  const closingTill = [shift, ...recoveryTills].find((till) =>
+    till && till.id === closing && state.bookings?.some((b) => b.id === till.bookingId));
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const replay = shift ? stockReplay(shift, state.sales) : undefined;
@@ -572,6 +573,8 @@ export function ShiftScreen({
     onUnexpense,
   };
   const canClose = online && !state.pending.length;
+  const closeReason = !canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till.");
+  const needsShift = "Link this till to a shift before closing.";
   const history = [
     ...new Map(
       [...state.shifts, ...(state.shift ? [state.shift] : [])].map((s) => [s.id, s]),
@@ -742,15 +745,15 @@ export function ShiftScreen({
           <div className="stack gap-8">
               <button
                 className="btn secondary block"
-                {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the shift."))}
+                {...blocked(activeBooking ? closeReason : needsShift)}
                 aria-haspopup="dialog"
                 onClick={() => setClosing(shift.id)}
               >
                 Count drawer and close
               </button>
-              {!canClose && (
+              {(!activeBooking || !canClose) && (
                 <p className="label" style={{ textAlign: "center" }}>
-                  {online ? "Waiting for sales to sync." : "Connect to close the shift."}
+                  {!activeBooking ? needsShift : online ? "Waiting for sales to sync." : "Connect to close the shift."}
                 </p>
               )}
               <button className="btn secondary" aria-haspopup="dialog" onClick={() => setReport(true)}>
@@ -776,17 +779,23 @@ export function ShiftScreen({
       )}
       {recoveryTills.length > 0 && !startingBooking && (
         <div className="stack gap-10">
-          <p className="group-title">Tills needing closure</p>
+          <p className="group-title">Tills needing attention</p>
           <div className="card card-list">
-            {recoveryTills.map((record) => (
-              <button key={record.id} type="button" className="list-row" aria-haspopup="dialog"
-                {...blocked(!canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till."))}
-                onClick={() => setClosing(record.id)}>
-                <Wallet size={17} aria-hidden="true" />
-                <span className="grow">{shiftName(record, state)}</span>
-                <ChevronRight size={16} className="chev" />
-              </button>
-            ))}
+            {recoveryTills.map((record) => {
+              const linked = state.bookings?.some((b) => b.id === record.bookingId);
+              return (
+                <button key={record.id} type="button" className="list-row" aria-haspopup="dialog"
+                  {...blocked(linked && closeReason)}
+                  onClick={() => linked ? setClosing(record.id) : setLinking(record.id)}>
+                  <Wallet size={17} aria-hidden="true" />
+                  <span className="grow stack">
+                    <span>{shiftName(record, state)}</span>
+                    {!linked && <span className="label">No shift. Tap to link this till.</span>}
+                  </span>
+                  <ChevronRight size={16} className="chev" />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

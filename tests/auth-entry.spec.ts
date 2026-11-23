@@ -95,6 +95,16 @@ test("a missed shift can be started and joined from another phone by members, ow
   booking.startsAt = "2026-11-20T01:00:00Z";
   booking.endsAt = "2026-11-20T03:00:00Z";
   booking.staff = [{ memberId: initial.me!.memberId, name: initial.me!.name, role: "cashier" }];
+  booking.event = { id: "saturday-market", name: "Saturday market" };
+  const earlier = {
+    ...booking, id: "ae97c14a-b48c-4bce-90d2-07a187208168", startsAt: "2026-11-19T23:00:00Z", endsAt: booking.startsAt,
+    staff: [], tillClosed: true,
+  };
+  const earlierTill = {
+    ...newShift("earlier-phone", business.id, 5, 10000, initial.menu, { ...business.settings, currency: business.currency }),
+    bookingId: earlier.id, openedAt: earlier.startsAt, closedAt: earlier.endsAt,
+  };
+  const shiftName = "Saturday market • Nov 20 • Shift 2";
   let till: Shift | undefined;
   const deviceIds = new Set<string>();
   const signIn = async (phone: Page, role: "owner" | "co-owner" | "member" = "owner", assigned = true) => {
@@ -113,16 +123,16 @@ test("a missed shift can be started and joined from another phone by members, ow
         expect(bookingId).toBe(booking.id);
         expect(openingCash).toBe(10000);
         till = {
-          ...newShift(deviceId, business.id, 1, openingCash, initial.menu, { ...business.settings, currency: business.currency }),
+          ...newShift(deviceId, business.id, 6, openingCash, initial.menu, { ...business.settings, currency: business.currency }),
           bookingId,
         };
       }
       return route.fulfill({ json: {
         ...initial,
-        bookings: [assigned ? booking : { ...booking, staff: [{ memberId: "other", name: "Another cashier", role: "cashier" }] }],
+        bookings: [assigned ? booking : { ...booking, staff: [{ memberId: "other", name: "Another cashier", role: "cashier" }] }, earlier],
         me,
         team,
-        shifts: till ? [till] : [],
+        shifts: till ? [till, earlierTill] : [earlierTill],
         shift: till && (action === "open" || selected === till.id) ? till : null,
       } });
     });
@@ -132,11 +142,15 @@ test("a missed shift can be started and joined from another phone by members, ow
   };
   const showMissedShift = async (phone: Page) => {
     await phone.getByRole("button", { name: "Shifts", exact: true }).click();
-    await phone.getByRole("button", { name: "Friday, November 20, 1 shift" }).click();
+    await phone.getByRole("button", { name: "Friday, November 20, 2 shifts" }).click();
   };
 
   await signIn(page);
   await page.getByRole("button", { name: "Till", exact: true }).click();
+  await page.getByRole("button", { name: /^Past shifts/ }).click();
+  const history = page.getByRole("dialog", { name: "Past shifts" });
+  await expect(history.getByText("Saturday market • Nov 20 • Shift 1", { exact: true })).toBeVisible();
+  await history.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByText("Missed shifts", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Saturday market/ }).click();
   await page.getByRole("button", { name: "Type the total" }).click();
@@ -152,14 +166,21 @@ test("a missed shift can be started and joined from another phone by members, ow
         await expect(second.getByRole("heading", { name: "A shift is already open" })).toBeVisible();
         await second.getByRole("button", { name: "Go to Till" }).click();
         await expect(second.getByText("Open on another phone")).toBeVisible();
-        await expect(second.getByRole("button", { name: /Saturday market/ })).toBeVisible();
-        await showMissedShift(second);
-        await second.getByRole("button", { name: /Saturday market.*Started/ }).click();
-        const details = second.getByRole("dialog", { name: "Saturday market" });
-        await expect(details.getByText("Started on another device")).toBeVisible();
-        await expect(details.getByRole("button", { name: "Start shift" })).toHaveCount(0);
-        await details.getByRole("button", { name: "Join till", exact: true }).click();
-        await second.getByRole("dialog", { name: "Join till for shift 1?" }).getByRole("button", { name: "Join till", exact: true }).click();
+        const openTill = second.getByRole("button", { name: /^Saturday market • Nov 20 • Shift 2/ });
+        await expect(openTill).toBeVisible();
+        if (role === "owner") {
+          await openTill.click();
+        } else {
+          await showMissedShift(second);
+          await second.getByRole("button", { name: /Saturday market.*Started/ }).click();
+          const details = second.getByRole("dialog", { name: shiftName, exact: true });
+          await expect(details.getByText("Started on another device")).toBeVisible();
+          await expect(details.getByRole("button", { name: "Start shift" })).toHaveCount(0);
+          await details.getByRole("button", { name: "Join till", exact: true }).click();
+        }
+        const join = second.getByRole("dialog", { name: "Join till?" });
+        await expect(join.getByText(shiftName, { exact: true })).toBeVisible();
+        await join.getByRole("button", { name: "Join till", exact: true }).click();
         await expect(second.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
       } finally {
         await second.close();
@@ -174,7 +195,7 @@ test("a missed shift can be started and joined from another phone by members, ow
     await expect(unassigned.getByText("Open on another phone")).toHaveCount(0);
     await showMissedShift(unassigned);
     await unassigned.getByRole("button", { name: /Saturday market.*Started/ }).click();
-    const details = unassigned.getByRole("dialog", { name: "Saturday market" });
+    const details = unassigned.getByRole("dialog", { name: shiftName, exact: true });
     await expect(details.getByText("Started on another device")).toBeVisible();
     await expect(details.getByRole("button", { name: "Join till", exact: true })).toHaveCount(0);
   } finally {
@@ -218,12 +239,12 @@ test("a phone opening after another phone uses the saved cash and shows the hand
   await expect(page.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
 });
 
-test("an owner can close a stranded till without joining it", async ({ page }) => {
+test("an owner can close a stranded till linked to a shift without joining it", async ({ page }) => {
   test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app with test Supabase settings and POS_TEST_MOCK_AUTH=1.");
   const initial = teamSnapshot();
-  const till = newShift("other-phone", initial.business!.id, 8, 1000, initial.menu, {
+  const till = { ...newShift("other-phone", initial.business!.id, 8, 1000, initial.menu, {
     currency: "PHP", payments: initial.business!.settings.payments, discounts: [], receiptNote: "",
-  });
+  }), bookingId: initial.bookings![0].id };
   await mockAuth(page);
   await page.route("**/api/pos", async (route) => {
     const command = route.request().postDataJSON();
@@ -237,16 +258,16 @@ test("an owner can close a stranded till without joining it", async ({ page }) =
   await enterCredentials(page);
   await page.locator("button[type=submit]").click();
   await page.getByRole("button", { name: "Till", exact: true }).click();
-  await page.getByRole("button", { name: "Close shift 8", exact: true }).click();
-  const close = page.getByRole("dialog", { name: "Close shift 8", exact: true });
+  await page.getByRole("button", { name: /^Saturday market • / }).click();
+  const close = page.getByRole("dialog", { name: "Close shift", exact: true });
   await close.getByRole("button", { name: "Type the total" }).click();
   await close.getByRole("textbox", { name: "Cash on hand" }).fill("10");
   await close.getByRole("button", { name: "Close shift and see report" }).click();
   const pin = page.getByRole("dialog", { name: "Owner PIN" });
   for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
   await pin.getByRole("button", { name: "Confirm" }).click();
-  await expect(page.getByRole("dialog", { name: "Shift 8 closed" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Close shift 8", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: /^Saturday market • .+ closed$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Saturday market • / })).toHaveCount(0);
 });
 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {
@@ -644,7 +665,7 @@ test.describe("account-enabled link entry", () => {
         expect(invitations).toEqual([{ action: "acceptInvite", code: inviteCode }]);
       else {
         expect(invitations).toEqual([]);
-        await expect(page.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
+        await expect(page.getByRole("dialog", { name: /^Saturday market • / })).toBeVisible();
       }
       expect(new URL(page.url()).search).toBe("");
     });
@@ -698,7 +719,7 @@ test.describe("account-enabled link entry", () => {
     await page.goto(joinLink(appUrl, teamId, shiftId));
     await enterCredentials(page);
     await page.locator("button[type=submit]").click();
-    await expect(page.getByRole("dialog", { name: "Saturday market", exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /^Saturday market • / })).toBeVisible();
     await expect(page.getByRole("button", { name: /Switch business, now Market Counter/ })).toBeVisible();
   });
 

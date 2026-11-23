@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, CloudOff, ReceiptText, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, CloudOff, Eye, EyeOff, ReceiptText, Search, X } from "lucide-react";
 import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -30,6 +30,21 @@ export interface SalesFocus {
   filter: SalesFilter;
 }
 
+function SalesAmount({ hidden, value, currency, className = "" }: {
+  hidden: boolean;
+  value: number;
+  currency: string;
+  className?: string;
+}) {
+  if (!hidden) return <Money value={value} currency={currency} className={className} />;
+  return (
+    <>
+      <span className={`num ${className}`} aria-hidden="true">****</span>
+      <span className="sr-only">Amount hidden</span>
+    </>
+  );
+}
+
 export function SalesScreen({
   state,
   online,
@@ -54,6 +69,7 @@ export function SalesScreen({
   const [filter, setFilter] = useState<SalesFilter>(() => focus?.filter ?? (shift ? { shift: [shiftKey(shift)] } : {}));
   const [filtering, setFiltering] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [amountsHidden, setAmountsHidden] = useState(false);
   const searchButton = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState("");
   const shifts = useMemo(
@@ -134,13 +150,13 @@ export function SalesScreen({
             <>
               {itemQty} sold{" "}
               <span className="g">
-                for <Money value={itemRevenue} currency={currency} />, in {live.length}{" "}
+                for <SalesAmount hidden={amountsHidden} value={itemRevenue} currency={currency} />, in {live.length}{" "}
                 {live.length === 1 ? "sale." : "sales."}
               </span>
             </>
           ) : sales.length ? (
             <>
-              <Money value={sum} currency={currency} />{" "}
+              <SalesAmount hidden={amountsHidden} value={sum} currency={currency} />{" "}
               <span className="g">
                 from {live.length} {live.length === 1 ? "sale." : "sales."}
               </span>
@@ -155,6 +171,18 @@ export function SalesScreen({
             </>
           )}
         </h1>
+        {state.sales.length > 0 && (
+          <button
+            type="button"
+            className="round"
+            aria-label="Hide sales amounts"
+            aria-pressed={amountsHidden}
+            title={amountsHidden ? "Show sales amounts" : "Hide sales amounts"}
+            onClick={() => setAmountsHidden((hidden) => !hidden)}
+          >
+            {amountsHidden ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
+          </button>
+        )}
         {state.sales.length > 0 && (
           <button
             className="round"
@@ -199,7 +227,7 @@ export function SalesScreen({
       {hours.length >= 2 && (
         <details className={`card ${styles.details} ${styles.analytics}`}>
           <summary>Sales by hour</summary>
-          <HourChart hours={hours} currency={currency} title={active ? "Filtered sales" : "All shifts"} />
+          <HourChart hours={hours} currency={currency} title={active ? "Filtered sales" : "All shifts"} amountsHidden={amountsHidden} />
         </details>
       )}
       {sales.length ? (
@@ -235,7 +263,8 @@ export function SalesScreen({
                   </span>
                 </span>
                 <span className="end">
-                  <Money
+                  <SalesAmount
+                    hidden={amountsHidden}
                     value={sale.total}
                     currency={shiftCurrency(sh, business)}
                     className={sale.reversedAt ? "struck" : ""}

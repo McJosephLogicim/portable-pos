@@ -44,7 +44,9 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
           aria-label={`Remove ${chip.name.toLowerCase()} ${chip.label}`}
           onClick={() => onChange(toggleFilter(filter, chip.key, chip.value))}
         >
-          <span className="g">{chip.name}</span> {chip.label} <X size={14} />
+          <span className="g">{chip.name}</span>
+          <span className="grow ellipsis">{chip.label}</span>
+          <X size={14} aria-hidden="true" />
         </button>
       ))}
       {total > chips.length && (

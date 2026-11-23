@@ -4,7 +4,7 @@ import { shiftTotals, stockReplay } from "./domain";
 import { brandShareText } from "./share-brand";
 import { shiftName } from "./shift-name";
 import { round, stockModel, unitText } from "./stock";
-import { bookingTitle, dayOf, seatsOpen, shiftRoleNames } from "./team";
+import { dayOf, seatsOpen, shiftRoleNames } from "./team";
 import type { Booking, Business, Expense, Product, Sale, Shift } from "./types";
 
 export interface StockRow {
@@ -284,14 +284,13 @@ export function scheduleText(
   return brandShareText(text);
 }
 
-export function scheduledShiftText(booking: Booking, business: Business, origin: string, now = Date.now()) {
+export function scheduledShiftText(booking: Booking, business: Business, title: string, origin: string, now = Date.now()) {
   const timeZone = business.timeZone;
   const day = new Intl.DateTimeFormat("en", { timeZone, weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
   const start = new Date(booking.startsAt);
   const end = new Date(booking.endsAt);
   const overnight = dayOf(booking.startsAt, timeZone) !== dayOf(booking.endsAt, timeZone);
-  const title = bookingTitle(booking);
   const people = booking.staff.map((person) => person.name).join(", ");
   const open = seatsOpen(booking);
   const venue = [...new Set([booking.place?.name, booking.place?.address].filter(Boolean))].join(" · ");

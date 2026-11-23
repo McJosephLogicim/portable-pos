@@ -15,10 +15,12 @@ export function HourChart({
   hours,
   currency,
   title = "By hour",
+  amountsHidden = false,
 }: {
   hours: { hour: number; total: number }[];
   currency: string;
   title?: string;
+  amountsHidden?: boolean;
 }) {
   if (hours.length < 2) return null;
   const peak = Math.max(...hours.map((h) => h.total), 1);
@@ -28,7 +30,13 @@ export function HourChart({
       <div className="between">
         <span className="label">{title}</span>
         <span className="label">
-          Busiest {hourName(busiest.hour)} · {formatMoney(busiest.total, currency)}
+          Busiest {hourName(busiest.hour)} ·{" "}
+          {amountsHidden ? (
+            <>
+              <span aria-hidden="true">****</span>
+              <span className="sr-only">Amount hidden</span>
+            </>
+          ) : formatMoney(busiest.total, currency)}
         </span>
       </div>
       <div className={`hours ${styles.hourBars}`} role="img" aria-label={`Sales by hour, busiest at ${hourName(busiest.hour)}`}>

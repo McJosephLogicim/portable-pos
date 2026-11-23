@@ -191,8 +191,10 @@ export function demoAction(
       const booking = state.bookings?.find((b) => b.id === input.bookingId);
       if (!booking) throw Error("That scheduled shift was removed.");
       if (!isOnShift(booking, state.me?.memberId)) throw new RequestFailure(403, "You need to be on this shift to use its till.");
-      if (booking.tillClosed || state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
+      const existing = state.shifts.find((s) => s.bookingId === booking.id);
+      if (booking.tillClosed || existing?.closedAt)
         throw Error("This shift already closed. Add a new one on Shifts.");
+      if (existing) throw new RequestFailure(409, "This shift already has a till.");
       const problem = startProblem(booking, business.timeZone);
       if (problem) throw Error(problem);
       const { mode: _mode, menuCategories: _categories, ...checkoutSettings } = business.settings;
@@ -239,7 +241,7 @@ export function demoAction(
     case "link": {
       const open = state.shift;
       if (!open) throw Error("Open the till first.");
-      if (open.bookingId) return state;
+      if (state.bookings?.some((booking) => booking.id === open.bookingId)) return state;
       const b = walkInBooking(input.newShift, state.me!, Date.parse(open.openedAt));
       const shift = { ...open, bookingId: b.id };
       return {
@@ -253,14 +255,17 @@ export function demoAction(
       const open = state.shift;
       if (!open || open.closedAt || open.id !== input.shiftId)
         throw new RequestFailure(409, "The till changed. Open Shifts again to choose a shift.");
-      if (open.bookingId === input.bookingId) return state;
-      if (open.bookingId) throw new RequestFailure(409, "This till is already on another shift.");
+      const currentBooking = state.bookings?.find((b) => b.id === open.bookingId);
+      if (currentBooking?.id === input.bookingId) return state;
+      if (currentBooking) throw new RequestFailure(409, "This till is already on another shift.");
       const booking = state.bookings?.find((b) => b.id === input.bookingId);
       if (!booking) throw new RequestFailure(404, "That scheduled shift was removed.");
       if (state.business?.id !== PRACTICE && !isOnShift(booking, state.me?.memberId))
         throw new RequestFailure(403, "You need to be on this shift to use its till.");
-      if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
+      const existing = state.shifts.find((s) => s.bookingId === booking.id);
+      if (booking.tillClosed || existing?.closedAt)
         throw new RequestFailure(409, "This shift already closed. Choose another shift.");
+      if (existing) throw new RequestFailure(409, "This shift already has a till. Choose another shift.");
       // Practice can link the shift immediately, including one scheduled for another day.
       const problem = state.business?.id === PRACTICE ? null : linkBookingProblem(booking, state.business!.timeZone);
       if (problem) throw new RequestFailure(409, problem);
@@ -362,8 +367,11 @@ export function demoAction(
       };
     }
     case "close": {
-      if (!state.shift) throw Error("This shift has already closed.");
+      if (!state.shift || state.shift.closedAt || (input.shiftId && state.shift.id !== input.shiftId))
+        throw Error("This shift has already closed.");
       const shift = state.shift;
+      if (!state.bookings?.some((booking) => booking.id === shift.bookingId))
+        throw new RequestFailure(409, "Link this till to a shift before closing.");
       const closingStock = checkClosing(shift, input.closingStock);
       const closingCount = checkCount(input.closingCount, input.countedCash);
       const { used, left } = stockReplay(shift, state.sales);

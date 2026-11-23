@@ -334,7 +334,7 @@ export function checkOpenShiftRoster(before: Plan, after: Plan, openBookings: Pi
   const remaining = new Map(after.bookings.map((booking) => [booking.id, booking]));
   for (const booking of openBookings) {
     const next = edited.has(booking.id) ? remaining.get(booking.id) : booking;
-    check(next, "Close the till before deleting this shift.", 409);
+    if (!next) continue; // Deleting the shift leaves its till open for relinking.
     check(
       !booking.staff.some((slot) => joinedBefore.has(slot.memberId)) || next.staff.some((slot) => joinedAfter.has(slot.memberId)),
       "Assign another teammate or close the till before removing the last person on this shift.",

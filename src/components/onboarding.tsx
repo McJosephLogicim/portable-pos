@@ -41,7 +41,7 @@ function nextStep(live: RegisterState, practice: RegisterState): Step {
   if (!live.menu.length) return "menu";
   if (!practice.sales.length) return "sell";
   if (!live.bookings?.length) return "schedule";
-  if (practice.shift && !practice.shift.bookingId) return "link";
+  if (practice.shift && !live.bookings.some((booking) => booking.id === practice.shift?.bookingId)) return "link";
   return practice.shift ? "close" : "team";
 }
 

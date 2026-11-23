@@ -47,6 +47,14 @@ export function presentShift(
   };
 }
 
+/** Keep the saved id for Undo, but a deleted booking is no longer a link. */
+export async function tillBooking(tx: Transaction, shift: Pick<typeof shifts.$inferSelect, "businessId" | "bookingId">) {
+  if (!shift.bookingId) return;
+  const [booking] = await tx.select({ id: bookings.id, staff: bookings.staff }).from(bookings)
+    .where(and(eq(bookings.businessId, shift.businessId), eq(bookings.id, shift.bookingId)));
+  return booking;
+}
+
 export async function activeTill(
   tx: Transaction,
   running: (typeof shifts.$inferSelect)[],
@@ -58,15 +66,11 @@ export async function activeTill(
     ? running.find((row) => row.id === view.till)
     : running.length === 1 ? running[0] : running.find((row) => row.deviceId === view.deviceId);
   if (!shift) return;
-  if (!shift.bookingId) {
-    const deviceId = view.deviceId;
-    if (deviceId === shift.deviceId && (shift.tillDevices?.[member.id]?.includes(deviceId) ||
-      (!shift.tillDevices && member.primaryOwner))) return shift;
-    return;
-  }
-  const booking = knownBookings.find((row) => row.id === shift.bookingId) ?? (await tx.select({ staff: bookings.staff })
-    .from(bookings).where(and(eq(bookings.businessId, shift.businessId), eq(bookings.id, shift.bookingId))))[0];
-  if (isOnShift(booking, member.id)) return shift;
+  const booking = knownBookings.find((row) => row.id === shift.bookingId) ?? await tillBooking(tx, shift);
+  if (booking) return isOnShift(booking, member.id) ? shift : undefined;
+  const deviceId = view.deviceId;
+  if (deviceId && (shift.tillDevices?.[member.id]?.includes(deviceId) ||
+    (!shift.tillDevices && member.primaryOwner && deviceId === shift.deviceId))) return shift;
 }
 
 export function presentExpense(row: typeof expenses.$inferSelect): Expense {
@@ -367,7 +371,7 @@ export async function snapshot(
   const recent = [...running, ...closed].sort((a, b) => b.number - a.number);
   const active = await activeTill(tx, running, view, { id: me.memberId, primaryOwner: access.member.userId === business.ownerId }, bookingRows);
   // Remember the phone before checkout can go offline. Keep its existing receipts syncable if staffing changes.
-  if (active?.bookingId && view.deviceId) {
+  if (active?.bookingId && bookingsById.has(active.bookingId) && view.deviceId) {
     const devices = active.tillDevices?.[me.memberId] ?? [];
     if (!devices.includes(view.deviceId)) {
       await tx.update(shifts).set({

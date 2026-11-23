@@ -55,7 +55,7 @@ test(
     // One phone runs one shift at a time.
     await assert.rejects(
       cmd({ action: "open", deviceId: phoneA, till: a.id, bookingId: await shiftNow(cmd, pin), openingCash: 0 }),
-      /Close shift/,
+      /Close the current shift/,
     );
     // Each phone sees its own booth, and the other booth in the list.
     const seenA = await cmd({ action: "bootstrap", deviceId: phoneA, till: a.id });

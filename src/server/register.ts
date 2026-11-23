@@ -18,7 +18,7 @@ import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, completedOnboarding, expenses, images, members, sales, shifts, syncedEvents } from "./schema";
-import { activeTill, presentShift, snapshot as baseSnapshot } from "./snapshot";
+import { activeTill, presentShift, snapshot as baseSnapshot, tillBooking } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
@@ -412,33 +412,36 @@ export async function runCommand(
     } else if (cmd.action === "link") {
       const open = await tillShift();
       ensure(open, "Open the till first.", 409);
-      if (!open.bookingId) {
+      if (!await tillBooking(tx, open)) {
         const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt));
         await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "linkBooking") {
-      const open = await tillShift();
-      ensure(open?.id === cmd.shiftId, "The till changed. Open Shifts again to choose a shift.", 409);
-      if (open.bookingId === cmd.bookingId) return snapshot(access);
-      ensure(!open.bookingId, "This till is already on another shift.", 409);
+      const running = await openShifts();
+      const open = running.find((till) => till.id === cmd.shiftId);
+      ensure(open, "The till changed. Open Shifts again to choose a shift.", 409);
+      const mine = await tillShift(running);
+      const currentBooking = await tillBooking(tx, open);
+      const canRecover = me.owner && (!currentBooking ||
+        (currentBooking.id === cmd.bookingId && isOnShift(currentBooking, me.memberId)));
+      ensure(mine?.id === open.id || canRecover, "The till changed. Open Shifts again to choose a shift.", 409);
+      if (!mine) view.till = open.id;
+      if (currentBooking?.id === cmd.bookingId) return snapshot(access);
+      ensure(!currentBooking, "This till is already on another shift.", 409);
       const [booking] = await tx
         .select()
         .from(bookings)
         .where(and(eq(bookings.businessId, business.id), eq(bookings.id, cmd.bookingId)));
       ensure(booking, "That scheduled shift was removed.", 404);
       ensure(isOnShift(booking, me.memberId), "You need to be on this shift to use its till.", 403);
-      const [closed] = await tx
-        .select({ id: shifts.id })
+      const [existing] = await tx
+        .select({ closedAt: shifts.closedAt })
         .from(shifts)
-        .where(and(eq(shifts.businessId, business.id), eq(shifts.bookingId, booking.id), isNotNull(shifts.closedAt)))
+        .where(and(eq(shifts.businessId, business.id), eq(shifts.bookingId, booking.id)))
         .limit(1);
-      ensure(!closed, "This shift already closed. Choose another shift.", 409);
-      const [running] = await tx
-        .select({ id: shifts.id })
-        .from(shifts)
-        .where(and(eq(shifts.businessId, business.id), eq(shifts.bookingId, booking.id), isNull(shifts.closedAt)))
-        .limit(1);
-      ensure(!running, "Another phone is already running this shift. Choose another shift.", 409);
+      ensure(!existing, existing?.closedAt
+        ? "This shift already closed. Choose another shift."
+        : "This shift already has a till. Choose another shift.", 409);
       const problem = linkBookingProblem(booking, business.timeZone);
       ensure(!problem, problem ?? "", 409);
       await tx.update(shifts).set({ bookingId: booking.id }).where(eq(shifts.id, open.id));
@@ -470,6 +473,7 @@ export async function runCommand(
       if (!shift.closedAt) {
         ensure(me.owner || await activeTill(tx, [shift], { till: shift.id, deviceId: cmd.deviceId }, { id: member.id, primaryOwner }),
           "Only the shift’s staff or a business owner can close its till.", 403);
+        ensure(await tillBooking(tx, shift), "Link this till to a shift before closing.", 409);
         // Sales still on other authorized phones are added when they sync.
         const present = presentShift(shift, business.currency);
         let closingStock, closingCount;

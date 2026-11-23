@@ -360,7 +360,7 @@ export function JoinTillSheet({ till, name, onClose, onJoin }: {
   return (
     <ConfirmSheet
       title="Join till?"
-      detail={<> <strong>{name}</strong><br />Sales from this phone go to that shift's drawer. Any phone on it can close it.</>}
+      detail={<><strong>{name}</strong><br />Sales from this phone go to that shift's drawer. Any phone on it can close it.</>}
       confirmLabel="Join till"
       destructive={false}
       onClose={onClose}
@@ -731,11 +731,11 @@ function BookingSheet({
         )}
         <ShiftSheetActions
           state={state}
-          title={bookingTitle(b)}
+          title={title}
           till={till}
-          shareText={() => scheduledShiftText(b, business, location.origin)}
+          shareText={() => scheduledShiftText(b, business, title, location.origin)}
           busy={busy}
-          onDelete={me.owner && !runningTill ? () => setConfirmDelete(true) : undefined}
+          onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
           deleteDisabled={!online}
         />
       </Sheet>
@@ -770,7 +770,7 @@ function BookingSheet({
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
-          detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule. You can undo the deletion from the toast.`}
+          detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule.${runningTill ? " Its till stays open. Link it to a shift before closing." : ""} You can undo the deletion from the toast.`}
           confirmLabel="Delete"
           onClose={() => setConfirmDelete(false)}
           onConfirm={async () => {
@@ -1545,9 +1545,9 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, practice = false
   const zone = state.business!.timeZone;
   const now = Date.now();
   const today = dayOf(now, zone);
-  const openShifts = practice
-    ? upcomingBookings(state, -Infinity)
-    : upcomingBookings(state, now).filter((booking) => !linkBookingProblem(booking, zone, now));
+  const linkedBookings = new Set(state.shifts.map((till) => till.bookingId));
+  const openShifts = upcomingBookings(state, practice ? -Infinity : now)
+    .filter((booking) => !linkedBookings.has(booking.id) && (practice || !linkBookingProblem(booking, zone, now)));
   const [selection, setSelection] = useState<{ bookingId: string; confirming?: boolean } | null>(null);
   const [adding, setAdding] = useState<"new" | "bulk" | null>(null);
   const selected = openShifts.find((booking) => booking.id === selection?.bookingId);
@@ -1585,7 +1585,7 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, practice = false
       {selected && selection?.confirming && (
         <ConfirmSheet
           title="Add till to this shift?"
-          detail={<>This till and its sales will be linked to <strong>{bookingTitle(selected)}</strong>.</>}
+          detail={<>This till and its sales will be linked to <strong>{shiftName(selected, state)}</strong>.</>}
           confirmLabel="Add till"
           destructive={false}
           onClose={() => setSelection(practice ? null : { bookingId: selected.id })}

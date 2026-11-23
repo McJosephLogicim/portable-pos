@@ -47,15 +47,28 @@ test(
     assert.deepEqual((await call(restoreItem)).menu, [tea, repriced]);
     await assert.rejects(call({ ...restoreItem, item: { ...tea, price: 350 } }), { status: 409 });
 
-    await assert.rejects(call({ action: "deleteBooking", bookingId }), /Close the till before deleting/);
-    await call({ action: "close", shiftId: opened.shift!.id, deviceId, countedCash: 0 });
+    const tillId = opened.shift!.id;
+    const close = { action: "close", shiftId: tillId, deviceId, countedCash: 0 };
+    const secondPhone = { action: "bootstrap", deviceId: randomUUID(), till: tillId };
+    assert.equal((await call(secondPhone)).shift?.id, tillId);
+    const activeDeletion = await call({ action: "deleteBooking", bookingId, deviceId, till: tillId });
+    assert.equal(activeDeletion.shift?.id, tillId);
+    assert.equal(activeDeletion.shift?.closedAt, null);
+    assert.equal(activeDeletion.bookings!.some((entry) => entry.id === bookingId), false);
+    assert.equal((await call(secondPhone)).shift?.id, tillId);
+    assert.equal((await call({ ...secondPhone, deviceId: randomUUID() })).shift, null);
+    await assert.rejects(call(close), { status: 409, message: "Link this till to a shift before closing." });
+    assert.equal(activeDeletion.deletedRecord?.kind, "booking");
+    const undone = await call({ action: "restoreBooking", booking: activeDeletion.deletedRecord.booking, deviceId, till: tillId });
+    assert.equal(undone.shift?.bookingId, bookingId);
+    await call(close);
     const deleted = await call({ action: "deleteBooking", bookingId });
     assert.equal(deleted.bookings!.some((entry) => entry.id === bookingId), false);
     assert.equal(deleted.deletedRecord?.kind, "booking");
     const booking = deleted.deletedRecord.booking;
     const restoreShift = { action: "restoreBooking", booking };
     const restored = await call(restoreShift);
-    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, sales: 0, expenses: 0, tillClosed: true });
+    assert.deepEqual(restored.bookings!.find((entry) => entry.id === bookingId), { ...booking, shiftOfDay: 1, sales: 0, expenses: 0, tillClosed: true });
     assert.equal(restored.shifts.find((shift) => shift.id === opened.shift!.id)?.bookingId, bookingId);
     assert.equal((await call(restoreShift)).bookings!.filter((entry) => entry.id === bookingId).length, 1);
     await assert.rejects(call({ ...restoreShift, booking: { ...booking, seats: 3 } }), { status: 409 });
@@ -74,7 +87,18 @@ test(
     });
     const settled = await call({ action: "sync", deviceId, events: [{ type: "sale", id: receipt.id, shiftId: orphan.id, sale: receipt }] });
     assert.ok(settled.sales.some((sale) => sale.id === receipt.id));
-    const recovered = await call({ action: "close", deviceId, shiftId: orphan.id, countedCash: 450 });
+    const closeOrphan = { action: "close", deviceId, shiftId: orphan.id, countedCash: 450 };
+    await assert.rejects(call(closeOrphan), { status: 409, message: "Link this till to a shift before closing." });
+    const replacement = {
+      ...booking, id: randomUUID(), startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 3600000).toISOString(),
+    };
+    await call({ action: "booking", booking: replacement });
+    const recoveryPhone = randomUUID();
+    const relink = { action: "linkBooking", shiftId: orphan.id, bookingId: replacement.id, till: null, deviceId: recoveryPhone };
+    assert.equal((await call(relink)).shift?.id, orphan.id);
+    assert.equal((await call(relink)).shift?.bookingId, replacement.id);
+    const recovered = await call({ ...closeOrphan, deviceId: recoveryPhone });
     assert.deepEqual(recovered.recoveryTillIds, []);
     assert.equal(recovered.shifts.find((shift) => shift.id === orphan.id)?.difference, 0);
   },
@@ -137,7 +161,7 @@ test(
     await cmd({ action: "setup", name: "Link test", currency: "USD", timeZone: "UTC", pin });
     await cmd({ action: "mode", mode: "simple", pin });
     await cmd({ action: "menu", menu: [{ id: "tea", name: "Tea", category: "", price: 250, groups: [] }], pin });
-    const opening = { action: "open", openingCash: 0, deviceId, bookingId: await shiftNow(cmd, pin) };
+    const opening = { action: "open", openingCash: 0, deviceId, bookingId: await shiftNow(cmd, pin), till: null };
     const openLegacyTill = async () => {
       const { shift } = await cmd(opening);
       // Recreate a till opened before the scheduled shift requirement.
@@ -162,6 +186,11 @@ test(
     const link = { action: "linkBooking", shiftId: shift.id, bookingId: booking.id, deviceId };
     await assert.rejects(cmd({ ...link, shiftId: randomUUID() }), { status: 409 });
     await assert.rejects(cmd({ ...link, bookingId: randomUUID() }), { status: 404 });
+    const otherTill = (await cmd({ ...opening, bookingId: other.id, deviceId: randomUUID(), till: null })).shift!;
+    assert.notEqual(otherTill.id, shift.id);
+    await assert.rejects(cmd({ ...link, bookingId: other.id, till: shift.id }), {
+      status: 409, message: "This shift already has a till. Choose another shift.",
+    });
     const [linked, retried] = await Promise.all([cmd(link), cmd(link)]);
     assert.equal(linked.shift!.id, shift.id);
     assert.equal(retried.shift!.bookingId, booking.id);

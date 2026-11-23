@@ -358,7 +358,7 @@ export interface Bootstrap {
   bookings?: Booking[];
   menu: Product[];
   shift: Shift | null;
-  /** Open tills without an accessible roster, for owner-assisted closing. */
+  /** Open tills without an accessible roster, for owner-assisted relinking or closing. */
   recoveryTillIds?: string[];
   soldOut: string[];
   sales: Sale[];
