@@ -101,6 +101,11 @@ test("payment methods support a searchable preset, a custom icon, and the proof 
   await page.getByRole("button", { name: "Try the demo" }).click();
   await page.getByRole("button", { name: "Account and settings" }).click();
   await page.getByRole("button", { name: /Payment methods/ }).click();
+  const walletWell = page.getByRole("button", { name: "GCash E-wallet", exact: true }).locator(".well");
+  const walletLogo = walletWell.locator(".payment-icon-preset");
+  await expect(walletWell).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(walletLogo).toHaveCSS("width", "40px");
+  await expect(walletLogo).toHaveCSS("height", "40px");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "New payment method" });
   await expect(editor.getByRole("button", { name: "Predefined" })).toHaveAttribute("aria-pressed", "true");

@@ -2597,6 +2597,13 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
 .payment-icon-preset {
   mask: var(--item-squircle) center / 100% 100% no-repeat;
 }
+.well:has(> .payment-icon-preset) {
+  background: transparent;
+}
+.well > .payment-icon-preset {
+  width: 100%;
+  height: 100%;
+}
 .photo-busy {
   position: absolute;
   inset: 0;
