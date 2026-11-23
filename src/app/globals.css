@@ -912,7 +912,7 @@ button.list-row:not(.sell-option):active {
   height: 44px;
   padding: 2px;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: transparent;
 }
 .account-button[aria-current="page"] {
@@ -1740,9 +1740,6 @@ button.list-row:not(.sell-option):active {
   font-size: 9.5px;
   box-shadow: 0 0 0 2px var(--surface);
 }
-.faces .avatar.small + .avatar.small {
-  margin-left: -10px;
-}
 .avatar.dim {
   background: var(--surface-muted);
   color: var(--ink-secondary);
@@ -1825,15 +1822,12 @@ button.list-row:not(.sell-option):active {
 .avatar:not(.seat) {
   mask: var(--item-squircle) center / 100% 100% no-repeat;
 }
-.account-bar[data-sell="true"] :is(.mark, .avatar),
+.account-bar[data-sell="true"] .mark,
 .sell-page :is(.photo-slot.has, .photo-full, .proof-thumb, .receipt-logo, .mark, .avatar) {
   mask: none;
 }
 .avatar:not(.seat), .proof-thumb, .check-photo {
   border-radius: 0;
-}
-.account-bar[data-sell="true"] .avatar {
-  border-radius: 50%;
 }
 .item-preview {
   position: relative;
@@ -1877,7 +1871,7 @@ button.list-row:not(.sell-option):active {
   margin-left: calc(-1 * var(--preview-overlap));
 }
 /* Cut a transparent gap along the left edge of the next squircle. */
-.item-preview-layer:not(:last-child) > .item-preview {
+.item-preview-layer:not(:last-child) > :is(.item-preview, .avatar) {
   mask-image: var(--item-squircle), var(--item-squircle);
   mask-position: center, calc(var(--preview-size) - var(--preview-overlap) - 2px) center;
   mask-composite: subtract;
@@ -2098,6 +2092,10 @@ button.booking-body:active {
 }
 .faces {
   margin-top: 4px;
+}
+.faces .item-preview-stack {
+  --preview-size: 24px;
+  --preview-overlap: 10px;
 }
 .faces .label {
   margin-left: 4px;
@@ -2595,6 +2593,9 @@ button.list-row:not(.sell-option):active:not(:disabled):not([aria-disabled="true
   display: block;
   object-fit: contain;
   flex: none;
+}
+.payment-icon-preset {
+  mask: var(--item-squircle) center / 100% 100% no-repeat;
 }
 .photo-busy {
   position: absolute;

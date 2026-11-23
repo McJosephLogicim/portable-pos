@@ -23,8 +23,7 @@ async function prepare(): Promise<boolean> {
     ...(!matchMedia("(prefers-reduced-motion: reduce)").matches ? [popoLoading.wave] : []),
     "/manifest.webmanifest",
     ...cashPhotos,
-    "/payment-icons/cash.svg",
-    "/payment-icons/gcash.svg",
+    "/payment-icons/gcash.png",
     "/payment-icons/maya.svg",
     ...performance.getEntriesByType("resource").map((entry) => entry.name),
     ...Array.from(document.images, (img) => img.currentSrc || img.src).filter(

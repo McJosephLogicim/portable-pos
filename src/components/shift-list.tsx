@@ -113,7 +113,15 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
           )}
           {booking && (
             <span className="row booking-meta gap-6 faces">
-              {booking.staff.slice(0, 4).map((s) => <Avatar key={s.memberId} id={s.memberId} name={s.name} small />)}
+              {booking.staff.length > 0 && (
+                <span className="item-preview-stack">
+                  {booking.staff.slice(0, 4).map((s) => (
+                    <span key={s.memberId} className="item-preview-layer">
+                      <Avatar id={s.memberId} name={s.name} small />
+                    </span>
+                  ))}
+                </span>
+              )}
               {Array.from({ length: Math.min(3, open) }, (_, i) => <span key={i} className="avatar small seat" aria-hidden="true" />)}
               <span className="label">{tillClosed ? "Closed" : mine ? "You're on" : open ? `${open} open` : "Full"}</span>
             </span>

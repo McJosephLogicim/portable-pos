@@ -4,17 +4,17 @@ The bank presets use the PDIC insured bank directories dated 15 April 2026 for [
 
 Wallet and issuer names use the [Bangko Sentral ng Pilipinas e-money issuer directory](https://www.bsp.gov.ph/Lists/Directories/Attachments/7/emi.pdf) and [Philippine Payments Management Inc. member directory](https://www.philpayments.org.ph/member-institutions). The catalog also recognizes common consumer brand names. It is a bundled snapshot for offline use.
 
-Cash uses original artwork. The following brand marks belong to their respective owners.
+The following brand marks belong to their respective owners.
 
 | Asset | Source |
 | --- | --- |
-| aub.webp | [Asia United Bank](https://www.aub.com.ph/resources/images/assets/AUB-Logo-Bg.webp) |
+| aub.png | [Asia United Bank on the App Store](https://apps.apple.com/ph/app/aub/id569043312) |
 | bdo.svg | [BDO mark archived by Wikimedia Commons](https://commons.wikimedia.org/wiki/File:BDO_Unibank_(logo).svg) |
 | bpi.svg | [BPI](https://www.bpi.com.ph/content/dam/bpi/main-navigation/Logo_BPI.svg) |
 | cimb.svg | [CIMB Bank](https://www.cimbbank.com.ph/content/dam/cimbph/images/global/CIMB-logo-footer-without-background.svg) |
-| coins-ph.svg | [Coins.ph](https://www.coins.ph/en-ph/verify) |
+| coins-ph.png | [Coins.ph on the App Store](https://apps.apple.com/ph/app/coins-buy-crypto-pay-wallet/id972324049) |
 | eastwest.svg | [EastWest](https://www.eastwestbanker.com/sites/default/files/2024-06/Footer-logo.svg) |
-| gcash.svg | [GCash](https://gcash.com/) |
+| gcash.png | [GCash on the App Store](https://apps.apple.com/ph/app/gcash/id520020791) |
 | gotyme.svg | [GoTyme](https://www.gotyme.com.ph/static-assets/images/gotymebank-logo-primary-black.svg) |
 | grabpay.svg | [GrabPay merchant brand assets](https://merchant.grab.com/en-ph/brand-centre/grabpay-online) |
 | landbank.png | [LANDBANK](https://www.landbank.com/assets/landbank-logo.png) |
@@ -25,7 +25,7 @@ Cash uses original artwork. The following brand marks belong to their respective
 | netbank.svg | [Netbank](https://netbank.ph/wp-content/uploads/2024/08/Netbank-logo-1.svg) |
 | ofbank.png | [Overseas Filipino Bank](https://www.ofbank.com.ph/images/OFBank_newLogo_09012025.png) |
 | ownbank.svg | [OwnBank](https://www.ownbank.com/) |
-| palawanpay.png | [PalawanPay](https://www.palawanpay.com/) |
+| palawanpay.png | [PalawanPay on the App Store](https://apps.apple.com/ph/app/palawanpay/id1612022476) |
 | paymongo.svg | [PayMongo press kit](https://www.paymongo.com/company/press) |
 | psbank.png | [PSBank](https://www.psbank.com.ph/media/1065/psbank-logo.png) |
 | rcbc.png | [RCBC](https://www.rcbc.com/uploads/media/rcbc-logo-2.png) |

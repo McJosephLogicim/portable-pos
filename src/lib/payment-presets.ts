@@ -7,6 +7,7 @@ export type PaymentPreset = {
   kind: PaymentKind;
   category: string;
   icon?: string;
+  logoBackground?: string;
   searchText?: string;
 };
 
@@ -18,12 +19,13 @@ const categories = {
   card: "Card",
 } as const;
 
-export const paymentPresets: PaymentPreset[] = directories.map(({ id, name, group, logo, aliases }) => ({
+export const paymentPresets: PaymentPreset[] = directories.map(({ id, name, group, logo, logoBackground, aliases }) => ({
   id,
   name,
   kind: group === "digital" ? "bank" : group as PaymentKind,
   category: categories[group as keyof typeof categories],
   ...(logo ? { icon: `/payment-icons/${logo}` } : {}),
+  ...(logoBackground ? { logoBackground } : {}),
   ...(aliases ? { searchText: aliases } : {}),
 }));
 
