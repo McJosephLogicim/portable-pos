@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { emptyStateObjects } from "@/lib/app-brand";
 import { friendlyError } from "@/lib/errors";
+import { blocked, type Reason } from "@/lib/reject";
 import {
   createContext,
   useCallback,
@@ -248,7 +249,7 @@ export function PhotoPicker({
   onChange,
   label,
   size = "large",
-  disabled,
+  blockedReason,
   onError,
   face,
 }: {
@@ -259,7 +260,7 @@ export function PhotoPicker({
   onError?: (message: string) => void;
   label: string;
   size?: "large" | "small";
-  disabled?: boolean;
+  blockedReason?: Reason;
 }) {
   const upload = useContext(PhotoContext);
   const input = useRef<HTMLInputElement>(null);
@@ -275,7 +276,8 @@ export function PhotoPicker({
         className={"photo-slot" + (value ? " has" : "")}
         aria-label={value ? (size === "small" ? "View " : "Change ") + label : "Add " + label}
         aria-busy={busy || undefined}
-        disabled={busy || disabled}
+        disabled={busy}
+        {...blocked(blockedReason)}
         onClick={() => {
           buzz.tap();
           // A small photo opens large first, with Change and Remove under it.
@@ -298,7 +300,7 @@ export function PhotoPicker({
             <span className="label">{busy ? "Saving photo…" : value ? "Tap it to take another." : "Take one or pick from your gallery."}</span>
           )}
           {value && (
-            <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} disabled={disabled || busy} onClick={() => setRemoving(true)}>
+            <button type="button" className="link danger" style={{ alignSelf: "flex-start" }} disabled={busy} {...blocked(blockedReason)} onClick={() => setRemoving(true)}>
               Remove
             </button>
           )}
@@ -338,7 +340,7 @@ export function PhotoPicker({
               <button
                 type="button"
                 className="btn secondary"
-                disabled={disabled}
+                {...blocked(blockedReason)}
                 onClick={() => {
                   setViewing(false);
                   void Promise.resolve(onChange(undefined)).catch((err) => {
@@ -353,7 +355,7 @@ export function PhotoPicker({
               <button
                 type="button"
                 className="btn"
-                disabled={disabled}
+                {...blocked(blockedReason)}
                 onClick={() => {
                   // The file picker must open inside the tap, before the sheet closes.
                   input.current?.click();
@@ -373,6 +375,7 @@ export function PhotoPicker({
           title={`Remove ${label}?`}
           detail="The image will be cleared when you save."
           confirmLabel="Remove"
+          blockedReason={blockedReason}
           onClose={() => setRemoving(false)}
           onConfirm={() => onChange(undefined)}
         />
@@ -632,6 +635,7 @@ export function ConfirmSheet({
   detail,
   confirmLabel,
   destructive = true,
+  blockedReason,
   onClose,
   onConfirm,
 }: {
@@ -639,21 +643,22 @@ export function ConfirmSheet({
   detail: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
+  blockedReason?: Reason;
   onClose: () => void;
-  onConfirm: () => void | boolean | Promise<void | boolean>;
+  onConfirm: (button: HTMLButtonElement) => void | boolean | Promise<void | boolean>;
 }) {
   const descriptionId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
 
-  async function confirm() {
+  async function confirm(button: HTMLButtonElement) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError("");
     try {
-      if (await onConfirm() !== false) onClose();
+      if (await onConfirm(button) !== false) onClose();
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -671,7 +676,13 @@ export function ConfirmSheet({
       footer={
         <div className="grid-2">
           <button type="button" className="btn secondary" disabled={busy} onClick={onClose}>Cancel</button>
-          <button type="button" className={destructive ? "btn destructive" : "btn"} disabled={busy} onClick={() => void confirm()}>
+          <button
+            type="button"
+            className={destructive ? "btn destructive" : "btn"}
+            disabled={busy}
+            {...blocked(blockedReason)}
+            onClick={(event) => void confirm(event.currentTarget)}
+          >
             {busy ? "Working…" : confirmLabel}
           </button>
         </div>
@@ -777,12 +788,12 @@ export function Switch({
   checked,
   onChange,
   label,
-  disabled,
+  blockedReason,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
-  disabled?: boolean;
+  blockedReason?: Reason;
 }) {
   return (
     <span className="switch-hit">
@@ -792,7 +803,7 @@ export function Switch({
         className="switch"
         aria-checked={checked}
         aria-label={label}
-        disabled={disabled}
+        {...blocked(blockedReason)}
         onClick={(event) => {
           event.stopPropagation();
           onChange(!checked);
@@ -1038,7 +1049,7 @@ function PinSheet({
       footer={
         <button
           className="btn block"
-          disabled={pin.length < 4}
+          {...blocked(pin.length < 4 && "Enter at least four digits of the owner PIN.")}
           onClick={() => onDone(pin)}
         >
           Confirm

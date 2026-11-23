@@ -49,7 +49,7 @@ function StockListSheet({ field: initialField, name, usedBy, onSave, onClose }: 
       editing={Boolean(name)}
       busy={busy}
       error={error}
-      canSave={Boolean(draft.trim()) && draft.trim() !== name && draft.trim().length <= maxLength}
+      saveBlocked={!draft.trim() ? "Enter a name." : draft.trim().length > maxLength ? `Use up to ${maxLength} characters.` : draft.trim() === name && "Change the name before saving."}
       onSave={() => void run(() => onSave(field, draft.trim()))}
       onRemove={name && !usedBy.length ? () => onSave(field, "") : undefined}
       onClose={onClose}

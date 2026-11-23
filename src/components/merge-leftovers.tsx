@@ -1,5 +1,6 @@
 "use client";
 
+import { blocked, OFFLINE } from "@/lib/reject";
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { mergeableShifts, mergeLeftovers } from "@/lib/domain";
@@ -76,7 +77,7 @@ export function MergeLeftoversSheet({
         </>
       }
       footer={
-        <button className="btn block" disabled={!online || busy || !Object.keys(total).length} onClick={merge}>
+        <button className="btn block" disabled={busy} {...blocked(!online ? OFFLINE : !Object.keys(total).length && "Choose a shift with leftovers first.")} onClick={merge}>
           {busy ? "Saving…" : "Set starting amounts"}
         </button>
       }

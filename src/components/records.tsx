@@ -367,7 +367,7 @@ export function RecordSheet({
   editing,
   busy,
   error,
-  canSave,
+  saveBlocked,
   saveLabel,
   saveText,
   onSave,
@@ -386,7 +386,7 @@ export function RecordSheet({
   editing: boolean;
   busy: boolean;
   error: string;
-  canSave: boolean;
+  saveBlocked?: Reason;
   saveLabel?: string;
   /** The Save button's text, like "Add 4 items". */
   saveText?: string;
@@ -415,7 +415,7 @@ export function RecordSheet({
               {error}
             </p>
           )}
-          <button className="btn block" aria-label={saveLabel ?? (editing ? "Save " : "Add ") + noun} disabled={busy || !canSave} onClick={onSave}>
+          <button className="btn block" aria-label={saveLabel ?? (editing ? "Save " : "Add ") + noun} disabled={busy} {...blocked(saveBlocked)} onClick={onSave}>
             {busy ? "Saving…" : saveText ?? (editing ? "Save" : "Add")}
           </button>
           {editing && onRemove && (

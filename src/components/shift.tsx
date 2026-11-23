@@ -19,7 +19,7 @@ import { ItemsSold, PaymentSales } from "./insights";
 import { shiftKey } from "@/lib/sales-filter";
 import { isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import { shiftName } from "@/lib/shift-name";
-import { blocked, type Reason } from "@/lib/reject";
+import { blocked, OFFLINE, type Reason } from "@/lib/reject";
 import {
   errorText,
   formatMoney,
@@ -239,7 +239,7 @@ function OpenShift({
         <h1 className="headline">This shift is already open</h1>
         <div className="card card-list"><BookingRow booking={booking} state={state} /></div>
         <p className="muted">The till is using the opening counts from the other device.</p>
-        <button type="button" className="btn block" aria-haspopup="dialog" disabled={!online} onClick={() => setConfirmJoin(true)}>
+        <button type="button" className="btn block" aria-haspopup="dialog" {...blocked(!online && OFFLINE)} onClick={() => setConfirmJoin(true)}>
           Join till
         </button>
         <button type="button" className="btn ghost compact" onClick={onBack}>Change shift</button>

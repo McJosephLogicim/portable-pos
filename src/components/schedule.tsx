@@ -18,8 +18,9 @@ import {
   X,
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
+import { RequestFailure } from "@/lib/client";
 import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked, OFFLINE, reject, type Reason } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
 import { shiftName } from "@/lib/shift-name";
@@ -31,6 +32,7 @@ import {
   dayOf,
   daysBetween,
   linkBookingProblem,
+  openTillDeleteReason,
   rolesOf,
   seatsOpen,
   shiftRole,
@@ -230,7 +232,7 @@ function PersonPicker({
       onClose={onClose}
       footer={
         member && (
-          <button className="btn block" aria-label={role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"} disabled={!role.length} onClick={() => onPick(member, shiftRole(role))}>
+          <button className="btn block" aria-label={role.length ? "Add as " + shiftRoleNames[shiftRole(role)].toLowerCase() : "Pick a role"} {...blocked(!role.length && "Choose at least one role.")} onClick={() => onPick(member, shiftRole(role))}>
             Add
           </button>
         )
@@ -303,7 +305,7 @@ function RoleSheet({
       title={title}
       onClose={onClose}
       footer={
-        <button className="btn block" disabled={!roles.length} onClick={(e) => onSave(role, e.currentTarget)}>
+        <button className="btn block" {...blocked(!roles.length && "Choose at least one role.")} onClick={(e) => onSave(role, e.currentTarget)}>
           {roles.length ? action(role) : "Pick a role"}
         </button>
       }
@@ -419,13 +421,14 @@ function BookingSheet({
   );
   const localTill = state.shift && !state.shift.closedAt ? state.shift : null;
   const runningTill = till && !till.closedAt ? till : null;
+  const deleteBlock = runningTill ? openTillDeleteReason : !online && OFFLINE;
   const tillClosed = !runningTill && (b.tillClosed || Boolean(till?.closedAt));
   const joinable = !mine && open > 0 && !over && !tillClosed;
   const tillBlock = !online ? OFFLINE : localTill ? "Close the current shift on this phone first." : null;
   const { onStart, onJoin } = props;
   const tillButton = `btn block${joinable ? " secondary" : ""}`;
   const tillAction = onLinkTill ? (
-    <button type="button" className={tillButton} disabled={!online || busy} {...blocked(!mine && "You need to be on this shift to use its till.")} aria-haspopup="dialog" onClick={onLinkTill}>
+    <button type="button" className={tillButton} disabled={busy} {...blocked(!online ? OFFLINE : !mine && "You need to be on this shift to use its till.")} aria-haspopup="dialog" onClick={onLinkTill}>
       <Link2 size={17} aria-hidden="true" /> Add till
     </button>
   ) : runningTill ? (
@@ -446,15 +449,15 @@ function BookingSheet({
     </button>
   );
   const staffAction = joinable ? (
-    <button type="button" className="btn block" disabled={!online || busy} aria-haspopup="dialog" onClick={() => setJoining(true)}>
+    <button type="button" className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} aria-haspopup="dialog" onClick={() => setJoining(true)}>
       {busy ? "Joining…" : "Join shift"}
     </button>
   ) : !onLinkTill && !me.owner && mine && !over && (
     <div className="grid-2">
-      <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
+      <button className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
         {busy ? "Updating…" : "Change role"}
       </button>
-      <button className="btn secondary block" disabled={!online || busy || started} onClick={() => setLeaving(mine)}>
+      <button className="btn secondary block" disabled={busy} {...blocked(!online ? OFFLINE : started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
         Leave
       </button>
     </div>
@@ -530,7 +533,7 @@ function BookingSheet({
         onClose={onClose}
         busy={busy}
         action={me.owner && (
-          <button type="button" className="btn small secondary" disabled={!online || busy} onClick={onEdit}>
+          <button type="button" className="btn small secondary" disabled={busy} {...blocked(!online && OFFLINE)} onClick={onEdit}>
             Edit
           </button>
         )}
@@ -580,7 +583,8 @@ function BookingSheet({
                   className="list-row"
                   key={s.memberId}
                   type={me.owner ? "button" : undefined}
-                  disabled={me.owner ? !online || busy : undefined}
+                  disabled={me.owner ? busy : undefined}
+                  {...blocked(me.owner && !online && OFFLINE)}
                   aria-haspopup={me.owner ? "dialog" : undefined}
                   onClick={me.owner ? () => setManaging(s) : undefined}
                 >
@@ -606,7 +610,7 @@ function BookingSheet({
                   <button
                     type="button"
                     className="btn small secondary"
-                    disabled={!online || busy}
+                    disabled={busy} {...blocked(!online && OFFLINE)}
                     onClick={() => setPicking({})}
                   >
                     Assign
@@ -615,7 +619,7 @@ function BookingSheet({
               </div>
             ))}
             {me.owner && (tillClosed || !open) && (
-              <button type="button" className="list-row" aria-label="Add someone" disabled={!online || busy} onClick={() => setPicking({})}>
+              <button type="button" className="list-row" aria-label="Add someone" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setPicking({})}>
                 <span className="avatar seat" aria-hidden="true">
                   <Plus size={16} />
                 </span>
@@ -736,7 +740,7 @@ function BookingSheet({
           shareText={() => scheduledShiftText(b, business, title, location.origin)}
           busy={busy}
           onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
-          deleteDisabled={!online}
+          deleteBlock={deleteBlock}
         />
       </Sheet>
       {breakdown === "sales" && (
@@ -770,16 +774,24 @@ function BookingSheet({
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
-          detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule.${runningTill ? " Its till stays open. Link it to a shift before closing." : ""} You can undo the deletion from the toast.`}
+          detail={`${bookingTitle(b)} on ${f.day.format(new Date(b.startsAt))} at ${f.time.format(new Date(b.startsAt))} will be removed from everyone's schedule. You can undo the deletion from the toast.`}
           confirmLabel="Delete"
+          blockedReason={deleteBlock}
           onClose={() => setConfirmDelete(false)}
-          onConfirm={async () => {
-            const done = await withPin((pin) => props.onAction({ action: "deleteBooking", bookingId: b.id, pin }));
-            if (done) {
-              buzz.tick();
-              onClose();
+          onConfirm={async (button) => {
+            try {
+              const done = await withPin((pin) => props.onAction({ action: "deleteBooking", bookingId: b.id, pin }));
+              if (done) {
+                buzz.tick();
+                onClose();
+              }
+              return done;
+            } catch (error) {
+              if (!(error instanceof RequestFailure) || error.status !== 409 || error.message !== openTillDeleteReason)
+                throw error;
+              reject(button, openTillDeleteReason);
+              return false;
             }
-            return done;
           }}
         />
       )}
@@ -1115,7 +1127,8 @@ export function BookingEditor({
           <button
             className="btn block"
             aria-label={bulk ? `Add ${days.length} ${days.length === 1 ? "shift" : "shifts"}` : booking ? "Save shift" : "Add shift"}
-            disabled={busy || !props.online || !days.length}
+            disabled={busy}
+            {...blocked(!props.online ? OFFLINE : !days.length && "Choose at least one date.")}
             onClick={(e) => void save(e.detail > 0 ? e.currentTarget : undefined)}
           >
             {busy ? "Saving…" : booking ? "Save" : "Add"}
@@ -1262,13 +1275,13 @@ export function BookingEditor({
                 <button
                   type="button"
                   aria-label="One fewer"
-                  disabled={d.seats <= Math.max(1, d.staff.length)}
+                  {...blocked(d.seats <= Math.max(1, d.staff.length) && (d.staff.length > 1 ? "Remove an assignment before reducing the number of seats." : "Keep at least one seat."))}
                   onClick={() => set({ seats: d.seats - 1 })}
                 >
                   <Minus size={16} />
                 </button>
                 <span aria-live="polite">{d.seats}</span>
-                <button type="button" aria-label="One more" disabled={d.seats >= 50} onClick={() => set({ seats: d.seats + 1 })}>
+                <button type="button" aria-label="One more" {...blocked(d.seats >= 50 && "A shift can have up to 50 seats.")} onClick={() => set({ seats: d.seats + 1 })}>
                   <Plus size={16} />
                 </button>
               </div>
@@ -1419,14 +1432,14 @@ function ShareShift({ text, onClose }: { text: string; onClose: () => void }) {
   );
 }
 
-function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, deleteDisabled }: {
+function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, deleteBlock }: {
   state: RegisterState;
   title: string;
   till?: Shift;
   shareText: () => string;
   busy?: boolean;
   onDelete?: () => void;
-  deleteDisabled?: boolean;
+  deleteBlock?: Reason;
 }) {
   const [action, setAction] = useState<"share" | "report" | null>(null);
   return (
@@ -1446,7 +1459,7 @@ function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, dele
           <ChevronRight size={16} className="chev" aria-hidden="true" />
         </button>
         {onDelete && (
-          <button type="button" className="list-row danger" disabled={busy || deleteDisabled} aria-haspopup="dialog" onClick={onDelete}>
+          <button type="button" className="list-row danger" disabled={busy} {...blocked(deleteBlock)} aria-haspopup="dialog" onClick={onDelete}>
             <Trash2 size={17} aria-hidden="true" /> Delete
           </button>
         )}

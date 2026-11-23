@@ -241,7 +241,7 @@ export async function runPlan(
   let after;
   try {
     after = applyPlan(before, me, cmd);
-    if (["booking", "assign", "leave", "leaveTeam", "removeMember"].includes(cmd.action)) {
+    if (["booking", "deleteBooking", "assign", "leave", "leaveTeam", "removeMember"].includes(cmd.action)) {
       const openBookings = await tx.select({ id: bookings.id, staff: bookings.staff }).from(shifts)
         .innerJoin(bookings, and(eq(bookings.id, shifts.bookingId), eq(bookings.businessId, shifts.businessId)))
         .where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt), ids.length ? inArray(bookings.id, ids) : undefined));

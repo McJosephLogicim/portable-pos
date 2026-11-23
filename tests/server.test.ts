@@ -51,16 +51,13 @@ test(
     const close = { action: "close", shiftId: tillId, deviceId, countedCash: 0 };
     const secondPhone = { action: "bootstrap", deviceId: randomUUID(), till: tillId };
     assert.equal((await call(secondPhone)).shift?.id, tillId);
-    const activeDeletion = await call({ action: "deleteBooking", bookingId, deviceId, till: tillId });
-    assert.equal(activeDeletion.shift?.id, tillId);
-    assert.equal(activeDeletion.shift?.closedAt, null);
-    assert.equal(activeDeletion.bookings!.some((entry) => entry.id === bookingId), false);
-    assert.equal((await call(secondPhone)).shift?.id, tillId);
-    assert.equal((await call({ ...secondPhone, deviceId: randomUUID() })).shift, null);
-    await assert.rejects(call(close), { status: 409, message: "Link this till to a shift before closing." });
-    assert.equal(activeDeletion.deletedRecord?.kind, "booking");
-    const undone = await call({ action: "restoreBooking", booking: activeDeletion.deletedRecord.booking, deviceId, till: tillId });
-    assert.equal(undone.shift?.bookingId, bookingId);
+    await assert.rejects(call({ action: "deleteBooking", bookingId, till: null }), {
+      status: 409, message: "Close the till before deleting this shift.",
+    });
+    const stillOpen = await call(secondPhone);
+    assert.equal(stillOpen.shift?.id, tillId);
+    assert.equal(stillOpen.shift?.closedAt, null);
+    assert.ok(stillOpen.bookings!.some((entry) => entry.id === bookingId));
     await call(close);
     const deleted = await call({ action: "deleteBooking", bookingId });
     assert.equal(deleted.bookings!.some((entry) => entry.id === bookingId), false);

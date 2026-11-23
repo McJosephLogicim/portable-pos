@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Ticket, Trash2 } from "lucide-react";
 import type { Organizer, Tag } from "@/lib/types";
-import { OFFLINE } from "@/lib/reject";
+import { blocked, OFFLINE } from "@/lib/reject";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
 import { buzz, EmptyState } from "./ui";
@@ -61,7 +61,7 @@ function OrganizerSheet({
       editing={Boolean(organizer)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim()) && events.every((e) => e.name.trim())}
+      saveBlocked={!name.trim() ? "Enter an organizer name." : events.some((e) => !e.name.trim()) && "Enter a name for each event."}
       onSave={() =>
         void run(() => {
           const text = adding.trim();
@@ -132,7 +132,7 @@ function OrganizerSheet({
               type="button"
               className="round flat"
               aria-label="Add event"
-              disabled={!adding.trim()}
+              {...blocked(!adding.trim() && "Enter an event name.")}
               onClick={addEvent}
             >
               <Plus size={18} />

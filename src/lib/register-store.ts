@@ -289,12 +289,13 @@ export function mergeServer(
     );
     for (const shift of data.shifts) shifts.set(shift.id, shift);
     const sameTill = sameBusiness && current.shift?.id === data.shift?.id;
+    const unlinked = data.shift && data.bookings && !data.bookings.some((booking) => booking.id === data.shift?.bookingId);
     return {
       ...data,
       deviceId: current.deviceId,
       cart: sameTill ? current.cart : [],
       closingShiftId:
-        sameTill && !data.shift?.closedAt ? current.closingShiftId : undefined,
+        sameTill && !data.shift?.closedAt && !unlinked ? current.closingShiftId : undefined,
       pending,
       soldOut,
       sales: [...sales.values()].sort((a, b) =>

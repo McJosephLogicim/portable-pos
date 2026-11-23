@@ -38,7 +38,7 @@ async function closedTill(page: Page, mode: "simple" | "advanced" = "simple", re
             organizer: null,
             startsAt: new Date(Date.now() - 3600000).toISOString(),
             endsAt: new Date(Date.now() + 7200000).toISOString(),
-            staff: [],
+            staff: state.me ? [{ memberId: state.me.memberId, name: state.me.name, role: "cashier" }] : [],
           }] : [];
           state.sales = [];
           state.pending = [];
@@ -62,7 +62,7 @@ for (const mode of ["simple", "advanced"] as const) {
     await page.getByRole("button", { name: "Open till", exact: true }).click();
     await expect(page.getByRole("button", { name: "Till", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { name: "Open till", exact: true })).toBeVisible();
-    await expect(page.getByText("Nothing scheduled", { exact: true })).toBeVisible();
+    await expect(page.getByText("No shifts assigned to you", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open till", exact: true })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Starting cash", exact: true })).toHaveCount(0);
   });

@@ -120,7 +120,8 @@ function Stepper({
       <button
         type="button"
         aria-label={"One more " + name}
-        disabled={disabled || value >= 999}
+        disabled={disabled}
+        {...blockedBy(value >= 999 && "The maximum quantity is 999.")}
         onClick={() => onChange(value + 1)}
       >
         <Plus size={16} />
@@ -199,8 +200,8 @@ function ItemOptions({
     product.groups
       .flatMap((g) => g.options)
       .reduce((s, o) => s + (selected.includes(o.id) ? o.price : 0), 0);
-  const complete = product.groups.every(
-    (g) => !g.required || g.options.some((o) => selected.includes(o.id)),
+  const missing = product.groups.find(
+    (group) => group.required && !group.options.some((option) => selected.includes(option.id)),
   );
   return (
     <Sheet
@@ -217,7 +218,8 @@ function ItemOptions({
           />
           <button
             className="btn grow"
-            disabled={!complete || busy}
+            disabled={busy}
+            {...blockedBy(missing && "Choose an option for " + missing.name + ".")}
             onClick={async () => {
               if (await onAdd(selected, quantity)) onClose();
               else setError("Couldn't add that. Try again.");
@@ -277,7 +279,7 @@ function ItemOptions({
                 return {
                   id: option.id,
                   name: option.name,
-                  disabled: out,
+                  blockedReason: out && `${option.name} is sold out.`,
                   note: out ? "Sold out" : option.price ? "+" + formatMoney(option.price, currency) : undefined,
                 };
               })}

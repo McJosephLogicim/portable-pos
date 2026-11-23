@@ -160,6 +160,9 @@ test("a close with an uncertain network outcome still blocks sales after reload"
   await assert.rejects(setAvailability(key, itemId, true), /closing/i);
   await cancelClose(key, "unrelated-shift");
   assert.equal((await mergeServer(key, synced)).closingShiftId, shift.id);
+  assert.equal((await mergeServer(key, { ...synced, bookings: [] })).closingShiftId, undefined);
+  await mergeServer(key, synced);
+  await beginClose(key, shift.id);
   await cancelClose(key, shift.id);
   await saveCart(key, cart);
   await saveCart(key, []);

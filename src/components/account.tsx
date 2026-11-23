@@ -1,4 +1,5 @@
 "use client";
+
 import { Check, ChevronRight, Eye, EyeOff, Mail, UserRound, UserRoundPlus } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
@@ -7,6 +8,7 @@ import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type CSS
 import { loginDeadline } from "@/lib/login-session";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
+import { blocked, OFFLINE } from "@/lib/reject";
 import { onColor } from "@/lib/theme";
 import type { LinkPreview } from "@/lib/types";
 import { BusinessMark } from "./businesses";
@@ -644,7 +646,7 @@ export function AccountSwitcher({
   const [error, setError] = useState("");
   return (
     <Sheet title="Switch account" onClose={onClose} busy={busy}
-      footer={<button type="button" className="btn block" onClick={onAdd} disabled={busy || !online}>
+      footer={<button type="button" className="btn block" onClick={onAdd} disabled={busy} {...blocked(!online && OFFLINE)}>
         <UserRoundPlus size={18} aria-hidden="true" /> Add account
       </button>}>
       <div className="card card-list">

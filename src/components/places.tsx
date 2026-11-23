@@ -1,5 +1,6 @@
 "use client";
 
+import { blocked } from "@/lib/reject";
 import { useEffect, useRef, useState } from "react";
 import { LocateFixed, MapPin, Search } from "lucide-react";
 import { distanceKm } from "@/lib/team";
@@ -387,7 +388,7 @@ export function LocationPicker({
           onClose={() => setSelection(null)}
           help="Not quite right? Drag the map or tap the exact spot to move the pin."
           footer={
-            <button className="btn block" disabled={!preview} onClick={() => preview && onPick(preview)}>
+            <button className="btn block" {...blocked(!preview && "Choose a location first.")} onClick={() => preview && onPick(preview)}>
               Use this location
             </button>
           }

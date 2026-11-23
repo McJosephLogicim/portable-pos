@@ -195,7 +195,7 @@ export function StockSheet({
       editing={Boolean(item)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim() && unit.trim())}
+      saveBlocked={!name.trim() ? "Enter a stock item name." : !unit.trim() && "Enter a unit."}
       onSave={() => void run(() => {
         if (!sameName(item?.name ?? "", name) && stockItems.some((stock) => stock.id !== item?.id && sameName(stock.name, name)))
           throw Error("A stock item already has that name. Open it in Stock items to change how it is costed.");
@@ -309,7 +309,7 @@ export function StockSheet({
                 <button
                   type="button"
                   className="btn ghost compact"
-                  disabled={!(batchSize > 0)}
+                  {...blocked(!(batchSize > 0) && "Enter the batch size before adding a batch.")}
                   onClick={() => {
                     buzz.tap();
                     setLeftNow(String(round((countOf(leftNow) ?? 0) + batchSize)));
@@ -966,7 +966,7 @@ export function UsesEditor({
                   type="button"
                   className="round flat"
                   aria-label="More"
-                  disabled={amount !== undefined && amount >= 10_000}
+                  {...blocked(amount !== undefined && amount >= 10_000 && "The maximum amount is 10,000.")}
                   onClick={() => {
                     buzz.tick();
                     set(u.key, { amount: String(stepUp(amount ?? 0)) });

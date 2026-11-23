@@ -127,7 +127,7 @@ export function PricingRulesPage(props: RecipesProps) {
           <MoneyField label="Round suggested prices up to" value={increment} onChange={setIncrement} currency={currency} />
         </div>
         {error && <p className="alert" role="alert">{error}</p>}
-        <button type="submit" className="btn block" disabled={busy || !props.online || !dirty}>
+        <button type="submit" className="btn block" disabled={busy} {...blocked(!props.online ? OFFLINE : !dirty && "Change a pricing rule before saving.")}>
           {busy ? "Saving…" : props.online ? "Save" : "Connect to save"}
         </button>
       </form>

@@ -316,7 +316,7 @@ function ModeCard(props: SettingsProps) {
         <Switch
           checked={!simple}
           label="Advanced mode"
-          disabled={!props.online && !props.demo}
+          blockedReason={!props.online && !props.demo && OFFLINE}
           onChange={() => setAsking(true)}
         />
       </div>
@@ -342,7 +342,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
       footer={
         <>
           {error && <p className="alert" role="alert">{error}</p>}
-          <button className="btn block" disabled={busy || (!props.online && !props.demo)} onClick={() => void save()}>
+          <button className="btn block" disabled={busy} {...blocked(!props.online && !props.demo && OFFLINE)} onClick={() => void save()}>
             {busy ? "Saving…" : turnOn ? "Turn on Advanced" : "Switch to Simple"}
           </button>
           <button className="btn ghost compact block" disabled={busy} onClick={onClose}>
@@ -413,7 +413,7 @@ function BusinessPage(props: SettingsProps) {
       value={draft.settings.logo}
       onChange={(logo) => setDraft((current) => ({ ...current, settings: { ...current.settings, logo } }))}
       label="logo"
-      disabled={!props.online && !props.demo}
+      blockedReason={!props.online && !props.demo && OFFLINE}
     />
   );
   const brand = draft.settings.brand ?? defaultBrand;
@@ -671,7 +671,7 @@ function MethodSheet({
         <>
           <button
             className="btn block"
-            disabled={!name.trim()}
+            {...blocked(!name.trim() && "Enter a payment method name.")}
             onClick={() => {
               onSave({
                 id: method?.id ?? slugId(name, taken),
@@ -819,7 +819,7 @@ function PaymentsPage(props: SettingsProps) {
             <Switch
               checked={m.on}
               label={m.name + " at checkout"}
-              disabled={m.on && on === 1}
+              blockedReason={m.on && on === 1 && "Keep at least one payment method on at checkout."}
               onChange={(next) =>
                 set(list.map((p) => (p.id === m.id ? { ...p, on: next } : p)))
               }
@@ -907,7 +907,7 @@ function DiscountSheet({
         <>
           <button
             className="btn block"
-            disabled={!name.trim() || parsed === undefined}
+            {...blocked(!name.trim() ? "Enter a discount name." : parsed === undefined && (problem || "Enter a discount value greater than zero."))}
             onClick={() => {
               onSave({
                 id: discount?.id ?? slugId(name, taken),
@@ -1234,7 +1234,7 @@ function ProfileCard(props: SettingsProps) {
           size="small"
           value={me.photo}
           label="your profile photo"
-          disabled={!props.online && !props.demo}
+          blockedReason={!props.online && !props.demo && OFFLINE}
           onError={setError}
           onChange={async (photo) => {
             setError("");

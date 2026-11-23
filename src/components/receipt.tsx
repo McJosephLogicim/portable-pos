@@ -228,7 +228,8 @@ export function ReceiptSheet({
         footer={
           <button
             className="btn block"
-            disabled={!reason.trim() || busy}
+            disabled={busy}
+            {...blocked(!reason.trim() && "Enter a reason for reversing the sale.")}
             onClick={async () => {
               setBusy(true);
               setError("");

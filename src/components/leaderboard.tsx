@@ -1,5 +1,6 @@
 "use client";
 
+import { blocked } from "@/lib/reject";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, Building2, CalendarDays, ChevronDown, MapPin, Share } from "lucide-react";
 import { appIcons, leaderboardCrown } from "@/lib/app-brand";
@@ -133,7 +134,7 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
             <ArrowLeft size={19} aria-hidden="true" />
           </button>
           <img className={styles.appIcon} src={appIcons.small} width={54} height={54} alt="" />
-          <button type="button" className={`btn responsive-icon ${styles.share}`} disabled={!rows.length} aria-haspopup="dialog" onClick={openShare}>
+          <button type="button" className={`btn responsive-icon ${styles.share}`} {...blocked(!rows.length && "There are no results to share yet.")} aria-haspopup="dialog" onClick={openShare}>
             <Share size={17} aria-hidden="true" /> <span className="button-label">Share</span>
           </button>
           <h1 ref={heading} tabIndex={-1} className={styles.heading}>Leaderboard</h1>

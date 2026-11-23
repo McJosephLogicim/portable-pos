@@ -38,7 +38,7 @@ export function BulkNamesSheet({
       editing={false}
       busy={busy}
       error={problem || error}
-      canSave={names.length > 0 && !problem}
+      saveBlocked={problem || (!names.length && "Enter at least one name.")}
       saveText={names.length ? saveText : "Add"}
       saveLabel={names.length ? saveText : `Add ${nouns}`}
       onSave={() => void run(() => onSave(names))}

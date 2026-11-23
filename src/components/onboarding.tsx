@@ -1,5 +1,6 @@
 "use client";
 
+import { blocked, OFFLINE } from "@/lib/reject";
 import Image from "next/image";
 import { APP_NAME, appIcons } from "@/lib/app-brand";
 import { ArrowRight, ChevronLeft } from "lucide-react";
@@ -224,7 +225,7 @@ export function Onboarding({
       {hasTeammate && (
         <div className="page">
           {error && <Notice tone="danger">{error}</Notice>}
-          <button type="button" className="btn block" disabled={!online || busy} onClick={() => void run(onFinish)}>
+          <button type="button" className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>
             {busy ? "Finishing…" : "Finish setup"}
           </button>
         </div>
@@ -257,11 +258,11 @@ export function Onboarding({
               {steps.map((entry, i) => <span key={entry.id} data-status={i === index ? "current" : i < index ? "complete" : undefined} />)}
             </div>
             {error && <Notice tone="danger">{error}</Notice>}
-            <button type="button" className={`btn block ${styles.cta}`} disabled={busy || (!practiceStep && !online)} onClick={() => void run(start)}>
+            <button type="button" className={`btn block ${styles.cta}`} disabled={busy} {...blocked(!practiceStep && !online && OFFLINE)} onClick={() => void run(start)}>
               {step.button} <ArrowRight size={18} aria-hidden />
             </button>
             {step.id === "team" && hasTeammate && (
-              <button type="button" className="btn ghost block" disabled={!online || busy} onClick={() => void run(onFinish)}>Finish setup</button>
+              <button type="button" className="btn ghost block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>Finish setup</button>
             )}
             {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
           </footer>

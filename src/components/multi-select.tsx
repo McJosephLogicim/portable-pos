@@ -1,5 +1,6 @@
 "use client";
 
+import { blocked, type Reason } from "@/lib/reject";
 import { useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Image as ImageIcon, X } from "lucide-react";
 import { fold, RecordSearch, SEARCH_FROM } from "./records";
@@ -16,7 +17,7 @@ type MultiSelectOption<Id extends string> = {
   count?: number;
   image?: string;
   note?: string;
-  disabled?: boolean;
+  blockedReason?: Reason;
 };
 
 function PickerThumbnail({ image, size }: { image?: string; size: number }) {
@@ -85,7 +86,8 @@ export function MultiSelect<Id extends string>({
             key={item.id}
             type="button"
             aria-pressed={picked.includes(item.id)}
-            disabled={disabled || item.disabled}
+            disabled={disabled}
+            {...blocked(item.blockedReason)}
             onClick={() => onChange(toggle(picked, item.id))}
           >
             {showThumbnails && <PickerThumbnail image={item.image} size={24} />}
@@ -134,7 +136,8 @@ export function MultiSelect<Id extends string>({
                   type="button"
                   key={id}
                   aria-label={`Remove ${name}`}
-                  disabled={disabled || item?.disabled}
+                  disabled={disabled}
+                  {...blocked(item?.blockedReason)}
                   onClick={(event) => {
                     if (event.currentTarget === document.activeElement) {
                       const adjacent = event.currentTarget.nextElementSibling ?? event.currentTarget.previousElementSibling;
@@ -242,7 +245,8 @@ function PickerSheet<Id extends string>({
               type="button"
               key={item.id}
               aria-pressed={selected.has(item.id)}
-              disabled={disabled || item.disabled}
+              disabled={disabled}
+              {...blocked(item.blockedReason)}
               className="list-row"
               onClick={() => setDraft(toggle(draft, item.id))}
             >

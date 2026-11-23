@@ -236,38 +236,37 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(report.locator("pre")).not.toContainText("Closing fare");
 });
 
-test("Deleting an open till's shift requires relinking before closing", async ({ page }) => {
+test("Delete shakes and shows an error for an open till on both Shifts and Till", async ({ page }) => {
   await seedTill(page, true, false, { linked: true });
+  const reason = "Close the till before deleting this shift.";
+  const details = page.getByRole("dialog", { name: /^Atrium/ });
+  const remove = details.getByRole("button", { name: "Delete", exact: true });
+  const toast = page.locator(".toast:not(.exit-ghost)");
+
+  for (const tab of ["Till", "Shifts"] as const) {
+    const nav = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: tab, exact: true });
+    await nav.press("Enter");
+    await expect(nav).toHaveAttribute("aria-current", "page");
+    const entry = tab === "Till" ? page.getByRole("button", { name: /^Selling for Atrium/ })
+      : page.getByRole("article").filter({ hasText: "Atrium" }).getByRole("button");
+    await entry.click();
+    await expect(remove).toHaveAttribute("aria-disabled", "true");
+    const feedback = await remove.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      const frames = button.getAnimations().flatMap((animation) => (animation.effect as KeyframeEffect).getKeyframes());
+      return {
+        tint: frames.some((frame) => "backgroundColor" in frame),
+        shake: frames.some((frame) => frame.transform === "translateX(-5px)"),
+      };
+    });
+    expect(feedback).toEqual({ tint: true, shake: true });
+    await expect(toast).toContainText(reason);
+    await expect(page.getByRole("dialog", { name: "Delete shift?" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Owner PIN" })).toHaveCount(0);
+    await details.getByRole("button", { name: "Close", exact: true }).click();
+  }
   await page.getByRole("button", { name: "Till", exact: true }).click();
-  await page.getByRole("button", { name: /Selling for Atrium/ }).click();
-  await page.getByRole("dialog", { name: /^Atrium/ }).getByRole("button", { name: "Delete", exact: true }).click();
-  const deletion = page.getByRole("dialog", { name: "Delete shift?" });
-  await expect(deletion.getByText(/Its till stays open/)).toBeVisible();
-  await deletion.getByRole("button", { name: "Delete", exact: true }).click();
-  const pin = page.getByRole("dialog", { name: "Owner PIN" });
-  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
-  await pin.getByRole("button", { name: "Confirm" }).click();
-
-  const close = page.getByRole("button", { name: "Count drawer and close" });
-  await expect(close).toBeDisabled();
-  await expect(page.getByText("Link this till to a shift before closing.", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /Not on a shift yet/ }).click();
-  const shifts = page.getByRole("dialog", { name: "Shifts", exact: true });
-  await expect(shifts.getByRole("button", { name: /Atrium|Closed market/ })).toHaveCount(0);
-  await shifts.getByRole("button", { name: /Garden/ }).click();
-  await page.getByRole("dialog", { name: /^Garden/ }).getByRole("button", { name: "Add till", exact: true }).click();
-  await page.getByRole("dialog", { name: "Add till to this shift?" }).getByRole("button", { name: "Add till", exact: true }).click();
-
-  await expect(page.getByRole("button", { name: /Selling for Garden/ })).toBeVisible();
-  await expect(close).toBeEnabled();
-  await close.click();
-  const closing = page.getByRole("dialog", { name: "Close shift", exact: true });
-  await closing.getByRole("button", { name: "Type the total" }).click();
-  await closing.getByRole("textbox", { name: "Cash on hand" }).fill("2500");
-  await closing.getByRole("button", { name: "Close shift and see report" }).click();
-  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
-  await pin.getByRole("button", { name: "Confirm" }).click();
-  await expect(page.getByRole("dialog", { name: /^Garden.*closed$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Selling for Atrium/ })).toBeVisible();
 });
 
 test("Today and the Till picker reuse shift details and link only after confirmation", async ({ page }) => {
@@ -290,6 +289,7 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await details.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("button", { name: "Till", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Count drawer and close" })).toBeDisabled();
   await page.getByRole("button", { name: /Not on a shift yet/ }).click();
   const shifts = page.getByRole("dialog", { name: "Shifts", exact: true });
   await expect(shifts.getByRole("article")).toHaveCount(2);

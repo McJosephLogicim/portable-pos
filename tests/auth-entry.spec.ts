@@ -239,6 +239,39 @@ test("a phone opening after another phone uses the saved cash and shows the hand
   await expect(page.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
 });
 
+test("a till opened on another phone blocks a stale shift deletion with a toast", async ({ page }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app with test Supabase settings and POS_TEST_MOCK_AUTH=1.");
+  await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
+  const initial = teamSnapshot();
+  initial.business!.timeZone = "Asia/Manila";
+  initial.bookings![0].startsAt = "2026-11-21T03:00:00Z";
+  initial.bookings![0].endsAt = "2026-11-21T08:00:00Z";
+  await mockAuth(page);
+  await page.route("**/api/pos", async (route) => {
+    const command = route.request().postDataJSON();
+    if (command.action === "deleteBooking") {
+      expect(command).toMatchObject({ bookingId: shiftId, pin: "1234" });
+      return route.fulfill({ status: 409, json: { error: "Close the till before deleting this shift." } });
+    }
+    return route.fulfill({ json: initial });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  const shifts = page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Shifts", exact: true });
+  await shifts.press("Enter");
+  await expect(shifts).toHaveAttribute("aria-current", "page");
+  await page.getByRole("article").filter({ hasText: "Saturday market" }).getByRole("button").click();
+  await page.getByRole("dialog", { name: /^Saturday market/ }).getByRole("button", { name: "Delete", exact: true }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete shift?" });
+  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+  const pin = page.getByRole("dialog", { name: "Owner PIN" });
+  for (const digit of "1234") await pin.getByRole("button", { name: digit, exact: true }).click();
+  await pin.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.locator(".toast:not(.exit-ghost)")).toContainText("Close the till before deleting this shift.");
+  await expect(confirm).toBeVisible();
+});
+
 test("an owner can close a stranded till linked to a shift without joining it", async ({ page }) => {
   test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app with test Supabase settings and POS_TEST_MOCK_AUTH=1.");
   const initial = teamSnapshot();

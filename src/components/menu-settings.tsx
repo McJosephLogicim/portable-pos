@@ -31,7 +31,7 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
-import { OFFLINE } from "@/lib/reject";
+import { blocked, OFFLINE } from "@/lib/reject";
 
 /* ---------- shared pieces ---------- */
 
@@ -154,14 +154,14 @@ function OptionRows({
             type="button"
             className="round flat"
             aria-label={`Remove option ${i + 1}`}
-            disabled={options.length === 1}
+            {...blocked(options.length === 1 && "Keep at least one option in this choice.")}
             onClick={() => onChange(options.filter((r) => r.id !== o.id))}
           >
             <Trash2 size={16} />
           </button>
         </div>
       ))}
-      <button type="button" className="btn secondary compact" aria-label="Add option" disabled={options.length >= 64} onClick={() => onChange([...options, blankOption()])}>
+      <button type="button" className="btn secondary compact" aria-label="Add option" {...blocked(options.length >= 64 && "A choice can have up to 64 options.")} onClick={() => onChange([...options, blankOption()])}>
         <Plus size={16} /> Add
       </button>
     </div>
@@ -222,10 +222,10 @@ function ItemChoices({ groups, reuse, currency, onChange }: {
         </div>
       ))}
       <div className="grid-2">
-        <button type="button" className="btn secondary compact" disabled={groups.length >= 32} onClick={() => add(true)}>
+        <button type="button" className="btn secondary compact" {...blocked(groups.length >= 32 && "An item can have up to 32 choices.")} onClick={() => add(true)}>
           <Plus size={16} /> Pick one
         </button>
-        <button type="button" className="btn secondary compact" disabled={groups.length >= 32} onClick={() => add(false)}>
+        <button type="button" className="btn secondary compact" {...blocked(groups.length >= 32 && "An item can have up to 32 choices.")} onClick={() => add(false)}>
           <Plus size={16} /> Add-ons
         </button>
       </div>
@@ -511,7 +511,7 @@ export function ItemSheet({
       editing={Boolean(product)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim() && price.trim() && (!askCount || count.trim()))}
+      saveBlocked={!name.trim() ? "Enter an item name." : !price.trim() ? "Enter a price." : askCount && !count.trim() && "Enter the available stock count."}
       onSave={save}
       removeLabel="Remove from menu"
       removeDetail={product && (liveShift
@@ -1064,7 +1064,7 @@ function QuickAddSheet({
       editing={false}
       busy={busy}
       error={exceedsLimit ? `The menu can hold up to 1,000 items. You can add ${plural(remaining, "more item")}.` : error}
-      canSave={ready && !exceedsLimit}
+      saveBlocked={exceedsLimit ? "The menu can hold up to 1,000 items." : !ready && "Enter a name and price for each item."}
       saveText={filled.length ? "Add " + plural(filled.length, "item") : "Add"}
       saveLabel={filled.length ? "Add " + plural(filled.length, "item") : "Add items"}
       onSave={save}
@@ -1202,7 +1202,7 @@ function BulkEditSheet({
       editing
       busy={busy}
       error={error || (negative.length ? `That takes ${namesText(negative.map((p) => p.name))} below zero.` : "")}
-      canSave={changed.length > 0 && !negative.length && (!amount || value !== undefined)}
+      saveBlocked={amount && value === undefined ? "Enter a valid amount." : negative.length ? "Prices must be zero or higher." : !changed.length && "Change a price or category first."}
       saveLabel={"Save " + what}
       onSave={() => void run(() => onSave(next))}
       onClose={onClose}
@@ -1330,7 +1330,7 @@ function CategorySheet({
       editing={Boolean(category)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim())}
+      saveBlocked={!name.trim() && "Enter a category name."}
       onSave={() => void run(() => onSave(name.trim(), picked))}
       onRemove={onRemove}
       onClose={onClose}
@@ -1532,7 +1532,7 @@ function ChoiceSheet({
       editing={Boolean(choice)}
       busy={busy}
       error={error}
-      canSave={Boolean(name.trim() && picked.length)}
+      saveBlocked={!name.trim() ? "Enter a choice name." : !picked.length && "Choose at least one item."}
       onSave={() =>
         void run(() => onSave({ name: name.trim(), required, options: parseOptions(options, currency) }, picked))
       }
