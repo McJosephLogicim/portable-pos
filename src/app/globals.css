@@ -48,6 +48,8 @@
   --page-max: 640px;
   --scrim: rgb(0 0 0 / 0.32);
   --tabbar-space: calc(96px + env(safe-area-inset-bottom));
+  --charge-bar-bottom: calc(max(18px, env(safe-area-inset-bottom)) + 74px);
+  --charge-bar-height: 60px;
   color-scheme: light;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1415,17 +1417,20 @@ button.list-row:not(.sell-option):active {
   right: 12px;
   color: var(--ink-tertiary);
 }
+.page:has(> .charge-bar:not(.exit-ghost)) {
+  padding-bottom: calc(var(--charge-bar-bottom) + var(--charge-bar-height) + 12px);
+}
 .charge-bar {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 74px);
+  bottom: var(--charge-bar-bottom);
   z-index: 29;
   width: min(560px, calc(100% - 2 * var(--gutter)));
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 60px;
+  min-height: var(--charge-bar-height);
   padding: 0 10px 0 10px;
   border: 0;
   border-radius: var(--radius-pill);
@@ -1840,25 +1845,32 @@ button.list-row:not(.sell-option):active {
   font-size: 22px;
 }
 .item-preview-stack {
+  --preview-size: 30px;
+  --preview-overlap: 13px;
   display: inline-flex;
   flex: none;
   align-items: center;
 }
 .item-preview-layer > .item-preview {
-  width: 30px;
+  width: var(--preview-size);
   font-size: 11px;
 }
 .item-preview-layer + .item-preview-layer {
-  margin-left: -13px;
-  filter: drop-shadow(-2px 0 0 var(--surface));
+  margin-left: calc(-1 * var(--preview-overlap));
+}
+/* Cut a transparent gap along the left edge of the next squircle. */
+.item-preview-layer:not(:last-child) > .item-preview {
+  mask-image: var(--item-squircle), var(--item-squircle);
+  mask-position: center, calc(var(--preview-size) - var(--preview-overlap) - 2px) center;
+  mask-composite: subtract;
 }
 .item-preview-more {
   background: var(--line);
 }
-/* Let a single photo use the row padding while keeping the compact stack's footprint. */
+/* Use the row's vertical padding so the taller photo does not increase its height. */
 .sales-receipts .item-preview-layer:only-child > .item-preview {
   width: 44px;
-  margin: -7px;
+  margin-block: -7px;
   font-size: 15px;
 }
 @media (max-width: 360px) {
@@ -1869,16 +1881,15 @@ button.list-row:not(.sell-option):active {
     width: 30px;
     font-size: 11px;
   }
-  .sale-receipt-row .item-preview-layer > .item-preview {
-    width: 24px;
-    font-size: 9px;
+  .sale-receipt-row .item-preview-stack {
+    --preview-size: 24px;
+    --preview-overlap: 10px;
   }
-  .sale-receipt-row .item-preview-layer + .item-preview-layer {
-    margin-left: -10px;
+  .sale-receipt-row .item-preview-layer > .item-preview {
+    font-size: 9px;
   }
   .sales-receipts .item-preview-layer:only-child > .item-preview {
     width: 38px;
-    margin-inline: -9px -5px;
     font-size: 13px;
   }
   .sales-receipts {
