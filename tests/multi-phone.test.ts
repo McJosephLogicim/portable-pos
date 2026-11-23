@@ -32,10 +32,23 @@ test(
     const opened = await cmd({ action: "open", deviceId: phoneA, bookingId, openingCash: 50000, stock: { tea: 3 } });
     const shift = opened.shift!;
 
-    // Phone B joins the shift phone A opened.
-    const joined = await cmd({ action: "open", deviceId: phoneB, till: null, bookingId, openingCash: 0, stock: { tea: 9 } });
+    // The same account on a fresh phone sees the open shift even before it picks a till.
+    const discovery = await cmd({ action: "bootstrap", deviceId: phoneB, till: null });
+    assert.equal(discovery.shift, null);
+    assert.deepEqual(discovery.shifts.map(({ id, closedAt }) => ({ id, closedAt })), [{ id: shift.id, closedAt: null }]);
+    const joined = await cmd({ action: "bootstrap", deviceId: phoneB, till: shift.id });
     assert.equal(joined.shift!.id, shift.id);
     assert.equal(joined.shift!.openingCash, 50000);
+
+    // A stale opening form on another phone joins without applying a second setup.
+    const stalePhone = await cmd({
+      action: "open", deviceId: randomUUID(), till: null, bookingId, openingCash: 0, stock: { tea: 9 },
+      expenses: [{ id: randomUUID(), createdAt: new Date().toISOString(), label: "Extra float supplies", amount: 500, source: "till" }],
+    });
+    assert.equal(stalePhone.shift!.id, shift.id);
+    assert.equal(stalePhone.shift!.openingCash, 50000);
+    assert.deepEqual(stalePhone.shift!.stock, { tea: 3 });
+    assert.deepEqual(stalePhone.expenses, []);
 
     // Both phones were offline and numbered their receipts #1 and #2 on their own.
     const sale = (s: Shift, sequence: number, tender: Tender = "cash") => {

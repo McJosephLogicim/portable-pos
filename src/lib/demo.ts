@@ -189,7 +189,7 @@ export function demoAction(
       if (!input.bookingId) throw Error("Pick a scheduled shift to start. Add one on Shifts first.");
       const booking = state.bookings?.find((b) => b.id === input.bookingId);
       if (!booking) throw Error("That scheduled shift was removed.");
-      if (state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
+      if (booking.tillClosed || state.shifts.some((s) => s.bookingId === booking.id && s.closedAt))
         throw Error("This shift already closed. Add a new one on Shifts.");
       const problem = startProblem(booking, business.timeZone);
       if (problem) throw Error(problem);

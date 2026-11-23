@@ -234,6 +234,12 @@ export async function snapshot(
     .where(and(eq(bookings.businessId, business.id), gte(bookings.endsAt, since)))
     .orderBy(bookings.startsAt)
     .limit(1000);
+  const bookingIds = bookingRows.map((booking) => booking.id);
+  const closedBookings = new Set(bookingIds.length ? (await tx
+    .selectDistinct({ bookingId: shifts.bookingId })
+    .from(shifts)
+    .where(and(eq(shifts.businessId, business.id), inArray(shifts.bookingId, bookingIds), isNotNull(shifts.closedAt))))
+    .map((row) => row.bookingId) : []);
   const takings = new Map<string, number>();
   const spent = new Map<string, number>();
   if (me.owner && bookingRows.length) {
@@ -245,10 +251,7 @@ export async function snapshot(
         and(
           eq(shifts.businessId, business.id),
           isNull(sales.reversedAt),
-          inArray(
-            shifts.bookingId,
-            bookingRows.map((b) => b.id),
-          ),
+          inArray(shifts.bookingId, bookingIds),
         ),
       )
       .groupBy(shifts.bookingId);
@@ -293,7 +296,12 @@ export async function snapshot(
           .orderBy(desc(eq(members.userId, business.ownerId)), desc(members.owner), asc(members.name)),
     organizers: me.owner ? business.organizers : [],
     bookings: bookingRows.map((row) =>
-      redactBooking({ ...presentBooking(row), sales: takings.get(row.id) ?? 0, expenses: spent.get(row.id) ?? 0 }, me),
+      redactBooking({
+        ...presentBooking(row),
+        sales: takings.get(row.id) ?? 0,
+        expenses: spent.get(row.id) ?? 0,
+        ...(closedBookings.has(row.id) ? { tillClosed: true } : {}),
+      }, me),
     ),
   };
   const { id, name, currency, timeZone, menu } = business;

@@ -15,6 +15,7 @@ import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } 
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { Onboarding } from "./onboarding";
+import { OfflineBanner, SyncBanner } from "./register-banners";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
@@ -131,6 +132,9 @@ async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
 function message(e: unknown) {
   return friendlyError(e, "The register couldn't finish that. Try again.");
 }
+function syncFailure(error: unknown) {
+  return { text: message(error), needsSignIn: error instanceof RequestFailure && error.status === 401 };
+}
 async function syncRegister(
   key: string,
   force = false,
@@ -190,8 +194,10 @@ export function Workspace() {
   const navigation = useScreenHistory<Screen>(SELL);
   const resetNavigation = navigation.reset;
   const [online, setOnline] = useState(true),
+    [checkedConnection, setCheckedConnection] = useState(false),
     [notice, setNotice] = useState(""),
-    [syncErr, setSyncErr] = useState(""),
+    [syncError, setSyncError] = useState<ReturnType<typeof syncFailure> | null>(null),
+    [syncAttempts, setSyncAttempts] = useState<{ key: string }[]>([]),
     [ready, setReady] = useState(false);
   const [account, setAccount] = useState(false),
     [pending, setPending] = useState(false),
@@ -252,17 +258,26 @@ export function Workspace() {
     setSigningInto(null);
     setBootError("");
     setNotice("");
-    setSyncErr("");
+    setSyncError(null);
     setLinkProblem(null);
     resetNavigation(SELL);
     window.scrollTo(0, 0);
   }, [resetNavigation]);
+  const sync = useCallback(async (id: string, force = false) => {
+    const attempt = { key: id };
+    setSyncAttempts((attempts) => [...attempts, attempt]);
+    try {
+      return await syncRegister(id, force);
+    } finally {
+      setSyncAttempts((attempts) => attempts.filter((current) => current !== attempt));
+    }
+  }, []);
   const connect = useCallback(
     async (id: string) => {
       active.current = id;
       setKey(id);
       setState(null);
-      setSyncErr("");
+      setSyncError(null);
       setBootError("");
       setUndoNotices([]);
       resetNavigation(SELL);
@@ -310,10 +325,10 @@ export function Workspace() {
         if (local.business && !linked) show(id, local);
         if (id !== DEMO && navigator.onLine) {
           try {
-            local = await syncRegister(id, true);
+            local = await sync(id, true);
           } catch (e) {
             if (!local.business || linked) throw e;
-            setSyncErr(message(e));
+            if (active.current === id) setSyncError(syncFailure(e));
           }
         } else if (id !== DEMO && !local.business)
           throw Error(
@@ -362,7 +377,7 @@ export function Workspace() {
         if (active.current === id) setResolvingLink(false);
       }
     },
-    [show, resetNavigation],
+    [show, resetNavigation, sync],
   );
   useEffect(() => {
     let alive = true;
@@ -459,27 +474,28 @@ export function Workspace() {
       try {
         if (id !== DEMO) checkSavedLogin(parseKey(id).userId);
         if (!navigator.onLine) return;
-        await syncRegister(id, force);
+        await sync(id, force);
         show(id, await loadRegister(id));
-        if (active.current === id) setSyncErr("");
+        if (active.current === id) setSyncError(null);
       } catch (e) {
         if (active.current === id) {
           if (e instanceof LoginExpired) {
             openLogin();
             setNotice(e.message);
           } else {
-            setSyncErr(message(e));
+            setSyncError(syncFailure(e));
           }
         }
       } finally {
         syncBusy.current = false;
       }
     },
-    [openLogin, show],
+    [openLogin, show, sync],
   );
   useEffect(() => {
     const network = () => {
       setOnline(navigator.onLine);
+      if (navigator.onLine) setCheckedConnection(false);
       void flush(true);
     };
     const visible = () => {
@@ -569,7 +585,7 @@ export function Workspace() {
                 });
           const { inviteDelivery, deletedRecord, ...snapshot } = data;
           show(key, await mergeServer(key, snapshot));
-          setSyncErr("");
+          setSyncError(null);
           if (deletedRecord && active.current === key) {
             const item = deletedRecord.kind === "menuItem";
             const undoNotice: UndoNotice = {
@@ -717,13 +733,14 @@ export function Workspace() {
     !bootError && current.tab !== "add-business");
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
-  const status = state?.pending.length
-    ? `${state.pending.length} waiting to sync`
-    : syncErr
-      ? "Sync paused"
-      : online
-        ? "Online"
-        : "Offline";
+  const queued = state?.pending ?? [];
+  const syncing = online && syncAttempts.some((attempt) => attempt.key === key);
+  const visibleSyncError = online && !syncing && !bootError ? syncError : null;
+  const connection = !online ? { text: "Offline", dot: "warn" }
+    : visibleSyncError ? { text: "Sync paused", dot: "danger" }
+    : !queued.length ? { text: "Online", dot: "success" }
+    : syncing ? { text: "Syncing changes", dot: "syncing" }
+    : { text: `${queued.length} waiting to sync`, dot: "" };
   const canManageRecipes = !state?.me || state.me.owner;
   const view = current.tab === "recipes" && !canManageRecipes ? "sell" : current.tab;
   const navTabs = canManageRecipes ? tabs : tabs.filter((item) => item.id !== "recipes");
@@ -820,15 +837,31 @@ export function Workspace() {
   const reverse = (saleId: string, reason: string, pin: string) =>
     owner({ action: "reverse", saleId, reason, pin });
 
+  function refreshConnection() {
+    const connected = navigator.onLine;
+    setOnline(connected);
+    setCheckedConnection(!connected);
+    if (!connected) return;
+    if (!key) window.location.reload();
+    else if (bootError) void connect(key);
+    else void flush(true);
+  }
+
+  const offlineBanner = !online && <OfflineBanner checked={checkedConnection} onRefresh={refreshConnection} />;
+
   if (!entry || resolvingLink)
     return (
-      <main>
-        <LoadingScreen message={resolvingLink ? "Opening your link…" : "Getting things ready…"} />
-      </main>
+      <>
+        {offlineBanner && <div className="page-notices">{offlineBanner}</div>}
+        <main>
+          <LoadingScreen message={resolvingLink ? "Opening your link…" : "Getting things ready…"} />
+        </main>
+      </>
     );
   if (!key)
     return (
       <>
+        {offlineBanner && <div className="page-notices">{offlineBanner}</div>}
         <Account
           entry={entry}
           notice={notice}
@@ -880,6 +913,7 @@ export function Workspace() {
   else if (!business)
     content = <main><Setup onboarding={state.onboardingComplete === false} onSave={owner} onSignOut={() => setConfirmSignOut(true)} /></main>;
   else {
+    const otherTillOpen = state.shifts.some((shift) => !shift.closedAt && shift.bookingId);
     const onMenu: EditorProps["onMenu"] = (menu, pin, stock) => owner({ action: "menu", menu, pin, stock });
     const onMenuCategory = (change: MenuCategoryChange, pin: string) => owner({ ...change, pin });
     const editor: EditorProps = {
@@ -906,6 +940,11 @@ export function Workspace() {
               onLoadBookingRecords={demo ? undefined : bookingRecords}
               onEditExpense={updateExpense}
               onUnexpense={unexpense}
+              onStart={(openingId) => open({ tab: "shift", openingId })}
+              onJoin={demo ? undefined : async (shiftId) => {
+                await join(shiftId);
+                open(SELL);
+              }}
               onLeaderboard={() => open({ tab: "schedule", leaderboard: true })}
             />
           );
@@ -915,7 +954,7 @@ export function Workspace() {
             <SettingsScreen
               {...editor}
               demo={demo}
-              status={status} offlineReady={ready} page={screen.page ?? null}
+              connection={connection} offlineReady={ready} page={screen.page ?? null}
               onPage={(page) => open({ tab: "settings", page })}
               onBack={back} backLabel={backLabel}
               onAction={owner} onSignIn={openLogin} onSignOut={() => setConfirmSignOut(true)}
@@ -973,12 +1012,12 @@ export function Workspace() {
             <div className="page">
               {state.shift && !state.shift.closedAt ? (
                 <SellScreen
-                  state={state} status={status} online={online} pending={pending} onCart={cart}
+                  state={state} status={connection.text} online={online} pending={pending} onCart={cart}
                   onCheckout={sell} onAvailability={available} onReverse={reverse}
                   onMenu={onMenu} onMenuCategory={onMenuCategory} onSaved={setToast} onTill={() => go("shift")}
                 />
               ) : (
-                <ClosedSellScreen onTill={() => go("shift")} />
+                <ClosedSellScreen otherTillOpen={otherTillOpen} onTill={() => go("shift")} />
               )}
             </div>
           );
@@ -1006,20 +1045,33 @@ export function Workspace() {
             className="account-button"
             aria-label="Account and settings"
             aria-current={view === "settings" ? "page" : undefined}
-            aria-description={syncErr ? "Sync paused" : !online ? "Offline" : undefined}
+            aria-description={!online || visibleSyncError ? connection.text : undefined}
             onClick={() => go("settings")}
           >
             <span className={"avatar" + (state?.me?.photo ? " has-photo" : "")} aria-hidden="true">
               {state?.me?.photo ? <img src={state.me.photo} alt="" /> : state?.me?.name ? initialsOf(state.me.name) : <UserRound size={20} strokeWidth={1.8} />}
             </span>
-            {(syncErr || !online) && <span className="account-dot" aria-hidden="true" />}
+            {(!online || visibleSyncError) && (
+              <span className={online ? "account-dot" : "account-dot account-dot-offline"} aria-hidden="true" />
+            )}
           </button>
         </header>
       )}
-      {(notice || (syncErr && !bootError)) && (
+      {(offlineBanner || queued.length > 0 || notice || visibleSyncError) && (
         <div className="page-notices">
+          {offlineBanner}
+          {queued.length > 0 && (
+            <SyncBanner events={queued} online={online} syncing={syncing} failed={Boolean(visibleSyncError)}
+              action={visibleSyncError && (
+                <button type="button" className="register-banner-button"
+                  onClick={visibleSyncError.needsSignIn ? () => setAccount(true) : () => void flush(true)}>
+                  {visibleSyncError.needsSignIn ? "Sign in" : "Retry sync"}
+                </button>
+              )}
+            />
+          )}
           {notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
-          {syncErr && !bootError && (
+          {visibleSyncError && queued.length === 0 && (
             <Notice
               tone="danger"
               action={
@@ -1027,7 +1079,7 @@ export function Workspace() {
                   <button type="button" className="btn" onClick={() => void flush(true)}>
                     Retry
                   </button>
-                  {!demo && (
+                  {visibleSyncError.needsSignIn && (
                     <button type="button" className="btn" onClick={() => setAccount(true)}>
                       Sign in
                     </button>
@@ -1035,7 +1087,7 @@ export function Workspace() {
                 </>
               }
             >
-              {syncErr}
+              {visibleSyncError.text}
             </Notice>
           )}
         </div>

@@ -83,7 +83,7 @@ export interface EditorProps {
 
 export interface SettingsProps extends EditorProps {
   demo: boolean;
-  status: string;
+  connection: { text: string; dot: string };
   offlineReady: boolean;
   onAction: (input: OwnerAction) => Promise<void>;
   onSignIn: () => void;
@@ -1322,7 +1322,6 @@ export function SettingsScreen(props: SettingsProps) {
   const businesses = businessList(state).length;
   const methodsOn = s.payments.filter((p) => p.on);
   const discountsOn = s.discounts.filter((d) => d.on).length;
-  const waiting = state.pending.length;
   return (
     <div className="page">
       <div className="page-top">
@@ -1395,11 +1394,8 @@ export function SettingsScreen(props: SettingsProps) {
         <div className="list-row">
           <span className="grow">Connection</span>
           <span className="record-end row gap-6 sync-status">
-            <span
-              className={"dot " + (props.online ? (waiting ? "syncing" : "success") : "danger")}
-              aria-hidden="true"
-            />
-            {waiting ? (props.online ? "Syncing " + waiting : "Offline · " + waiting + " to sync") : props.status}
+            <span className={"dot " + props.connection.dot} aria-hidden="true" />
+            {props.connection.text}
           </span>
         </div>
         <div className="list-row">

@@ -5,11 +5,13 @@ import type { Booking, RegisterState } from "../src/lib/types";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
+type StaffAccess = "member" | "co-owner" | "owner";
+
 async function seedTill(
   page: Page,
   withShifts: boolean,
   withPastSale: boolean | "unscheduled" = false,
-  { opening = false, rankedAs, withExpenses = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean } = {},
+  { opening = false, rankedAs, withExpenses = false, staffAs }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
@@ -22,7 +24,7 @@ async function seedTill(
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses }) => {
+  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses, staffAs }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -48,6 +50,12 @@ async function seedTill(
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = opening ? null : shift;
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
+          if (staffAs) {
+            const person = state.team!.find((person) => person.id === state.me!.memberId)!;
+            state.me!.owner = person.owner = staffAs !== "member";
+            person.primaryOwner = staffAs === "owner";
+            second.staff = [{ memberId: "demo-bea", name: "Bea Santos", role: "cashier" }];
+          }
           if (rankedAs) {
             const names = ["Mika Reyes", "Bea Cruz", "Paolo Tan", "Jules Lim", "Sam Flores", "Ana Cruz", "Tess Ong", "Lia Uy", "Marco Go", "Nico Lao"];
             state.me = { memberId: "member-5", name: "Ana Cruz", roles: ["cashier"], owner: rankedAs === "owner" };
@@ -83,8 +91,34 @@ async function seedTill(
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, opening, rankedAs, withExpenses });
+  }, { withShifts, sales, opening, rankedAs, withExpenses, staffAs });
   await page.reload();
+}
+
+for (const staffAs of ["member", "co-owner", "owner"] as const) {
+  test(`claim an open shift seat as ${staffAs}`, async ({ page }) => {
+    await seedTill(page, true, false, { staffAs });
+    await page.getByRole("button", { name: "Shifts", exact: true }).click();
+    await page.getByRole("button", { name: /Atrium/ }).click();
+    const details = page.getByRole("dialog", { name: "Atrium", exact: true });
+    await details.getByRole("button", { name: "Join shift", exact: true }).click();
+    const role = page.getByRole("dialog", { name: "Join shift", exact: true });
+    await role.getByRole("button", { name: "Cashier", exact: true }).click();
+    await role.getByRole("button", { name: "Join as server", exact: true }).click();
+    await expect(details.getByText("Ana Cruz (you)")).toBeVisible();
+    await expect(details.getByText(/^Server(?: · |$)/)).toBeVisible();
+    await expect(details.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
+    await details.getByRole("button", { name: "Close", exact: true }).click();
+
+    await page.getByRole("button", { name: /Garden/ }).click();
+    const full = page.getByRole("dialog", { name: "Garden", exact: true });
+    await expect(full.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
+    await full.getByRole("button", { name: "Close", exact: true }).click();
+
+    await page.getByRole("button", { name: /Closed market/ }).click();
+    const ended = page.getByRole("dialog", { name: "Closed market", exact: true });
+    await expect(ended.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
+  });
 }
 
 test("Opening and closing tills can review stock, with expenses available after opening", async ({ page }) => {

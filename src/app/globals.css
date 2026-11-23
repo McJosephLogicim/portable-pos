@@ -381,6 +381,9 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
 .dot.danger {
   background: var(--danger-dot);
 }
+.dot.warn {
+  background: var(--warn-dot);
+}
 .dot.success {
   background: var(--success);
 }
@@ -927,6 +930,9 @@ button.list-row:not(.sell-option):active {
   background: var(--danger-dot);
   box-shadow: 0 0 0 2px var(--canvas);
 }
+.account-dot-offline {
+  background: var(--warn-dot);
+}
 .account-bar ~ main > .page {
   padding-top: 14px;
 }
@@ -1070,6 +1076,90 @@ button.list-row:not(.sell-option):active {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.register-banner {
+  --banner-line: color-mix(in srgb, var(--banner-tone) 32%, var(--surface));
+  --banner-tint: color-mix(in srgb, var(--banner-tone) 18%, var(--surface));
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--banner-line);
+  border-radius: var(--radius-sm);
+  background: var(--banner-bg);
+  color: var(--ink);
+}
+.register-banner-offline {
+  --banner-tone: var(--warn-dot);
+  --banner-bg: color-mix(in srgb, var(--banner-tone) 20%, var(--surface));
+  --banner-line: color-mix(in srgb, var(--banner-tone) 56%, var(--surface));
+  --banner-tint: color-mix(in srgb, var(--banner-tone) 36%, var(--surface));
+}
+.register-banner-sync {
+  --banner-tone: var(--accent);
+  --banner-bg: color-mix(in srgb, var(--banner-tone) 7%, var(--surface));
+}
+.register-banner-icon {
+  display: grid;
+  place-items: center;
+  align-self: flex-start;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-xs);
+  background: var(--banner-tint);
+}
+.register-banner-sync .register-banner-icon {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.register-banner-copy {
+  flex: 1 1 138px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.38;
+}
+.register-banner-title {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.register-banner-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 6px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 12px;
+  border: 1px solid var(--banner-line);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+.register-banner-button:hover,
+.register-banner-button:active {
+  background: var(--banner-tint);
+}
+.register-banner-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.register-banner-items > li {
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--banner-tint);
+  font-size: 12px;
+  font-weight: 600;
 }
 @keyframes notice-in {
   from {
@@ -3665,6 +3755,10 @@ html {
   vertical-align: -2px;
   margin-right: 5px;
   color: var(--ink-tertiary);
+}
+.sell-head .sync-mark {
+  flex: none;
+  margin-right: 0;
 }
 
 /* Settings rows: the title wraps instead of cutting off; a long value gives way first. */

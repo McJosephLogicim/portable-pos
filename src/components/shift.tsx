@@ -7,7 +7,7 @@ import { shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
 import { shiftCurrency } from "./receipt";
-import { ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedule";
+import { JoinTillSheet, ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedule";
 import { DrawerDifference, ShiftList } from "./shift-list";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
@@ -20,7 +20,6 @@ import { shiftKey } from "@/lib/sales-filter";
 import { bookingTitle, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import { blocked, type Reason } from "@/lib/reject";
 import {
-  ConfirmSheet,
   errorText,
   formatMoney,
   MethodIcon,
@@ -146,14 +145,7 @@ function NoShift({
         </div>
       )}
       {joining && onJoin && (
-        <ConfirmSheet
-          title={`Sell on shift ${joining.number}?`}
-          detail="Sales from this phone go to that shift's drawer. Any phone on it can close it."
-          confirmLabel="Sell on this shift"
-          destructive={false}
-          onClose={() => setJoining(null)}
-          onConfirm={() => onJoin(joining.id)}
-        />
+        <JoinTillSheet till={joining} onClose={() => setJoining(null)} onJoin={onJoin} />
       )}
       {ready.length > 0 && (
         <div className="stack gap-10">
@@ -173,9 +165,7 @@ function NoShift({
               booking={next}
               zone={zone}
               note={`Till opens from ${time.format(opensAt)}`}
-              refuse={Date.parse(next.endsAt) <= Date.now()
-                ? "This shift already ended."
-                : `Not yet. The till opens ${opensToday ? "" : weekday.format(opensAt) + " "}at ${time.format(opensAt)}.`}
+              refuse={`Not yet. The till opens ${opensToday ? "" : weekday.format(opensAt) + " "}at ${time.format(opensAt)}.`}
             />
           </div>
         </div>
@@ -525,7 +515,9 @@ export function ShiftScreen({
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
-  const startingBooking = openingId ? upcomingBookings(state).find((b) => b.id === openingId) : undefined;
+  const startingBooking = openingId && !state.shifts.some((s) => s.bookingId === openingId)
+    ? state.bookings?.find((b) => b.id === openingId && !b.tillClosed)
+    : undefined;
   const expenses = state.expenses ?? [];
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const replay = shift ? stockReplay(shift, state.sales) : undefined;

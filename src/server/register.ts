@@ -155,8 +155,8 @@ export async function runCommand(
     const openShifts = () =>
       tx.select().from(shifts).where(and(eq(shifts.businessId, business.id), isNull(shifts.closedAt)));
     /** The open shift this phone is running, if any. */
-    const tillShift = async () => {
-      const open = await openShifts();
+    const tillShift = async (running?: Awaited<ReturnType<typeof openShifts>>) => {
+      const open = running ?? await openShifts();
       if (view.till !== undefined) return open.find((s) => s.id === view.till);
       // Older app versions: the one open shift, as before.
       return open.length === 1 ? open[0] : open.find((s) => s.deviceId === view.deviceId);
@@ -294,11 +294,12 @@ export async function runCommand(
       const { bookingId } = cmd;
       // Booths run side by side, each on its own phone. A shift already open on another
       // phone is joined, not opened twice.
-      const joined = bookingId && (await openShifts()).find((s) => s.bookingId === bookingId);
+      const running = await openShifts();
+      const joined = bookingId && running.find((s) => s.bookingId === bookingId);
+      const mine = await tillShift(running);
+      ensure(!mine || (joined && mine.id === joined.id), `Close shift ${mine?.number} on this phone before starting another.`, 409);
       if (joined) view.till = joined.id;
       else {
-        const mine = await tillShift();
-        ensure(!mine, `Close shift ${mine?.number} on this phone before starting another.`, 409);
         ensure(
           business.menu.length,
           "Add a menu item before opening the till.",
@@ -314,7 +315,7 @@ export async function runCommand(
         }
         ensure(bookingId, "Pick a scheduled shift to start. Add one on Shifts first.");
         const [booking] = await tx
-          .select({ startsAt: bookings.startsAt, endsAt: bookings.endsAt })
+          .select({ startsAt: bookings.startsAt })
           .from(bookings)
           .where(and(eq(bookings.id, bookingId), eq(bookings.businessId, business.id)));
         ensure(booking, "That scheduled shift was removed.", 404);
@@ -356,7 +357,7 @@ export async function runCommand(
         }).returning({ id: shifts.id });
         view.till = opened.id;
       }
-      if (cmd.expenses?.length) {
+      if (!joined && cmd.expenses?.length) {
         const shiftId = view.till;
         const by = me.name.slice(0, 80) || undefined;
         await applyEvents(tx, business.id, business.currency, cmd.expenses.map((expense) => ({

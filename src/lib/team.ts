@@ -477,18 +477,17 @@ export function upcomingBookings(
   const closed = new Set(state.shifts.filter((s) => s.closedAt && s.bookingId).map((s) => s.bookingId));
   const mine = (b: Booking) => (b.staff.some((s) => s.memberId === state.me?.memberId) ? 0 : 1);
   return (state.bookings ?? [])
-    .filter((b) => !closed.has(b.id) && Date.parse(b.endsAt) > now)
+    .filter((b) => !b.tillClosed && !closed.has(b.id) && Date.parse(b.endsAt) > now)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || mine(a) - mine(b));
 }
 
-/** Why a scheduled shift can't start now, or null when it can. Shifts start on their schedule. */
+/** A missed shift can still be opened, but a future shift cannot open too early. */
 export function startProblem(
-  b: Pick<Booking, "startsAt" | "endsAt">,
+  b: Pick<Booking, "startsAt">,
   timeZone: string,
   now = Date.now(),
 ): string | null {
   const start = Date.parse(b.startsAt);
-  if (now >= Date.parse(b.endsAt)) return "This shift already ended. Add a new one on Shifts.";
   if (now < start - OPEN_EARLY) {
     const time = new Intl.DateTimeFormat("en", { timeZone, hour: "numeric", minute: "2-digit" });
     const day = new Intl.DateTimeFormat("en", { timeZone, weekday: "short", month: "short", day: "numeric" });
@@ -501,5 +500,6 @@ export function startProblem(
 /** The Till's Shifts sheet uses the same business day as Shifts → Today. */
 export function linkBookingProblem(b: Pick<Booking, "startsAt" | "endsAt">, zone: string, now = Date.now()) {
   if (dayOf(b.startsAt, zone) !== dayOf(now, zone)) return "Choose a shift scheduled for today.";
+  if (now >= Date.parse(b.endsAt)) return "This shift already ended. Add a new one on Shifts.";
   return startProblem(b, zone, now);
 }

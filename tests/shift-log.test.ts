@@ -306,7 +306,7 @@ test("a closed scheduled shift cannot be started again in the demo", () => {
 });
 
 test(
-  "shifts start on their schedule, one at a time",
+  "missed shifts can start late, with the early-start window and one till at a time",
   {
     skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database.",
   },
@@ -334,7 +334,6 @@ test(
       }).then(() => id);
     };
     await assert.rejects(open(await at(2, 6)), /opens from/);
-    await assert.rejects(open(await at(-8, -1)), /already ended/);
     // Half an hour early is fine.
     const soon = await at(0.4, 5);
     const expense = { id: randomUUID(), createdAt: new Date().toISOString(), label: "Opening supplies", amount: 2000, source: "till" };
@@ -366,6 +365,13 @@ test(
     assert.equal(next.shift!.number, 2);
     assert.equal(next.shift!.bookingId, other);
     await cmd({ action: "close", shiftId: next.shift!.id, countedCash: 0, deviceId, pin });
+    const missed = await at(-32, -26);
+    const late = await open(missed);
+    assert.equal(late.shift!.bookingId, missed);
+    assert.ok(late.shift!.openedAt > late.bookings!.find((booking) => booking.id === missed)!.endsAt);
+    const lateClosed = await cmd({ action: "close", shiftId: late.shift!.id, countedCash: 0, deviceId, pin });
+    assert.equal(lateClosed.bookings!.find((booking) => booking.id === missed)!.tillClosed, true);
+    await assert.rejects(open(missed), /already closed/);
     // Check all history, including when the closed booking isn't the latest,
     // and apply the same rule when a Simple till selects a scheduled shift.
     await cmd({ action: "mode", mode: "simple", pin });

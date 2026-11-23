@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
 import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
-import { OFFLINE } from "@/lib/reject";
+import { blocked, OFFLINE } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
 import { slugId } from "@/lib/settings";
@@ -35,6 +35,7 @@ import {
   shiftRole,
   shiftRoleNames,
   shiftTimes,
+  startProblem,
   timeOf,
   upcomingBookings,
   weekday,
@@ -84,6 +85,8 @@ export interface ScheduleProps {
   onLoadBookingRecords?: (bookingId: string, kind: BookingRecordKind) => Promise<BookingRecords>;
   onEditExpense?: (id: string, input: ExpenseInput) => Promise<void>;
   onUnexpense?: (id: string) => Promise<void>;
+  onStart?: (bookingId: string) => void;
+  onJoin?: (shiftId: string) => Promise<void>;
 }
 
 const weekdayLetters = ["S", "M", "T", "W", "T", "F", "S"];
@@ -347,6 +350,23 @@ function useBookingHistory(
   return { status: { kind: "loading" } };
 }
 
+export function JoinTillSheet({ till, onClose, onJoin }: {
+  till: Shift;
+  onClose: () => void;
+  onJoin: (shiftId: string) => Promise<void>;
+}) {
+  return (
+    <ConfirmSheet
+      title={`Join till for shift ${till.number}?`}
+      detail="Sales from this phone go to that shift's drawer. Any phone on it can close it."
+      confirmLabel="Join till"
+      destructive={false}
+      onClose={onClose}
+      onConfirm={() => onJoin(till.id)}
+    />
+  );
+}
+
 function BookingSheet({
   booking: b,
   props,
@@ -388,12 +408,54 @@ function BookingSheet({
   const team = state.team ?? [];
   const joinable = !mine && open > 0 && !over;
   const [joining, setJoining] = useState(false);
+  const [joiningTill, setJoiningTill] = useState<Shift | null>(null);
   const [roleFor, setRoleFor] = useState<StaffSlot | null>(null);
   const celebrate = useCelebrate();
   const [switching, setSwitching] = useState(false);
   const tills = useMemo(
     () => state.shifts.filter((s) => s.bookingId === b.id).map((s) => s.id),
     [state.shifts, b.id],
+  );
+  const localTill = state.shift && !state.shift.closedAt ? state.shift : null;
+  const runningTill = till && !till.closedAt ? till : null;
+  const tillClosed = !runningTill && (b.tillClosed || Boolean(till?.closedAt));
+  const tillBlock = !online ? OFFLINE : localTill ? `Close shift ${localTill.number} on this phone first.` : null;
+  const { onStart, onJoin } = props;
+  const tillButton = `btn block${joinable ? " secondary" : ""}`;
+  const tillAction = onLinkTill ? (
+    <button type="button" className={tillButton} disabled={!online || busy} aria-haspopup="dialog" onClick={onLinkTill}>
+      <Link2 size={17} aria-hidden="true" /> Add till
+    </button>
+  ) : runningTill ? (
+    localTill?.id !== runningTill.id && onJoin && (
+      <button type="button" className={tillButton} disabled={busy} {...blocked(tillBlock)} aria-haspopup="dialog" onClick={() => setJoiningTill(runningTill)}>
+        Join till
+      </button>
+    )
+  ) : !tillClosed && onStart && (
+    <button
+      type="button"
+      className={tillButton}
+      disabled={busy}
+      {...blocked(tillBlock || (!state.menu.length ? "Add a menu item before opening the till." : startProblem(b, business.timeZone)))}
+      onClick={() => onStart(b.id)}
+    >
+      Start shift
+    </button>
+  );
+  const staffAction = joinable ? (
+    <button type="button" className="btn block" disabled={!online || busy} aria-haspopup="dialog" onClick={() => setJoining(true)}>
+      {busy ? "Joining…" : "Join shift"}
+    </button>
+  ) : !onLinkTill && !me.owner && mine && !over && (
+    <div className="grid-2">
+      <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
+        {busy ? "Updating…" : "Change role"}
+      </button>
+      <button className="btn secondary block" disabled={!online || busy || started} onClick={() => setLeaving(mine)}>
+        Leave
+      </button>
+    </div>
   );
 
   // Recent records are already on the register. Fetch uncached history as soon as the shift opens.
@@ -471,31 +533,12 @@ function BookingSheet({
           </button>
         )}
         footer={
-          onLinkTill ? (
-            <button type="button" className="btn block" disabled={!online || busy} aria-haspopup="dialog" onClick={onLinkTill}>
-              <Link2 size={17} aria-hidden="true" /> Add till
-            </button>
-          ) : !me.owner &&
-          (mine ? (
-            !over && (
-              <div className="grid-2">
-                <button className="btn block" disabled={!online || busy} onClick={() => setSwitching(true)}>
-                  {busy ? "Updating…" : "Change role"}
-                </button>
-                <button
-                  className="btn secondary block"
-                  disabled={!online || busy || started}
-                  onClick={() => setLeaving(mine)}
-                >
-                  {started ? "Started" : "Leave"}
-                </button>
-              </div>
-            )
-          ) : joinable ? (
-            <button className="btn block" disabled={!online || busy} onClick={() => setJoining(true)}>
-              {busy ? "Joining…" : "Join this shift"}
-            </button>
-          ) : null)
+          (tillAction || staffAction) && (
+            <div className="stack gap-8">
+              {staffAction}
+              {tillAction}
+            </div>
+          )
         }
       >
         <div className="stack gap-4">
@@ -504,6 +547,8 @@ function BookingSheet({
             {f.time.format(new Date(b.startsAt))} to {f.time.format(new Date(b.endsAt))}
             {b.organizer ? " · " + b.organizer.name : ""}
           </p>
+          {runningTill && <p className="label">Started on {localTill?.id === runningTill.id ? "this device" : "another device"}</p>}
+          {tillClosed && <p className="label">Closed</p>}
         </div>
         {b.place && (
           <div className="card place-card">
@@ -719,6 +764,7 @@ function BookingSheet({
           onClose={() => setBreakdown(null)}
         />
       )}
+      {joiningTill && onJoin && <JoinTillSheet till={joiningTill} onClose={() => setJoiningTill(null)} onJoin={onJoin} />}
       {confirmDelete && (
         <ConfirmSheet
           title="Delete shift?"
@@ -845,7 +891,7 @@ function BookingSheet({
       )}
       {joining && (
         <RoleSheet
-          title="Join this shift"
+          title="Join shift"
           start={me.roles.length ? me.roles : ["cashier"]}
           onClose={() => setJoining(false)}
           action={(r) => "Join as " + shiftRoleNames[r].toLowerCase()}

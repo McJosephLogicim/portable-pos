@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, Minus, Plus, Search, ShoppingBag, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { Ban, CalendarDays, Camera, Check, ChevronDown, ChevronRight, CloudOff, Minus, Plus, Search, ShoppingBag, Trash2, Volume2, VolumeX, X } from "lucide-react";
 import type {
   CartLine,
   Product,
@@ -981,14 +981,19 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
   );
 }
 
-export function ClosedSellScreen({ onTill }: { onTill: () => void }) {
+export function ClosedSellScreen({ otherTillOpen, onTill }: { otherTillOpen: boolean; onTill: () => void }) {
   return (
     <>
       <div className="page-top">
         <h1 className="headline">Sell</h1>
       </div>
-      <EmptyState pose="close" object="cashDrawer" title="Till closed" text="Open the till to start selling.">
-        <button type="button" className="btn compact" onClick={onTill}>Open till</button>
+      <EmptyState
+        pose={otherTillOpen ? "connect" : "close"}
+        object="cashDrawer"
+        title={otherTillOpen ? "A shift is already open" : "Till closed"}
+        text={otherTillOpen ? "Choose the open shift to sell on this device." : "Open the till to start selling."}
+      >
+        <button type="button" className="btn compact" onClick={onTill}>{otherTillOpen ? "Go to Till" : "Open till"}</button>
       </EmptyState>
     </>
   );
@@ -1156,9 +1161,8 @@ export function SellScreen({
               <p className="label">Try taking an order. Test sales aren’t saved.</p>
             ) : (
               <span className="label row gap-6">
-                {status !== "Online" && (
-                  <span className={"dot" + (online ? "" : " danger")} />
-                )}
+                {!online ? <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-hidden="true" />
+                  : status !== "Online" && <span className="dot" />}
                 <span className="ellipsis">
                   Shift {shift.number} ·{" "}
                   {shiftSales.length === 1 ? "1 sale" : shiftSales.length + " sales"}

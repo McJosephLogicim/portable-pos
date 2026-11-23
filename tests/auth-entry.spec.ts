@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { popoLoading } from "../src/lib/app-brand";
-import { demoBootstrap } from "../src/lib/demo";
+import { demoBootstrap, newShift } from "../src/lib/demo";
 import { makeSale } from "../src/lib/domain";
 import { LOGIN_LIFETIME_MS } from "../src/lib/login-session";
 import { joinLink } from "../src/lib/join-link";
-import type { Bootstrap } from "../src/lib/types";
+import type { Bootstrap, RegisterEvent, Shift } from "../src/lib/types";
 
 const appUrl = process.env.POS_TEST_APP_URL ?? "http://localhost:3000";
 const accountId = "2429d8fb-ce87-48b2-bc63-d3a99728497f";
@@ -83,6 +83,89 @@ async function enterCredentials(page: Page) {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("test-password");
 }
+
+test("a missed shift can be started and joined from another phone by members, owners, and co-owners", async ({ page, browser }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app started with test Supabase settings and set POS_TEST_MOCK_AUTH=1.");
+  const initial = teamSnapshot();
+  const business = initial.business!;
+  business.timeZone = "Asia/Manila";
+  business.settings.checklist = [];
+  initial.menu = [{ id: "tea", name: "Tea", category: "Drinks", price: 10000, groups: [] }];
+  const [booking] = initial.bookings!;
+  booking.startsAt = "2026-11-20T01:00:00Z";
+  booking.endsAt = "2026-11-20T03:00:00Z";
+  let till: Shift | undefined;
+  const deviceIds = new Set<string>();
+  const signIn = async (phone: Page, role: "owner" | "co-owner" | "member" = "owner") => {
+    const me = { ...initial.me!, owner: role !== "member" };
+    const team = me.owner ? initial.team?.map((person) => person.id === me.memberId
+      ? { ...person, owner: true, primaryOwner: role === "owner" }
+      : person) : [];
+    await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
+    await mockAuth(phone);
+    await phone.route("**/api/pos", async (route) => {
+      const { action, deviceId, till: selected, bookingId, openingCash } = route.request().postDataJSON();
+      if (deviceId) deviceIds.add(deviceId);
+      if (action === "open") {
+        expect(till).toBeUndefined();
+        expect(bookingId).toBe(booking.id);
+        expect(openingCash).toBe(10000);
+        till = {
+          ...newShift(deviceId, business.id, 1, openingCash, initial.menu, { ...business.settings, currency: business.currency }),
+          bookingId,
+        };
+      }
+      return route.fulfill({ json: {
+        ...initial,
+        me,
+        team,
+        shifts: till ? [till] : [],
+        shift: till && (action === "open" || selected === till.id) ? till : null,
+      } });
+    });
+    await phone.goto(appUrl);
+    await enterCredentials(phone);
+    await phone.locator("button[type=submit]").click();
+  };
+  const showMissedShift = async (phone: Page) => {
+    await phone.getByRole("button", { name: "Shifts", exact: true }).click();
+    await phone.getByRole("button", { name: "Friday, November 20, 1 shift" }).click();
+  };
+
+  await signIn(page);
+  await showMissedShift(page);
+  await page.getByRole("button", { name: /Saturday market/ }).click();
+  await page.getByRole("dialog", { name: "Saturday market" }).getByRole("button", { name: "Start shift" }).click();
+  await page.getByRole("button", { name: "Type the total" }).click();
+  await page.getByRole("textbox", { name: "Starting cash" }).fill("100");
+  await page.getByRole("button", { name: "Open till", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
+
+  for (const role of ["owner", "co-owner", "member"] as const) {
+    await test.step(`${role} joins the shared till`, async () => {
+      const second = await browser.newPage();
+      try {
+        await signIn(second, role);
+        await expect(second.getByRole("heading", { name: "A shift is already open" })).toBeVisible();
+        await second.getByRole("button", { name: "Go to Till" }).click();
+        await expect(second.getByText("Open on another phone")).toBeVisible();
+        await expect(second.getByRole("button", { name: /Saturday market/ })).toBeVisible();
+        await showMissedShift(second);
+        await second.getByRole("button", { name: /Saturday market.*Started/ }).click();
+        const details = second.getByRole("dialog", { name: "Saturday market" });
+        await expect(details.getByText("Started on another device")).toBeVisible();
+        await expect(details.getByRole("button", { name: "Start shift" })).toHaveCount(0);
+        await details.getByRole("button", { name: "Join till", exact: true }).click();
+        await second.getByRole("dialog", { name: "Join till for shift 1?" }).getByRole("button", { name: "Join till", exact: true }).click();
+        await expect(second.getByRole("button", { name: /Selling for Saturday market/ })).toBeVisible();
+      } finally {
+        await second.close();
+      }
+    });
+  }
+  expect(deviceIds.size).toBe(4);
+});
 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("portable-pos-account", id), accountId);
@@ -497,6 +580,97 @@ test.describe("account-enabled link entry", () => {
     await (await picker()).getByRole("button", { name: /Market Owner/ }).click();
     await signInThroughDialog("Sign in", email);
     await expect(firstRegister).toBeVisible();
+  });
+
+  test("the register explains offline work and clears the sync banner after upload", async ({ page, context }, testInfo) => {
+    await page.setViewportSize({ width: 430, height: 900 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await mockAuth(page);
+    const demo = demoBootstrap("offline-test");
+    const snapshot = {
+      ...demo,
+      business: { ...demo.business!, settings: { ...demo.business!.settings, mode: "advanced", brand: "#4b2ccb" } },
+      me: { ...demo.me!, name: "Ana Cruz" },
+    };
+    let rejectBootstrap = false;
+    let sent: RegisterEvent[] = [];
+    const { promise: syncResponse, resolve: finishSync } = Promise.withResolvers<void>();
+    const screenshot = (name: string) => page.screenshot({
+      path: testInfo.outputPath(name), animations: "disabled", style: "nextjs-portal { display: none; }",
+    });
+    await page.route("**/api/pos", async (route) => {
+      const command = route.request().postDataJSON();
+      if (command.action === "sync") {
+        sent = command.events;
+        await syncResponse;
+      } else if (rejectBootstrap) {
+        return route.fulfill({ status: 401, json: { error: "Please sign in again to sync your register." } });
+      }
+      return route.fulfill({ json: snapshot });
+    });
+
+    try {
+      await page.goto(appUrl);
+      await enterCredentials(page);
+      await page.locator("button[type=submit]").click();
+      await expect(page.getByRole("button", { name: /^Add Espresso/ })).toBeVisible();
+      await page.getByRole("button", { name: "Account and settings" }).click();
+      rejectBootstrap = true;
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+
+      await context.setOffline(true);
+      const offlineBanner = page.getByRole("region", { name: "Offline", exact: true });
+      const syncBanner = page.getByRole("region", { name: "Register sync", exact: true });
+      await expect(offlineBanner).toContainText("You’re offline");
+      await expect(offlineBanner).toContainText("Are you online?");
+      await expect(page.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
+      await expect(syncBanner).toHaveCount(0);
+      await screenshot("offline-banner.png");
+      await offlineBanner.getByRole("button", { name: "Refresh" }).click();
+      await expect(offlineBanner).toContainText("Still offline");
+      await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Sell", exact: true }).click();
+      for (let count = 0; count < 2; count++) {
+        await page.getByRole("button", { name: /^Add Espresso/ }).click();
+        await page.locator(".charge-bar").click();
+        const checkout = page.getByRole("dialog", { name: "Charge", exact: true });
+        await checkout.getByRole("button", { name: "Cash", exact: true }).click();
+        await checkout.getByRole("button", { name: "Exact", exact: true }).click();
+        await page.getByRole("button", { name: "Slide to confirm sale", exact: true }).press("Enter");
+        await page.getByRole("dialog", { name: "Sale complete" }).getByRole("button", { name: "New sale" }).click();
+      }
+      await page.getByRole("button", { name: "Till", exact: true }).click();
+      await page.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true }).click();
+      const expense = page.getByRole("dialog", { name: "Log an expense" });
+      await expense.getByRole("combobox", { name: "What for" }).fill("Ice");
+      await expense.getByRole("textbox", { name: "Amount" }).fill("20");
+      await expense.getByRole("button", { name: "Cash from the till" }).click();
+      await expense.getByRole("button", { name: /^Log ₱/ }).click();
+      await page.getByRole("button", { name: "Sell", exact: true }).click();
+      await expect(page.locator(".sell-head .lucide-cloud-off")).toBeVisible();
+      await expect(syncBanner).toContainText("Waiting to sync");
+      await expect(syncBanner.getByRole("listitem")).toHaveText(["2 sales", "1 expense"]);
+      await expect(syncBanner.locator(".register-banner-icon")).toHaveCSS("background-color", "rgb(75, 44, 203)");
+      expect(sent).toHaveLength(0);
+      await page.getByRole("banner").scrollIntoViewIfNeeded();
+      await expect(offlineBanner).toBeInViewport({ ratio: 1 });
+      await expect(syncBanner).toBeInViewport({ ratio: 1 });
+      await screenshot("sell-offline.png");
+      await page.getByRole("button", { name: "Account and settings" }).click();
+
+      rejectBootstrap = false;
+      await context.setOffline(false);
+      await expect(offlineBanner).toHaveCount(0);
+      await expect(syncBanner).toContainText("Syncing changes");
+      await expect.poll(() => sent.map((event) => event.type)).toEqual(["sale", "sale", "expense"]);
+      await screenshot("sync-banner.png");
+      finishSync();
+      await expect(syncBanner).toHaveCount(0);
+    } finally {
+      finishSync();
+    }
   });
 
   test("a shift link requires team access and survives switching accounts", async ({ page }) => {

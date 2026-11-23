@@ -330,6 +330,8 @@ export interface Booking {
   expenses?: number;
   /** Whether sales reached the quota. Shared with the team, unlike the sales figure. */
   hit?: boolean;
+  /** A till for this booking was closed, even if it has aged out of till history. */
+  tillClosed?: boolean;
 }
 export type BookingRecordKind = "sales" | "expenses";
 export type BookingRecords = { sales: Sale[]; expenses: Expense[] };

@@ -148,9 +148,9 @@ async function sessionFor(key: string, what: string) {
     error,
   } = await accountSession(userId);
   if (isAuthRetryableFetchError(error))
-    throw Error("Couldn’t refresh your sign-in. The register will try again.");
+    throw new Error("Couldn't reach your account. Check the connection and try again.", { cause: error });
   if (error || !session || session.user.id !== userId)
-    throw Error(`Sign back into this account to ${what}.`);
+    throw new RequestFailure(401, `Sign back into this account to ${what}.`);
   return {
     session,
     headers: {
