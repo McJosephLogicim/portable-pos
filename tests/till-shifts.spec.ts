@@ -138,6 +138,12 @@ test("Starting a shift is the only primary action when a member can also change 
   await expect(primary).toHaveText("Start shift");
   await expect(details.getByRole("button", { name: "Change role" })).toHaveClass(/\bsecondary\b/);
   await expect(details.getByRole("button", { name: "Leave", exact: true })).toHaveClass(/\bghost\b/);
+  const footerButtons = details.locator(".sheet-foot").getByRole("button");
+  await expect(footerButtons).toHaveText(["Change role", "Leave", "Start shift"]);
+  const footerRows = await footerButtons.evaluateAll((buttons) =>
+    new Set(buttons.map((button) => button.getBoundingClientRect().top)).size,
+  );
+  expect(footerRows).toBe(3);
 
   const actions = details.getByRole("group", { name: "Shift actions" });
   const share = actions.getByRole("button", { name: "Share", exact: true });
@@ -308,6 +314,19 @@ test("Today and the Till picker reuse shift details and link only after confirma
   await today.getByRole("button", { name: /Atrium/ }).click();
   const actions = details.getByRole("group", { name: "Shift actions" }).getByRole("button");
   await expect(actions).toHaveText(["Share", "Report", "Delete"]);
+  const actionRows = () =>
+    actions.evaluateAll((buttons) => new Set(buttons.map((button) => button.getBoundingClientRect().top)).size);
+  await expect.poll(actionRows).toBe(3);
+  await page.setViewportSize({ width: 768, height: 844 });
+  await expect.poll(actionRows).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const peopleRow = details.getByRole("button", { name: /Ana Cruz.*Cashier/ });
+  const addPerson = details.getByRole("button", { name: "Add someone", exact: true });
+  await expect(peopleRow).toHaveCSS("box-shadow", "none");
+  await expect(addPerson).toHaveClass("list-row");
+  await expect(addPerson).toHaveText("Add");
+  await expect(peopleRow.locator("..").getByRole("button", { name: "Add someone" })).toHaveCount(1);
   await actions.getByText("Share", { exact: true }).click();
   const share = page.getByRole("dialog", { name: "Share this shift" });
   await expect(share.getByText(/View shift:/)).toBeVisible();
@@ -582,6 +601,7 @@ test("Shift profitability opens the sales and expenses behind its totals", async
   await expect(shift.locator(".list-row").filter({ hasText: /^(Profit|Loss)/ })).toContainText(php(Math.abs(espresso.price - 5000)));
 
   const salesRow = shift.getByRole("button", { name: /^Sales ₱/ });
+  await expect(salesRow).toHaveCSS("box-shadow", "none");
   await salesRow.click();
   const sales = page.getByRole("dialog", { name: "Sales", exact: true });
   await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
@@ -593,7 +613,9 @@ test("Shift profitability opens the sales and expenses behind its totals", async
   await expect(sales.getByText(php(espresso.price), { exact: true })).toHaveCount(2);
   await sales.getByRole("button", { name: "Close", exact: true }).click();
 
-  await shift.getByRole("button", { name: /Expenses.*₱50/ }).click();
+  const expensesRow = shift.getByRole("button", { name: /Expenses.*₱50/ });
+  await expect(expensesRow).toHaveCSS("box-shadow", "none");
+  await expensesRow.click();
   const expenses = page.getByRole("dialog", { name: "Expenses", exact: true });
   await expect(expenses.getByText("Ice packs")).toBeVisible();
   await expect(expenses.getByText("Delivery fare")).toBeVisible();

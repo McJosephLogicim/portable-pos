@@ -453,14 +453,14 @@ function BookingSheet({
       {busy ? "Joining…" : "Join shift"}
     </button>
   ) : !onLinkTill && !me.owner && mine && !over && (
-    <div className="grid-2">
+    <>
       <button className={`btn block${tillAction ? " secondary" : ""}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
         {busy ? "Updating…" : "Change role"}
       </button>
       <button className="btn ghost danger block" disabled={busy} {...blocked(!online ? OFFLINE : started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
         Leave
       </button>
-    </div>
+    </>
   );
 
   // Recent records are already on the register. Fetch uncached history as soon as the shift opens.
@@ -539,7 +539,7 @@ function BookingSheet({
         )}
         footer={
           (tillAction || staffAction) && (
-            <div className="stack gap-8">
+            <div className={styles.shiftActions}>
               {staffAction}
               {tillAction}
             </div>
@@ -618,14 +618,15 @@ function BookingSheet({
                 )}
               </div>
             ))}
-          </div>
-          {me.owner && (tillClosed || !open) && (
-            <div className="row">
-              <button type="button" className="btn secondary compact" disabled={busy} {...blocked(!online && OFFLINE)} aria-haspopup="dialog" onClick={() => setPicking({})}>
-                <Plus size={16} aria-hidden="true" /> Add someone
+            {me.owner && (tillClosed || !open) && (
+              <button type="button" className="list-row" aria-label="Add someone" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setPicking({})}>
+                <span className="avatar seat" aria-hidden="true">
+                  <Plus size={16} />
+                </span>
+                <span className="grow">Add</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {b.quota > 0 && (
@@ -1298,10 +1299,11 @@ export function BookingEditor({
                 <ChevronRight size={18} className="chev" />
               </button>
             ))}
-          </div>
-          <div className="row">
-            <button type="button" className="btn secondary compact" aria-haspopup="dialog" onClick={() => setAdding(true)}>
-              <Plus size={16} aria-hidden="true" /> {bulk ? "Put someone on every shift" : "Assign someone"}
+            <button type="button" className="list-row" onClick={() => setAdding(true)}>
+              <span className="avatar seat" aria-hidden="true">
+                <Plus size={16} />
+              </span>
+              <span className="grow">{bulk ? "Put someone on every shift" : "Assign someone"}</span>
             </button>
           </div>
         </div>

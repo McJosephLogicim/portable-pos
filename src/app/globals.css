@@ -450,16 +450,6 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   text-align: left;
   color: inherit;
 }
-button.list-row:not(.plain, [role="checkbox"]) {
-  padding-inline: 12px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
-.card-list > button.list-row:not(.plain, [role="checkbox"]) {
-  margin-block: 5px;
-}
 button.list-row:not(.sell-option):active {
   opacity: 0.6;
 }

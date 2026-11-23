@@ -117,9 +117,15 @@
 }
 
 .shiftActions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+}
+
+@media (min-width: 520px) {
+  .shiftActions {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
 }
 
 .calendarDay[aria-pressed="true"] :global(.cal-num) {

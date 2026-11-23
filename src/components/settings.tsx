@@ -792,6 +792,7 @@ function PaymentsPage(props: SettingsProps) {
           <div className="list-row" key={m.id}>
             <button
               className="list-row grow"
+              style={{ padding: 0, minHeight: 0 }}
               onClick={() => setEditing(m)}
             >
               <span className="well">
@@ -1059,6 +1060,7 @@ function DiscountsPage(props: SettingsProps) {
             <div className="list-row" key={d.id}>
               <button
                 className="list-row grow"
+              style={{ padding: 0, minHeight: 0 }}
                 onClick={() => setEditing(d)}
               >
                 <span className="well">
