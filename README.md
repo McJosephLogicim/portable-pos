@@ -15,6 +15,8 @@ Use Node 22.12 or later and install packages with `npm ci`. Run `npm run dev` fo
 
 The migration command checks the existing journal against the checkout and runs pending SQL in one transaction. Use additive migrations that let the previous release continue serving traffic until Vercel switches over.
 
+POP POS keeps a login for up to 365 days from sign-in on that browser and refreshes Supabase access tokens as needed. Keep Supabase access tokens at their normal short lifetime. If you use Supabase Auth session limits, check that the time-box, inactivity timeout, and single-session settings allow the login duration you want for the register.
+
 ## At the counter
 
 Open the shift while connected and use the same device throughout. Once the register shows **Offline register · Ready** in workspace details, the installed app can reopen offline. Checkout saves the receipt and pending record together. Reconnecting submits sales in sequence. Clearing browser storage or uninstalling before sync can erase pending receipts.

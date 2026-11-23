@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import { APP_NAME, appIcons } from "@/lib/app-brand";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { loginDeadline } from "@/lib/login-session";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
 import { onColor } from "@/lib/theme";
@@ -274,7 +275,7 @@ export function Account(props: AccountProps) {
     if (!session || session.user.is_anonymous) throw Error("Couldn't sign in. Try again.");
     const { id, email } = session.user;
     const previous = savedAccounts().find((account) => account.id === id);
-    rememberAccount({ id, email, slot });
+    rememberAccount({ id, email, slot, loginExpiresAt: loginDeadline(session.access_token) });
     if (previous && previous.slot !== slot)
       void authClient(previous.slot).auth.signOut({ scope: "local" }).catch(() => {});
     await props.onSignedIn(id);

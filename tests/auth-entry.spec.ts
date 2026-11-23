@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { popoLoading } from "../src/lib/app-brand";
 import { demoBootstrap } from "../src/lib/demo";
 import { makeSale } from "../src/lib/domain";
+import { LOGIN_LIFETIME_MS } from "../src/lib/login-session";
 import { joinLink } from "../src/lib/join-link";
 import type { Bootstrap } from "../src/lib/types";
 
@@ -20,6 +21,16 @@ const authHeaders = {
   "X-Supabase-Api-Version": "2024-01-01",
 };
 
+function accessToken(id: string, issuedAt = Date.now(), signedInAt = issuedAt) {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return [
+    encode({ typ: "JWT", alg: "HS256" }),
+    encode({ sub: id, iat: Math.floor(issuedAt / 1000), exp: Math.floor(issuedAt / 1000) + 3600,
+      amr: [{ method: "password", timestamp: Math.floor(signedInAt / 1000) }] }),
+    "test-signature",
+  ].join(".");
+}
+
 function teamSnapshot(): Bootstrap {
   const demo = demoBootstrap("auth-test");
   const business = { ...demo.business!, id: teamId, name: "Market Counter" };
@@ -36,7 +47,7 @@ function teamSnapshot(): Bootstrap {
 async function mockAuth(page: Page, { unconfirmed = false } = {}) {
   const user = { id: accountId, email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {} };
   const token = {
-    access_token: "test-access-token", refresh_token: "test-refresh-token",
+    access_token: accessToken(accountId), refresh_token: "test-refresh-token",
     expires_in: 3600, token_type: "bearer", user,
   };
   await page.route("**/auth/v1/**", async (route) => {
@@ -103,6 +114,77 @@ test.describe("account-enabled link entry", () => {
     "Use a local app started with test Supabase settings and set POS_TEST_MOCK_AUTH=1.",
   );
   test.use({ serviceWorkers: "block" });
+
+  test("a saved login refreshes on return and expires 365 days after sign-in", async ({ page }) => {
+    const started = Date.parse("2026-11-23T01:00:00Z");
+    let now = started;
+    let signedInAt = started;
+    let passwords = 0;
+    let refreshes = 0;
+    let authUnavailable = false;
+    const user = { id: accountId, email, aud: "authenticated", role: "authenticated" };
+    await page.clock.install({ time: new Date(now) });
+    await page.route("**/auth/v1/**", async (route) => {
+      const request = route.request();
+      if (request.method() === "OPTIONS" || request.url().includes("/logout"))
+        return route.fulfill({ status: 204, headers: authHeaders });
+      const grant = new URL(request.url()).searchParams.get("grant_type");
+      if (grant === "password") {
+        passwords++;
+        signedInAt = now;
+      } else {
+        expect(grant).toBe("refresh_token");
+        refreshes++;
+        if (authUnavailable)
+          return route.fulfill({ status: 503, json: { message: "Auth is temporarily unavailable" }, headers: authHeaders });
+      }
+      return route.fulfill({ headers: authHeaders, json: {
+        access_token: accessToken(accountId, now, signedInAt),
+        refresh_token: "refresh-" + refreshes,
+        expires_in: 3600,
+        expires_at: now / 1000 + 3600,
+        token_type: "bearer",
+        user,
+      } });
+    });
+    await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
+    const register = page.getByRole("button", { name: "Switch business, now Market Counter" });
+    const signIn = page.getByRole("heading", { name: "Sign in to your Pop-up" });
+    await page.goto(appUrl);
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    await expect(register).toBeVisible();
+
+    now += 24 * 60 * 60 * 1000;
+    authUnavailable = true;
+    await page.clock.setSystemTime(new Date(now));
+    await page.reload();
+    await expect(register).toBeVisible({ timeout: 35_000 });
+    await expect(signIn).toBeHidden();
+    const failedRefreshes = refreshes;
+    authUnavailable = false;
+
+    now = started + LOGIN_LIFETIME_MS - 60_000;
+    await page.clock.setSystemTime(new Date(now));
+    await page.reload();
+    await expect(register).toBeVisible({ timeout: 15_000 });
+    expect(refreshes).toBeGreaterThan(failedRefreshes);
+    expect(passwords).toBe(1);
+
+    now = started + LOGIN_LIFETIME_MS;
+    await page.clock.setSystemTime(new Date(now));
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(signIn).toBeVisible();
+    await expect(page.getByText("Your sign-in expired. Sign in again to continue.")).toBeVisible();
+    await page.reload();
+    await expect(signIn).toBeVisible();
+    expect(passwords).toBe(1);
+
+    await enterCredentials(page);
+    await page.locator("button[type=submit]").click();
+    await expect(register).toBeVisible();
+    expect(passwords).toBe(2);
+  });
 
   test("an older shift prefetches its records and keeps its totals visible during requests", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -343,6 +425,7 @@ test.describe("account-enabled link entry", () => {
     const secondEmail = "bakery@example.test";
     const secondId = "741cdfa2-abd0-4e39-9dfa-c222afe56ba0";
     let rejectFirstRegister = false;
+    const tokens = { [accountId]: accessToken(accountId), [secondId]: accessToken(secondId) };
     await page.route("**/auth/v1/**", (route) => {
       const request = route.request();
       if (request.method() === "OPTIONS" || request.url().includes("/logout"))
@@ -351,14 +434,14 @@ test.describe("account-enabled link entry", () => {
       expect([email, secondEmail]).toContain(address);
       const id = address === email ? accountId : secondId;
       return route.fulfill({ headers: authHeaders, json: {
-        access_token: "token-" + id, refresh_token: "refresh-" + id, expires_in: 3600,
+        access_token: tokens[id], refresh_token: "refresh-" + id, expires_in: 3600,
         token_type: "bearer", user: { id, email: address, aud: "authenticated", role: "authenticated" },
       } });
     });
     await page.route("**/api/pos", (route) => {
       const actor = route.request().headers().authorization;
-      expect(["Bearer token-" + accountId, "Bearer token-" + secondId]).toContain(actor);
-      const first = actor === "Bearer token-" + accountId;
+      expect(Object.values(tokens).map((token) => "Bearer " + token)).toContain(actor);
+      const first = actor === "Bearer " + tokens[accountId];
       if (first && rejectFirstRegister)
         return route.fulfill({ status: 401, json: { error: "Please sign in again to sync your register." } });
       const snapshot = teamSnapshot();
@@ -434,7 +517,8 @@ test.describe("account-enabled link entry", () => {
 test("creates an account from Settings and switches without mixing saved registers", async ({ page }) => {
   test.skip(!process.env.POS_TEST_MOCK_AUTH, "Use a local app started with test Supabase settings.");
   const otherId = "d4ffdb18-fd04-4e87-b627-97460ceb7436";
-  const emails = { [email]: accountId, "secondary@example.test": otherId };
+  const emails = { [email]: accountId, "secondary@example.test": otherId } as const;
+  const tokens = { [accountId]: accessToken(accountId), [otherId]: accessToken(otherId) };
   const authRequests: string[] = [];
   await page.route("**/auth/v1/**", async (route) => {
     const req = route.request();
@@ -451,15 +535,15 @@ test("creates an account from Settings and switches without mixing saved registe
     return route.fulfill({
       headers: authHeaders,
       json: {
-        access_token: "token-" + id, refresh_token: "refresh-" + id, expires_in: 3600,
+        access_token: tokens[id], refresh_token: "refresh-" + id, expires_in: 3600,
         token_type: "bearer", user,
       },
     });
   });
   await page.route("**/api/pos", (route) => {
     const actor = route.request().headers().authorization;
-    expect(["Bearer token-" + accountId, "Bearer token-" + otherId]).toContain(actor);
-    const first = actor === "Bearer token-" + accountId;
+    expect(Object.values(tokens).map((token) => "Bearer " + token)).toContain(actor);
+    const first = actor === "Bearer " + tokens[accountId];
     const snapshot = teamSnapshot();
     return route.fulfill({ json: {
       ...snapshot,
