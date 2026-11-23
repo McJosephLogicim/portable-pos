@@ -541,9 +541,12 @@ test.describe("account-enabled link entry", () => {
       await page.locator("button[type=submit]").click();
       const code = page.getByRole("textbox", { name: "Verification code" });
       await expect(code).toBeFocused();
-      await expect(code).toHaveCSS("box-shadow", focus);
+      const cells = page.locator('[data-active][data-filled]');
+      await expect(cells).toHaveCount(6);
+      await expect(cells.nth(0)).toHaveCSS("outline-style", "solid");
+      expect(await cells.nth(3).evaluate((cell) => cell.previousElementSibling?.hasAttribute("data-filled"))).toBe(false);
       await code.blur();
-      for (const [property, value] of Object.entries(rest)) await expect(code).toHaveCSS(property, value);
+      await expect(cells.nth(0)).toHaveCSS("outline-style", "none");
     }
   });
 
@@ -663,6 +666,7 @@ test.describe("account-enabled link entry", () => {
     await expect(code).toBeFocused();
     await expect(code).toHaveAttribute("autocomplete", "one-time-code");
     await code.pressSequentially("12345");
+    await expect(page.locator('[data-filled="true"][data-active]')).toHaveCount(5);
     await expect(code).toBeEditable();
     expect(attempts).toEqual([]);
     await code.press("6");
@@ -670,6 +674,8 @@ test.describe("account-enabled link entry", () => {
       .toContainText("incorrect or expired");
     expect(attempts).toEqual(["123456"]);
     await expect(code).toBeEmpty();
+    await expect(code).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator('[data-filled="true"][data-active]')).toHaveCount(0);
     await page.getByRole("button", { name: "Resend code" }).click();
     await expect(page.getByRole("status")).toHaveText("New code sent. Use the most recent email.");
     await expect(code).toBeEmpty();
@@ -945,7 +951,7 @@ test("creates an account from Settings and switches without mixing saved registe
   await expect(confirmation.getByText("secondary@example.test")).toBeVisible();
   const code = confirmation.getByRole("textbox", { name: "Verification code" });
   await code.blur();
-  await expect(code).toHaveCSS("box-shadow", fieldOutline);
+  await expect(confirmation.locator('[data-active][data-filled]')).toHaveCount(6);
   await code.fill("012 345");
   await expect(page.getByRole("button", { name: /Switch business, now Bakery Counter/ })).toBeVisible();
   await page.reload();

@@ -1,9 +1,9 @@
 "use client";
-import { Check, ChevronRight, Eye, EyeOff, UserRound, UserRoundPlus } from "lucide-react";
+import { Check, ChevronRight, Eye, EyeOff, Mail, UserRound, UserRoundPlus } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import { APP_NAME, appIcons } from "@/lib/app-brand";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { loginDeadline } from "@/lib/login-session";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
@@ -13,7 +13,7 @@ import { BusinessMark } from "./businesses";
 import { LiquidSegments } from "./liquid-segments";
 import { Popo } from "./popo";
 import { CurrencyOptions } from "./settings";
-import { errorText, Explain, GlossyObject, Sheet } from "./ui";
+import { DoneCheck, errorText, Explain, GlossyObject, Sheet } from "./ui";
 import styles from "./account.module.css";
 import { captureScreen, restoreScreen } from "./screen-history";
 
@@ -210,6 +210,7 @@ const MODES = [
   { value: "create", label: "Create account" },
 ] as const;
 const EMAIL_CODE_LENGTH = 6;
+const VERIFIED_FEEDBACK_MS = 240;
 
 export function Account(props: AccountProps) {
   const page = "entry" in props;
@@ -229,11 +230,16 @@ export function Account(props: AccountProps) {
   const [error, setError] = useState("");
   const [sentTo, setSentTo] = useState("");
   const [code, setCode] = useState("");
+  const [codeCaret, setCodeCaret] = useState(0);
+  const [codeRejected, setCodeRejected] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [resendNotice, setResendNotice] = useState("");
   const [request, setRequest] = useState<"credentials" | "verify" | "resend" | null>(null);
   const [slot] = useState(() => crypto.randomUUID());
   const passwordId = useId();
+  const codeErrorId = useId();
   const codeInput = useRef<HTMLInputElement>(null);
+  const verifyingCode = useRef(false);
   const entryRoot = useRef<HTMLElement>(null);
   const signInPosition = useRef<ReturnType<typeof captureScreen>>(undefined);
   useLayoutEffect(() => {
@@ -245,12 +251,14 @@ export function Account(props: AccountProps) {
     }
   }, [mode]);
   const busy = request !== null;
+  const checking = request === "verify";
+  const verificationTitle = emailVerified ? "Email verified" : "Check your email";
   const signInOnly = !page && props.signInOnly;
   const emailOptions = { emailRedirectTo: entry?.returnTo };
 
   useEffect(() => {
-    if (sentTo) codeInput.current?.focus();
-  }, [sentTo]);
+    if (sentTo && !emailVerified) codeInput.current?.focus();
+  }, [sentTo, emailVerified]);
 
   function switchMode(next: Mode) {
     if (mode === "signin" && next === "create" && entryRoot.current) {
@@ -261,6 +269,9 @@ export function Account(props: AccountProps) {
     setPassword("");
     setSentTo("");
     setCode("");
+    setCodeCaret(0);
+    setCodeRejected(false);
+    setEmailVerified(false);
     setError("");
     setResendNotice("");
   }
@@ -309,15 +320,23 @@ export function Account(props: AccountProps) {
     }
   }
 
-  function updateCode(value: string) {
+  function updateCode(value: string, input: HTMLInputElement, offset = input.selectionStart ?? value.length) {
     if (busy) return;
     const next = value.replace(/\D/g, "").slice(0, EMAIL_CODE_LENGTH);
+    const caret = Math.min(value.slice(0, offset).replace(/\D/g, "").length, next.length);
     setCode(next);
+    input.value = next;
+    input.setSelectionRange(caret, caret);
+    setCodeCaret(Math.min(caret, EMAIL_CODE_LENGTH - 1));
+    setCodeRejected(false);
     setError("");
+    setResendNotice("");
     if (next.length === EMAIL_CODE_LENGTH) void verifyEmail(next);
   }
 
   async function verifyEmail(token: string) {
+    if (verifyingCode.current) return;
+    verifyingCode.current = true;
     setRequest("verify");
     setError("");
     setResendNotice("");
@@ -327,11 +346,20 @@ export function Account(props: AccountProps) {
         throw Error("That code is incorrect or expired. Try again or request a new code.");
       }
       if (error) throw error;
+      if (!data.session || data.session.user.is_anonymous) throw Error("Couldn't sign in. Try again.");
+      setEmailVerified(true);
+      if (window.matchMedia("(prefers-reduced-motion: no-preference)").matches) {
+        await new Promise((resolve) => window.setTimeout(resolve, VERIFIED_FEEDBACK_MS));
+      }
       await finishSignIn(data.session);
     } catch (e) {
+      setEmailVerified(false);
       setCode("");
+      setCodeCaret(0);
+      setCodeRejected(true);
       setError(errorText(e));
     } finally {
+      verifyingCode.current = false;
       setRequest(null);
     }
   }
@@ -339,11 +367,13 @@ export function Account(props: AccountProps) {
   async function resendCode() {
     setRequest("resend");
     setError("");
+    setCodeRejected(false);
     setResendNotice("");
     try {
       const { error } = await authClient(slot).auth.resend({ email: sentTo, type: "signup", options: emailOptions });
       if (error) throw error;
       setCode("");
+      setCodeCaret(0);
       setResendNotice("New code sent. Use the most recent email.");
     } catch (e) {
       setError(errorText(e));
@@ -415,29 +445,68 @@ export function Account(props: AccountProps) {
     </div>
   );
 
-  const verification = (
-    <>
-      <p className={styles.lede}>Enter the six-digit code sent to <strong>{sentTo}</strong>.</p>
-      <div className={`${styles.form} stack gap-14`}>
+  const verificationMark = (
+    <span className={styles.verificationMark} aria-hidden="true">
+      {emailVerified ? <DoneCheck /> : <Mail size={24} />}
+    </span>
+  );
+  const verification = emailVerified ? (
+    <div className={styles.verification} role="status">
+      <p className={styles.lede}>Email confirmed. Signing you in…</p>
+    </div>
+  ) : (
+    <div className={styles.verification}>
+      <p className={styles.lede}>Enter the six-digit code sent to <strong>{sentTo}</strong></p>
+      <div>
         <label className={styles.field}>
           <span>Verification code</span>
-          <input
-            ref={codeInput}
-            className={`input ${styles.code}`}
-            name="code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            spellCheck={false}
-            value={code}
-            onChange={(e) => updateCode(e.target.value)}
-            readOnly={busy}
-          />
+          <span className={styles.codeField} dir="ltr" data-checking={checking} data-invalid={codeRejected}>
+            <span className={styles.codeCells} aria-hidden="true">
+              {Array.from({ length: EMAIL_CODE_LENGTH }, (_, index) => (
+                <Fragment key={index}>
+                  {index === EMAIL_CODE_LENGTH / 2 && <span className={styles.codeDivider} />}
+                  <span className={styles.codeCell} data-filled={!!code[index]} data-active={index === codeCaret}>
+                    {code[index]}
+                  </span>
+                </Fragment>
+              ))}
+            </span>
+            <input
+              ref={codeInput}
+              className={styles.codeInput}
+              name="code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              spellCheck={false}
+              aria-invalid={codeRejected || undefined}
+              aria-describedby={codeRejected ? codeErrorId : undefined}
+              value={code}
+              onChange={(event) => updateCode(event.currentTarget.value, event.currentTarget)}
+              onSelect={(event) => setCodeCaret(Math.min(event.currentTarget.selectionStart ?? code.length, EMAIL_CODE_LENGTH - 1))}
+              onClick={(event) => {
+                if (busy || event.detail === 0) return;
+                const input = event.currentTarget;
+                const cells = input.parentElement!.querySelectorAll(`.${styles.codeCell}`);
+                const clicked = Array.from(cells).findIndex((cell) => event.clientX < cell.getBoundingClientRect().right);
+                const index = Math.min(clicked < 0 ? EMAIL_CODE_LENGTH - 1 : clicked, code.length);
+                input.setSelectionRange(index, Math.min(index + 1, code.length));
+                setCodeCaret(Math.min(index, EMAIL_CODE_LENGTH - 1));
+              }}
+              onPaste={(event) => {
+                if (busy) return;
+                const value = event.clipboardData.getData("text");
+                if (value.replace(/\D/g, "").length < EMAIL_CODE_LENGTH) return;
+                event.preventDefault();
+                updateCode(value, event.currentTarget, value.length);
+              }}
+              readOnly={busy}
+            />
+          </span>
         </label>
-        {error && <p role="alert" className="alert">{error}</p>}
+        {error && <p id={codeErrorId} role="alert" className={styles.codeError}>{error}</p>}
       </div>
-      {request === "verify" && <p role="status" className={styles.lede}>Verifying email…</p>}
-      {resendNotice && <p role="status" className={styles.lede}>{resendNotice}</p>}
+      <p role="status" className={styles.codeStatus}>{checking ? "Checking code…" : resendNotice}</p>
       <div className={styles.codeActions}>
         <button type="button" className={styles.plain} disabled={busy} onClick={resendCode}>
           {request === "resend" ? "Sending…" : "Resend code"}
@@ -446,13 +515,13 @@ export function Account(props: AccountProps) {
           Use a different email
         </button>
       </div>
-    </>
+    </div>
   );
 
   if (!page) return (
-    <Sheet title={sentTo ? "Check your email" : signInOnly ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
+    <Sheet title={sentTo ? verificationTitle : signInOnly ? "Sign in" : "Add account"} onClose={props.onDismiss} busy={busy}>
       <div className="stack gap-14">
-        {sentTo ? verification : <>
+        {sentTo ? <>{verificationMark}{verification}</> : <>
           {modes}
           {fields}
         </>}
@@ -465,15 +534,16 @@ export function Account(props: AccountProps) {
       <main className={styles.entry} ref={entryRoot}>
         <section className={styles.entryShell} aria-labelledby="entry-title">
           <AppMark />
-          <div className={styles.entryIntro}>
+          <div className={sentTo ? styles.verificationIntro : styles.entryIntro}>
+            {sentTo && verificationMark}
             <h1 id="entry-title" className={styles.title}>
-              {sentTo ? "Check your email" : create ? "Create your account" : "Sign in to your Pop-up"}
+              {sentTo ? verificationTitle : create ? "Create your account" : "Sign in to your Pop-up"}
             </h1>
-            <div aria-hidden="true" className={styles.entryPopo}>
+            {!sentTo && <div aria-hidden="true" className={styles.entryPopo}>
               <Popo pose="welcome" size={118} />
-            </div>
+            </div>}
           </div>
-          {sentTo ? <div className={styles.entryVerification}>{verification}</div> : (
+          {sentTo ? verification : (
             <>
               {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
               {props.notice && <p role="alert" className="alert">{props.notice}</p>}
@@ -540,10 +610,11 @@ export function Account(props: AccountProps) {
         </section>
       )}
       {sentTo ? (
-        <section className={styles.card} aria-labelledby="sent-title">
+        <section className={`${styles.card} ${styles.verificationCard}`} aria-labelledby="sent-title">
+          {verificationMark}
           {data || preview.state === "gone"
-            ? <h2 id="sent-title" className={styles.title}>Check your email</h2>
-            : <h1 id="sent-title" className={styles.title}>Check your email</h1>}
+            ? <h2 id="sent-title" className={styles.title}>{verificationTitle}</h2>
+            : <h1 id="sent-title" className={styles.title}>{verificationTitle}</h1>}
           {verification}
         </section>
       ) : form}
