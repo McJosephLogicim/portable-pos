@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, isAuthRetryableFetchError, type SupabaseClient } from "@supabase/supabase-js";
+import { LoginExpired, loginDeadline } from "./login-session";
 import type { BookingRecordKind, BookingRecords, RegisterResponse, Sale } from "./types";
 
 export class RequestFailure extends Error {
@@ -46,6 +47,7 @@ export interface SavedAccount {
   register?: string;
   name?: string;
   business?: string;
+  loginExpiresAt?: number;
 }
 
 export function savedAccounts(): SavedAccount[] {
@@ -73,6 +75,27 @@ export function forgetAccount(id: string) {
 
 export function authForUser(id?: string) {
   return authClient(savedAccounts().find((account) => account.id === id)?.slot);
+}
+
+/** Check the saved deadline even when there is no connection to refresh the token. */
+export function checkSavedLogin(userId?: string) {
+  const account = savedAccounts().find((entry) => entry.id === userId);
+  if (account?.loginExpiresAt !== undefined && account.loginExpiresAt <= Date.now())
+    throw new LoginExpired();
+  return account;
+}
+
+export async function accountSession(userId?: string) {
+  const account = checkSavedLogin(userId);
+  const result = await authClient(account?.slot).auth.getSession();
+  const session = result.data.session;
+  if (session && !session.user.is_anonymous) {
+    const loginExpiresAt = loginDeadline(session.access_token);
+    if ((!userId || session.user.id === userId) &&
+      (account?.loginExpiresAt !== loginExpiresAt || account.email !== session.user.email))
+      rememberAccount({ id: session.user.id, email: session.user.email, loginExpiresAt });
+  }
+  return result;
 }
 
 /**
@@ -123,7 +146,9 @@ async function sessionFor(key: string, what: string) {
   const {
     data: { session },
     error,
-  } = await authForUser(userId).auth.getSession();
+  } = await accountSession(userId);
+  if (isAuthRetryableFetchError(error))
+    throw Error("Couldn’t refresh your sign-in. The register will try again.");
   if (error || !session || session.user.id !== userId)
     throw Error(`Sign back into this account to ${what}.`);
   return {

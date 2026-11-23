@@ -1,4 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, isAuthRetryableFetchError } from "@supabase/supabase-js";
+import { LoginExpired, loginDeadline } from "../lib/login-session";
 import { ensure, RegisterError } from "./errors";
 
 export async function authenticatedOwner(request: Request) {
@@ -16,7 +17,7 @@ export async function authenticatedOwner(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await auth.auth.getUser(bearer);
-  if (error && (error.status ?? 500) >= 500)
+  if (error && (isAuthRetryableFetchError(error) || (error.status ?? 500) >= 500))
     throw new RegisterError(
       503,
       "The account service could not be reached. Try again.",
@@ -26,6 +27,13 @@ export async function authenticatedOwner(request: Request) {
     "Please sign in again to sync your register.",
     401,
   );
+  // Use the deadline only after Supabase has verified the bearer token.
+  try {
+    loginDeadline(bearer);
+  } catch (error) {
+    if (!(error instanceof LoginExpired)) throw error;
+    throw new RegisterError(401, error.message);
+  }
   // The business picked in the app, when the person is on more than one.
   const businessId = request.headers.get("x-business-id")?.trim();
   return {

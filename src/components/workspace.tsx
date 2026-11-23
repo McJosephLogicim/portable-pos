@@ -18,7 +18,7 @@ import { Onboarding } from "./onboarding";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
-import { accountsEnabled, api, authClient, authForUser, forgetAccount, loadBookingRecords, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
+import { accountSession, accountsEnabled, api, authClient, authForUser, checkSavedLogin, forgetAccount, loadBookingRecords, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
 import {
   beginClose,
   cancelClose,
@@ -39,6 +39,7 @@ import { matchCode, readInviteCode, readJoinCode, SHIFT_CODE, TEAM_CODE } from "
 import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
+import { LoginExpired, loginDeadline } from "@/lib/login-session";
 import type { MenuCategoryChange } from "@/lib/menu-categories";
 import type { BookingRecordKind, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
@@ -241,6 +242,21 @@ export function Workspace() {
   const show = useCallback((id: string, s: RegisterState) => {
     if (active.current === id) setState(s);
   }, []);
+  const openLogin = useCallback(() => {
+    sessionStorage.removeItem(DEMO_SESSION);
+    active.current = null;
+    setKey(null);
+    setState(null);
+    setAccount(false);
+    setPickingAccount(false);
+    setSigningInto(null);
+    setBootError("");
+    setNotice("");
+    setSyncErr("");
+    setLinkProblem(null);
+    resetNavigation(SELL);
+    window.scrollTo(0, 0);
+  }, [resetNavigation]);
   const connect = useCallback(
     async (id: string) => {
       active.current = id;
@@ -379,20 +395,29 @@ export function Workspace() {
       let id: string | null = null;
       if (accountsEnabled) {
         const previous = localStorage.getItem(ACTIVE);
+        const previousUser = previous && previous !== DEMO ? parseKey(previous).userId : undefined;
         // Supabase finishes a confirmation URL before returning the session.
-        const auth = confirmation ? authClient() : authForUser(previous ? parseKey(previous).userId : undefined);
-        const { data: { session }, error } = await auth.auth.getSession();
-        if (!alive) return;
-        if (session && !session.user.is_anonymous) {
-          const userId = session.user.id;
-          rememberAccount({ id: userId, email: session.user.email, ...(confirmation ? { slot: undefined } : {}) });
-          id = previous && parseKey(previous).userId === userId ? previous : userId;
-        } else if (!navigator.onLine && previous && previous !== DEMO && isAuthRetryableFetchError(error))
-          id = previous; // A cached session can be unable to refresh offline.
-        else if (authParams.has("error_code") || params.has("error_code"))
-          setNotice("This confirmation link is no longer valid. Try signing in or creating an account again.");
-        else if (error) {
-          setNotice(message(error));
+        try {
+          const { data: { session }, error } = confirmation
+            ? await authClient().auth.getSession()
+            : await accountSession(previousUser);
+          if (!alive) return;
+          if (session && !session.user.is_anonymous) {
+            const userId = session.user.id;
+            if (confirmation) rememberAccount({
+              id: userId, email: session.user.email, slot: undefined, loginExpiresAt: loginDeadline(session.access_token),
+            });
+            id = previous && parseKey(previous).userId === userId ? previous : userId;
+          } else if (previousUser && isAuthRetryableFetchError(error))
+            id = previous; // Keep the cached register available during a temporary Auth outage.
+          else if (authParams.has("error_code") || params.has("error_code"))
+            setNotice("This confirmation link is no longer valid. Try signing in or creating an account again.");
+          else if (error) {
+            setNotice(message(error));
+          }
+        } catch (error) {
+          if (!(error instanceof LoginExpired)) throw error;
+          if (alive) setNotice(error.message);
         }
       }
       if (!alive) return;
@@ -429,24 +454,33 @@ export function Workspace() {
   const flush = useCallback(
     async (force = false) => {
       const id = active.current;
-      if (!id || !navigator.onLine || syncBusy.current) return;
+      if (!id || syncBusy.current) return;
       syncBusy.current = true;
       try {
+        if (id !== DEMO) checkSavedLogin(parseKey(id).userId);
+        if (!navigator.onLine) return;
         await syncRegister(id, force);
         show(id, await loadRegister(id));
         if (active.current === id) setSyncErr("");
       } catch (e) {
-        if (active.current === id) setSyncErr(message(e));
+        if (active.current === id) {
+          if (e instanceof LoginExpired) {
+            openLogin();
+            setNotice(e.message);
+          } else {
+            setSyncErr(message(e));
+          }
+        }
       } finally {
         syncBusy.current = false;
       }
     },
-    [show],
+    [openLogin, show],
   );
   useEffect(() => {
     const network = () => {
       setOnline(navigator.onLine);
-      if (navigator.onLine) void flush(true);
+      void flush(true);
     };
     const visible = () => {
       if (document.visibilityState === "visible") network();
@@ -658,19 +692,6 @@ export function Workspace() {
     );
     void flush();
   }
-  function openLogin() {
-    sessionStorage.removeItem(DEMO_SESSION);
-    active.current = null;
-    setKey(null);
-    setState(null);
-    setAccount(false);
-    setBootError("");
-    setNotice("");
-    setSyncErr("");
-    setLinkProblem(null);
-    resetNavigation(SELL);
-    window.scrollTo(0, 0);
-  }
   async function signOut() {
     if (!key || key === DEMO) return;
     await locked("write-" + key, async () => {
@@ -747,13 +768,17 @@ export function Workspace() {
     setToast("Added " + input.name);
   }
   async function useSavedAccount(entry: SavedAccount) {
-    const { data: { session } } = await authForUser(entry.id).auth.getSession();
-    if (session?.user.id !== entry.id) {
-      if (!navigator.onLine) throw Error("Connect to sign in to this account again.");
-      setSigningInto(entry);
-      return;
+    try {
+      const { data: { session }, error } = await accountSession(entry.id);
+      if (session?.user.id === entry.id || isAuthRetryableFetchError(error)) {
+        await openAccount(entry.id);
+        return;
+      }
+    } catch (error) {
+      if (!(error instanceof LoginExpired)) throw error;
     }
-    await openAccount(entry.id);
+    if (!navigator.onLine) throw Error("Connect to sign in to this account again.");
+    setSigningInto(entry);
   }
 
   async function openAccount(id: string) {
