@@ -1,3 +1,4 @@
+import { itemPhotos } from "./item-photos";
 import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
 import { shiftTotals, stockReplay } from "./domain";
@@ -11,6 +12,7 @@ export interface StockRow {
   id: string;
   name: string;
   unit: string;
+  image?: string;
   start: number;
   used: number;
   /** What should be left after the sales. */
@@ -78,8 +80,7 @@ export function shiftReport(
   const time = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", minute: "2-digit" });
 
   const sold = new Map<string, ShiftReport["sold"][number]>();
-  const photos = new Map<string, string>();
-  for (const p of [...(extra.menu ?? []), ...shift.menu]) if (p.image) photos.set(p.id, p.image);
+  const photos = itemPhotos(shift.menu, extra.menu ?? []);
   const hourly = new Map<number, number>();
   const hourOf = new Intl.DateTimeFormat("en", { timeZone: zone, hour: "numeric", hourCycle: "h23" });
   for (const sale of sales) {
@@ -115,6 +116,7 @@ export function shiftReport(
     : { left: { ...(shift.stock ?? {}) }, used: {} as Record<string, number>, start: { ...(shift.stock ?? {}) } };
   const stock: StockRow[] = Object.keys(replay.left).map((id) => {
     const item = items.find((i) => i.id === id);
+    const image = photos.get(id);
     // Tracked from mid-shift: it starts from the first amount set.
     const start = replay.start[id] ?? 0;
     const used = shift.usedStock?.[id] ?? round(replay.used[id] ?? 0);
@@ -122,6 +124,7 @@ export function shiftReport(
       id,
       name: item?.name ?? "Stock item",
       unit: item?.unit ?? "piece",
+      ...(image ? { image } : {}),
       start,
       used,
       expected: round(replay.left[id]),

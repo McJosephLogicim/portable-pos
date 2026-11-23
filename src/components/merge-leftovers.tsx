@@ -4,6 +4,8 @@ import { blocked, OFFLINE } from "@/lib/reject";
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { mergeableShifts, mergeLeftovers } from "@/lib/domain";
+import { itemPhotos } from "@/lib/item-photos";
+import { ItemPreview } from "./item-preview";
 import { unitText } from "@/lib/stock";
 import { dayOf } from "@/lib/team";
 import { shiftName } from "@/lib/shift-name";
@@ -46,6 +48,7 @@ export function MergeLeftoversSheet({
   const [error, setError] = useState("");
   const chosen = shifts.filter((s) => picked.includes(s.id));
   const total = mergeLeftovers(chosen, items);
+  const photos = itemPhotos(state.menu, ...chosen.map((shift) => shift.menu));
   const still = state.shifts.filter((s) => !s.closedAt);
 
   async function merge() {
@@ -128,6 +131,7 @@ export function MergeLeftoversSheet({
             )}
             {items.filter((item) => item.id in total).map((item) => (
               <div className="list-row" key={item.id}>
+                <ItemPreview name={item.name} image={photos.get(item.id)} />
                 <span className="grow stack">
                   <span className="ellipsis">{item.name}</span>
                   {item.onHand !== undefined && (

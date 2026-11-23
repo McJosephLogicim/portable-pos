@@ -2,7 +2,8 @@
 
 import { blocked, type Reason } from "@/lib/reject";
 import { useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Image as ImageIcon, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ItemPreview } from "./item-preview";
 import { fold, RecordSearch, SEARCH_FROM } from "./records";
 import { buzz, Sheet } from "./ui";
 
@@ -19,19 +20,6 @@ type MultiSelectOption<Id extends string> = {
   note?: string;
   blockedReason?: Reason;
 };
-
-function PickerThumbnail({ image, size }: { image?: string; size: number }) {
-  const [failed, setFailed] = useState<string>();
-  return (
-    <span className="picker-thumbnail" style={{ width: size, height: size }} aria-hidden="true">
-      {image && failed !== image ? (
-        <img src={image} alt="" width={size} height={size} loading="lazy" decoding="async" onError={() => setFailed(image)} />
-      ) : (
-        <ImageIcon size={Math.round(size / 2)} strokeWidth={1.6} />
-      )}
-    </span>
-  );
-}
 
 function pageLabel(page: number, size: number, total: number) {
   return `${(page * size + 1).toLocaleString()}–${Math.min((page + 1) * size, total).toLocaleString()} of ${total.toLocaleString()}`;
@@ -90,7 +78,7 @@ export function MultiSelect<Id extends string>({
             {...blocked(item.blockedReason)}
             onClick={() => onChange(toggle(picked, item.id))}
           >
-            {showThumbnails && <PickerThumbnail image={item.image} size={24} />}
+            {showThumbnails && <ItemPreview name={item.name} image={item.image} size={24} />}
             <span>{item.name}</span>
             {item.note && <span className="picker-note">{item.note}</span>}
             {item.count !== undefined && <span className="filter-count">{item.count}</span>}
@@ -147,7 +135,7 @@ export function MultiSelect<Id extends string>({
                     onChange(toggle(picked, id));
                   }}
                 >
-                  {showThumbnails && <PickerThumbnail image={item?.image} size={24} />}
+                  {showThumbnails && <ItemPreview name={name} image={item?.image} size={24} />}
                   <span className="ellipsis">{name}</span>
                   <X size={14} aria-hidden="true" />
                 </button>
@@ -251,7 +239,7 @@ function PickerSheet<Id extends string>({
               onClick={() => setDraft(toggle(draft, item.id))}
             >
               <span className="picker-check" aria-hidden="true">{selected.has(item.id) && <Check size={14} strokeWidth={2.5} />}</span>
-              {showThumbnails && <PickerThumbnail image={item.image} size={36} />}
+              {showThumbnails && <ItemPreview name={item.name} image={item.image} size={36} />}
               <span className="stack grow">
                 <span>{item.name}</span>
                 {item.detail && <span className="label">{item.detail}</span>}

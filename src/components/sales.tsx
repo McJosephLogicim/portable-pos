@@ -2,7 +2,9 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronRight, CloudOff, Eye, EyeOff, ReceiptText, Search, X } from "lucide-react";
-import type { Booking, Product, RegisterState, Shift } from "@/lib/types";
+import type { Booking, RegisterState, Shift } from "@/lib/types";
+import { itemPhotos } from "@/lib/item-photos";
+import { ReceiptItemPreviews } from "./item-preview";
 import { HourChart } from "./insights";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import { shiftName } from "@/lib/shift-name";
@@ -79,6 +81,14 @@ export function SalesScreen({
   const shifts = useMemo(
     () => new Map<string, Shift>([...state.shifts, ...(state.shift ? [state.shift] : [])].map((s) => [s.id, s])),
     [state.shifts, state.shift],
+  );
+  const shiftPhotos = useMemo(
+    () => new Map(Array.from(shifts, ([id, till]) => [id, itemPhotos(till.menu)])),
+    [shifts],
+  );
+  const photos = useMemo(
+    () => itemPhotos(state.menu, ...Array.from(shifts.values(), (till) => till.menu)),
+    [state.menu, shifts],
   );
   const bookings = useMemo(() => new Map<string, Booking>((state.bookings ?? []).map((b) => [b.id, b])), [state.bookings]);
   const shiftFacets = useMemo(() => {
@@ -222,7 +232,12 @@ export function SalesScreen({
       {all.length > 0 && (
         <FilterBar
           label="Filter by shift, item, payment…"
-          groups={filterKeys.map((key) => ({ key, name: filterNames[key], options: options[key] }))}
+          groups={filterKeys.map((key) => ({
+            key,
+            name: filterNames[key],
+            options: key === "item" ? options[key].map((option) => ({ ...option, image: photos.get(option.value) })) : options[key],
+            showThumbnails: key === "item",
+          }))}
           filter={filter}
           onChange={setFilter}
           onOpen={() => setFiltering(true)}
@@ -246,13 +261,14 @@ export function SalesScreen({
               <button
                 key={sale.id}
                 type="button"
-                className="list-row"
+                className="list-row sale-receipt-row"
                 onClick={() => setOpenId(sale.id)}
                 aria-haspopup="dialog"
               >
                 <span className="sr-only">Receipt {receiptNumber(sh.number, sale.sequence)}</span>
+                <ReceiptItemPreviews lines={sale.lines} photos={shiftPhotos.get(sale.shiftId)} fallbackPhotos={photos} />
                 <span className="grow stack gap-4">
-                  <span className="ellipsis" style={{ fontWeight: 500 }}>
+                  <span className="sale-item-names">
                     {items}
                   </span>
                   <span className="label ellipsis sale-meta">
@@ -295,8 +311,7 @@ export function SalesScreen({
       {filtering && (
         <FilterSheet
           all={all}
-          menu={state.menu}
-          shifts={shifts}
+          photos={photos}
           shiftFacets={shiftFacets}
           filter={filter}
           zone={business.timeZone}
@@ -312,6 +327,7 @@ export function SalesScreen({
           sale={open}
           shift={openShift}
           business={business}
+          photos={new Map([...photos, ...(shiftPhotos.get(open.shiftId) ?? [])])}
           pending={pending.has(open.id)}
           pastReasons={Array.from(
             new Set(
@@ -344,8 +360,7 @@ export function SalesScreen({
 /** Pick any mix of shifts, events, organizers, places, items and payments. Counts update as you pick. */
 function FilterSheet({
   all,
-  menu,
-  shifts,
+  photos,
   shiftFacets,
   filter,
   zone,
@@ -353,8 +368,7 @@ function FilterSheet({
   onClose,
 }: {
   all: Parameters<typeof filterOptions>[0];
-  menu: Product[];
-  shifts: Map<string, Shift>;
+  photos: ReadonlyMap<string, string>;
   shiftFacets: ReadonlyMap<string, Facet>;
   filter: SalesFilter;
   zone: string;
@@ -363,16 +377,6 @@ function FilterSheet({
 }) {
   const [draft, setDraft] = useState<SalesFilter>(filter);
   const options = useMemo(() => filterOptions(all, draft, shiftFacets), [all, draft, shiftFacets]);
-  const photos = useMemo(() => {
-    const images = new Map(menu.map((item) => [item.id, item.image]));
-    // Older receipts can contain items that have since been removed from the menu.
-    for (const shift of shifts.values()) {
-      for (const item of shift.menu) {
-        if (item.image && !images.has(item.id)) images.set(item.id, item.image);
-      }
-    }
-    return images;
-  }, [menu, shifts]);
   const count = all.filter((x) => matchesFilter(x.facets, draft)).length;
   const date = new Intl.DateTimeFormat("en", { timeZone: zone, month: "short", day: "numeric" });
   const label = (key: FilterKey, o: FilterOption) =>

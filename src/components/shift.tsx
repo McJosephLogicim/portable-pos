@@ -6,6 +6,8 @@ import type { Booking, ExpenseInput, RegisterState, Shift } from "@/lib/types";
 import { shiftTotals, stockLeft, stockReplay } from "@/lib/domain";
 import type { Closing, Opening } from "@/lib/demo";
 import { shiftStock, stockModel, unitText } from "@/lib/stock";
+import { itemPhotos } from "@/lib/item-photos";
+import { ItemPreview } from "./item-preview";
 import { shiftCurrency } from "./receipt";
 import { JoinTillSheet, ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedule";
 import { DrawerDifference, ShiftList } from "./shift-list";
@@ -280,6 +282,7 @@ function OpenShift({
           title="Opening stock"
           help="Menu items set to Count it are always counted. Stock and prep items are optional: anything you don't count starts from the amount saved on it, and sales take from it either way."
           items={tracked}
+          photos={itemPhotos(state.menu)}
           required={limits}
           counts={counts}
           expected={saved}
@@ -485,6 +488,7 @@ export function CloseSheet({
           title="Closing stock"
           help="Menu items set to Count it are always counted. Stock and prep items are optional: anything you don't count is saved as what today's sales left, and the next shift starts from there."
           items={tracked}
+          photos={itemPhotos(shift.menu, state.menu)}
           required={limits}
           counts={counts}
           expected={left}
@@ -558,6 +562,8 @@ export function ShiftScreen({
   const totals = shift ? shiftTotals(shift, state.sales, expenses) : null;
   const replay = shift ? stockReplay(shift, state.sales) : undefined;
   const remainingStock = replay ? Object.entries(replay.left) : [];
+  const stockItems = shift ? shiftStock(shift).items : [];
+  const stockPhotos = itemPhotos(shift?.menu ?? [], state.menu);
   const paymentMethods = totals?.methods.filter((m) => m.count) ?? [];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
@@ -660,13 +666,15 @@ export function ShiftScreen({
               <p className="group-title">Stock left</p>
               <div className="card card-list">
                 {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
-                  const item = shiftStock(shift).items.find((i) => i.id === id);
+                  const item = stockItems.find((i) => i.id === id);
+                  const name = item?.name ?? "Stock item";
                   const opened = replay!.start[id];
                   const out = left <= 0 || replay!.short.has(id);
                   return (
                     <div className="list-row" key={id}>
+                      <ItemPreview name={name} image={stockPhotos.get(id)} />
                       <span className="grow stack">
-                        <span className="ellipsis">{item?.name ?? "Stock item"}</span>
+                        <span className="ellipsis">{name}</span>
                         <span className="meter" aria-hidden="true">
                           <i style={progressStyle(opened ? Math.max(0, left / opened) * 100 : 0)} />
                         </span>

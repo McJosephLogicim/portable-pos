@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { round, unitText } from "@/lib/stock";
 import type { StockItem } from "@/lib/types";
+import { ItemPreview } from "./item-preview";
 import { Explain, Switch } from "./ui";
 
 export function countOf(text: string | undefined) {
@@ -47,7 +48,7 @@ export function StockCount({
 }) {
   return (
     <label className="list-row">
-      <span className="well">{item.name.slice(0, 1).toUpperCase()}</span>
+      <ItemPreview name={item.name} />
       <span className="grow stack">
         <span className="ellipsis">{item.name}</span>
         <span className="label">{item.unit}</span>
@@ -68,11 +69,13 @@ export function StockCount({
 /** The shift keeps its counts while the seller moves through one shared field. */
 export function ShiftStockCount({
   items,
+  photos,
   counts,
   expected,
   onChange,
 }: {
   items: StockItem[];
+  photos: ReadonlyMap<string, string>;
   counts: Record<string, string>;
   /** What the till expects, by stock item id. An item left uncounted keeps it. */
   expected?: Record<string, number>;
@@ -114,13 +117,16 @@ export function ShiftStockCount({
   return (
     <div className="stack gap-10">
       <div className="card card-pad stack gap-12">
-        <label className="stock-count-item stack gap-6" htmlFor={id} aria-live="polite" aria-atomic="true">
-          <span className="stock-count-name">{item.name}</span>
-          {expected?.[item.id] !== undefined ? (
-            <span className="label" id={id + "-expected"}>Expected {unitText(Math.max(0, expected[item.id]), item.unit)}</span>
-          ) : (
-            <span className="label">{item.unit}</span>
-          )}
+        <label className="stock-count-item row gap-10" htmlFor={id} aria-live="polite" aria-atomic="true">
+          <ItemPreview name={item.name} image={photos.get(item.id)} size={48} />
+          <span className="stack gap-6">
+            <span className="stock-count-name">{item.name}</span>
+            {expected?.[item.id] !== undefined ? (
+              <span className="label" id={id + "-expected"}>Expected {unitText(Math.max(0, expected[item.id]), item.unit)}</span>
+            ) : (
+              <span className="label">{item.unit}</span>
+            )}
+          </span>
         </label>
         <div className="stock-count-controls" data-input-options="">
           <button
@@ -174,6 +180,7 @@ export function ShiftStockCount({
                 edit(row.id);
               }}
             >
+              <ItemPreview name={row.name} image={photos.get(row.id)} />
               <span className="grow">{row.name}</span>
               {count !== undefined
                 ? <span className="strong">{unitText(count, row.unit)}</span>
@@ -197,6 +204,7 @@ export function ShiftStockCount({
 export function OptionalStockCount({
   title,
   items,
+  photos,
   required,
   counts,
   expected,
@@ -207,6 +215,7 @@ export function OptionalStockCount({
 }: {
   title: string;
   items: StockItem[];
+  photos: ReadonlyMap<string, string>;
   /** Ids that must be counted: menu items set to "Count it". */
   required: Set<string>;
   counts: Record<string, string>;
@@ -242,6 +251,7 @@ export function OptionalStockCount({
           </summary>
           {optional.map((item) => (
             <div key={item.id} className="list-row">
+              <ItemPreview name={item.name} image={photos.get(item.id)} />
               <span className="grow ellipsis">{item.name}</span>
               {expected?.[item.id] !== undefined
                 ? <span className="strong">{unitText(Math.max(0, expected[item.id]), item.unit)}</span>
@@ -251,7 +261,7 @@ export function OptionalStockCount({
         </details>
       )}
       {shown.length > 0 && (
-        <ShiftStockCount key={on ? "all" : "required"} items={shown} counts={counts} expected={expected} onChange={onChange} />
+        <ShiftStockCount key={on ? "all" : "required"} items={shown} photos={photos} counts={counts} expected={expected} onChange={onChange} />
       )}
     </section>
   );

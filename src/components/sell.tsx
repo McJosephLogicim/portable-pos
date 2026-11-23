@@ -24,6 +24,8 @@ import {
   totalLines,
 } from "@/lib/domain";
 import { menuCategoryNames, type MenuCategoryChange } from "@/lib/menu-categories";
+import { itemPhotos } from "@/lib/item-photos";
+import { ItemPreview, ReceiptItemPreviews } from "./item-preview";
 import { ItemSheet } from "./menu-settings";
 import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
@@ -39,7 +41,6 @@ import {
   DoneCheck,
   EmptyState,
   GlossyObject,
-  ItemFaces,
   errorText,
   usePin,
   formatMoney,
@@ -83,16 +84,6 @@ export function quickCash(total: number, currency: string) {
   return [...options].sort((a, b) => a - b).slice(0, 3);
 }
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-}
-
 function Stepper({
   value,
   name,
@@ -132,11 +123,13 @@ function Stepper({
 
 function OrderLines({
   lines,
+  photos,
   currency,
   busy,
   onQuantity,
 }: {
   lines: ReceiptLine[];
+  photos: ReadonlyMap<string, string>;
   currency: string;
   busy: boolean;
   onQuantity: (index: number, value: number) => void;
@@ -149,9 +142,10 @@ function OrderLines({
           ref={collapseOnExit}
           key={line.productId + ":" + line.optionIds.join(",")}
         >
-          <div className="grow stack">
-            <span className="strong ellipsis">{line.name}</span>
-            <span className="label ellipsis">
+          <ItemPreview name={line.name} image={photos.get(line.productId)} />
+          <div className="grow stack order-item-text">
+            <span className="strong">{line.name}</span>
+            <span className="label">
               {line.options.length ? line.options.join(", ") + " · " : ""}
               {formatMoney(line.unitPrice * line.quantity, currency)}
             </span>
@@ -230,6 +224,10 @@ function ItemOptions({
         </div>
       }
     >
+      <div className="row gap-10">
+        <ItemPreview name={product.name} image={product.image} size={48} />
+        <Money value={product.price} currency={currency} />
+      </div>
       {product.groups.map((group) => (
         <fieldset
           key={group.id}
@@ -319,6 +317,7 @@ function OptionAvailability({
     const out = soldOut.includes(id);
     return (
       <div className="list-row" key={id}>
+        {id === product.id && <ItemPreview name={product.name} image={product.image} />}
         <span className={"grow" + (strong ? " strong" : "")}>{name}</span>
         <span className={"label" + (out ? " danger" : "")}>
           {out ? "Sold out" : "Available"}
@@ -464,6 +463,7 @@ function Checkout({
   onReceipt: (sale: Sale) => void;
 }) {
   const shift = state.shift!;
+  const photos = useMemo(() => itemPhotos(shift.menu, state.menu), [shift.menu, state.menu]);
   const currency = shift.settings.currency;
   const methods = shift.settings.payments.filter((p) => p.on);
   const discounts = shift.settings.discounts.filter((d) => d.on);
@@ -569,15 +569,6 @@ function Checkout({
     }
   }
 
-  const faces = (list: { productId: string; name: string }[]) => {
-    const seen = new Set<string>();
-    return list.flatMap((l) =>
-      seen.has(l.productId)
-        ? []
-        : (seen.add(l.productId), [{ id: l.productId, name: l.name, image: shift.menu.find((p) => p.id === l.productId)?.image }]),
-    );
-  };
-
   if (done) {
     const { sale } = done;
     const cash = sale.payment.kind === "cash";
@@ -627,7 +618,7 @@ function Checkout({
             <Popo pose="sale" motion="victoryHop" size={74} className={styles.resultMascot} />
           </div>
           <div className={`row gap-10 sale-items ${styles.resultDetails}`}>
-            <ItemFaces items={faces(sale.lines)} />
+            <ReceiptItemPreviews lines={sale.lines} photos={photos} max={5} announce />
             <span className="label">
               {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>
@@ -697,7 +688,7 @@ function Checkout({
           <div className="card card-list">
             <div className="list-row">
               <span className="grow">Items</span>
-              <ItemFaces items={faces(reviewedLines)} />
+              <ReceiptItemPreviews lines={reviewedLines} photos={photos} max={5} announce />
             </div>
             <div className="list-row">
               <span className="grow">
@@ -774,6 +765,7 @@ function Checkout({
       <div key="charge">
         <OrderLines
           lines={lines}
+          photos={photos}
           currency={currency}
           busy={busy}
           onQuantity={(index, value) => {
@@ -1288,13 +1280,7 @@ export function SellScreen({
                     else void add(product, []);
                   }}
                 >
-                  {product.image ? (
-                    <img className="photo" src={product.image} alt="" draggable={false} />
-                  ) : (
-                    <span className="initials" aria-hidden="true">
-                      {initials(product.name)}
-                    </span>
-                  )}
+                  <ItemPreview name={product.name} image={product.image} tile />
                   <span className="name">{product.name}</span>
                   <span className="price">{formatMoney(product.price, currency)}</span>
                   {out && <span className="out-tag">Sold out</span>}
@@ -1468,6 +1454,7 @@ export function SellScreen({
           sale={state.sales.find((s) => s.id === receipt.id) ?? receipt}
           shift={shift}
           business={business}
+          photos={itemPhotos(shift.menu, state.menu)}
           pending={state.pending.some((e) => e.id === receipt.id)}
           canReverse={false}
           onReverse={(reason, pin) => onReverse(receipt.id, reason, pin)}

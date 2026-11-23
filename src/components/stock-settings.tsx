@@ -1,7 +1,8 @@
 "use client";
 
+import { ItemPreview } from "./item-preview";
 import { useState } from "react";
-import { CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
+import { Merge, Minus, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
 import { AddButton } from "./add-menu";
 import { amountText, parseMoney, stockReplay } from "@/lib/domain";
@@ -686,11 +687,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                 disabled={!props.online}
                 onClick={() => setEditing(item)}
                 select={select.row(item.id)}
-                lead={
-                  <span className="well">
-                    {item.prep ? <CookingPot size={18} strokeWidth={1.8} /> : <Package size={18} strokeWidth={1.8} />}
-                  </span>
-                }
+                lead={<ItemPreview name={item.name} size={40} />}
                 title={item.name}
                 detail={[
                   stockText(item),
@@ -724,11 +721,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
                 key={i.id}
                 disabled={!props.online || (!product && "This menu item was removed.")}
                 onClick={() => props.onPage("menu")}
-                lead={
-                  <span className="well">
-                    <Package size={18} strokeWidth={1.8} />
-                  </span>
-                }
+                lead={<ItemPreview name={i.name} image={product?.image} size={40} />}
                 title={i.name}
                 detail="Change it on the menu item"
                 end="piece"

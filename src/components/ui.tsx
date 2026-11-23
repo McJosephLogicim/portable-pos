@@ -831,35 +831,6 @@ export function DoneCheck({ small = false }: { small?: boolean }) {
   );
 }
 
-/**
- * The items in an order as overlapping photos, like the people on a shift card. Shows up to `max`,
- * then a circle counting the rest.
- */
-export function ItemFaces({
-  items,
-  max = 5,
-}: {
-  items: { id: string; name: string; image?: string }[];
-  max?: number;
-}) {
-  const shown = items.slice(0, max);
-  const rest = items.length - shown.length;
-  return (
-    <span className="row faces item-faces" role="img" aria-label={items.map((i) => i.name).join(", ")}>
-      {shown.map((i) => (
-        <span key={i.id} className={"avatar small" + (i.image ? " has-photo" : "")} aria-hidden="true">
-          {i.image ? <img src={i.image} alt="" /> : i.name.trim().slice(0, 1).toUpperCase()}
-        </span>
-      ))}
-      {rest > 0 && (
-        <span className="avatar small dim" aria-hidden="true">
-          +{rest}
-        </span>
-      )}
-    </span>
-  );
-}
-
 export function MethodIcon({
   kind,
   size = 20,

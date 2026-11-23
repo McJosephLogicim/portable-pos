@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { itemPhotos } from "@/lib/item-photos";
+import { ItemPreview, ReceiptItemPreviews } from "./item-preview";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import type { Product, RegisterState } from "@/lib/types";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
@@ -81,7 +83,7 @@ export function ShiftSales({
   const count = state.sales.filter((s) => shiftIds.includes(s.shiftId) && !s.reversedAt).length;
   if (!sellers.length) return null;
   const top = sellers[0].quantity;
-  const image = (id: string) => menu.find((p) => p.id === id)?.image;
+  const photos = itemPhotos(...state.shifts.filter((till) => shiftIds.includes(till.id)).map((till) => till.menu), menu);
   return (
     <div className="stack gap-10">
       <div className="between section-head">
@@ -103,9 +105,7 @@ export function ShiftSales({
             }}
           >
             <span className={"rank-num" + (i === 0 ? " first" : "")}>{i + 1}</span>
-            {image(s.productId) ? (
-              <img src={image(s.productId)} alt="" width={36} height={36} className="thumb small" />
-            ) : null}
+            <ItemPreview name={s.name} image={photos.get(s.productId)} />
             <span className="grow stack gap-4">
               <span className="between gap-8">
                 <span className="ellipsis">{s.name}</span>
@@ -160,6 +160,11 @@ export function SalesSheet({
   onSales?: () => void;
 }) {
   const time = new Intl.DateTimeFormat("en", { timeZone: state.business!.timeZone, hour: "numeric", minute: "2-digit" });
+  const shiftPhotos = useMemo(() => {
+    const tills = new Map([...state.shifts, ...(state.shift ? [state.shift] : [])].map((till) => [till.id, till]));
+    return new Map([...new Set(sales.map((sale) => sale.shiftId))].map((id) => [id, itemPhotos(tills.get(id)?.menu ?? [])]));
+  }, [sales, state.shifts, state.shift]);
+  const photos = useMemo(() => itemPhotos(state.menu), [state.menu]);
   return (
     <Sheet
       title={title}
@@ -183,9 +188,10 @@ export function SalesSheet({
         empty={<EmptyRow object="salesReceipt" title="No sales yet" detail="Sales recorded for this shift will show here." />}
       >
         {sales.map((sale) => (
-          <div key={sale.id} className="list-row">
+          <div key={sale.id} className="list-row sale-receipt-row">
+            <ReceiptItemPreviews lines={sale.lines} photos={shiftPhotos.get(sale.shiftId)} fallbackPhotos={photos} />
             <span className="grow stack gap-4" style={{ minWidth: 0 }}>
-              <span className="ellipsis">
+              <span className="sale-item-names">
                 {sale.lines.map((l) => (l.quantity > 1 ? l.quantity + "× " : "") + l.name).join(", ")}
               </span>
               <span className="label">
@@ -294,6 +300,7 @@ export function ItemsSold({
   const [picked, setPicked] = useState<string | null>(null);
   const sellers = useMemo(() => bestSellers(state.sales, shiftIds), [state.sales, shiftIds]);
   const shown = all ? sellers : sellers.slice(0, 5);
+  const photos = itemPhotos(menu, state.menu);
   return (
     <div className="stack gap-10">
       <p className="group-title">Items sold</p>
@@ -301,33 +308,26 @@ export function ItemsSold({
         {!sellers.length && (
           <EmptyRow object="itemsSold" title="No sales yet" detail="Each item adds up here as you sell." />
         )}
-        {shown.map((s) => {
-          const image = menu.find((p) => p.id === s.productId)?.image;
-          return (
-            <button
-              key={s.productId}
-              type="button"
-              className="list-row"
-              aria-haspopup="dialog"
-              onClick={() => {
-                buzz.tap();
-                setPicked(s.productId);
-              }}
-            >
-              {image ? (
-                <img src={image} alt="" width={36} height={36} className="thumb small" />
-              ) : (
-                <span className="well">{s.name.trim().slice(0, 1).toUpperCase()}</span>
-              )}
-              <span className="grow stack">
-                <span className="ellipsis">{s.name}</span>
-                <span className="label">{s.quantity} sold</span>
-              </span>
-              <Money value={s.revenue} currency={currency} />
-              <ChevronRight size={18} className="chev" />
-            </button>
-          );
-        })}
+        {shown.map((s) => (
+          <button
+            key={s.productId}
+            type="button"
+            className="list-row"
+            aria-haspopup="dialog"
+            onClick={() => {
+              buzz.tap();
+              setPicked(s.productId);
+            }}
+          >
+            <ItemPreview name={s.name} image={photos.get(s.productId)} />
+            <span className="grow stack">
+              <span className="ellipsis">{s.name}</span>
+              <span className="label">{s.quantity} sold</span>
+            </span>
+            <Money value={s.revenue} currency={currency} />
+            <ChevronRight size={18} className="chev" />
+          </button>
+        ))}
         {sellers.length > 5 && (
           <button type="button" className="list-row" onClick={() => setAll(!all)} aria-expanded={all}>
             <span className="grow">{all ? "Show less" : `Show ${sellers.length - 5} more`}</span>

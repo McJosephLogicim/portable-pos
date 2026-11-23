@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CloudOff } from "lucide-react";
 import type { Business, Sale, Shift } from "@/lib/types";
+import { ItemPreview } from "./item-preview";
 import { errorText, Money, Sheet, useProof, usePin } from "./ui";
 import { blocked } from "@/lib/reject";
 
@@ -66,11 +67,13 @@ export function ReceiptBody({
   sale,
   shift,
   business,
+  photos,
   pending,
 }: {
   sale: Sale;
   shift: Shift;
   business: Business;
+  photos: ReadonlyMap<string, string>;
   pending?: boolean;
 }) {
   const currency = shiftCurrency(shift, business);
@@ -102,7 +105,8 @@ export function ReceiptBody({
       <hr />
       <ul className="receipt-lines">
         {sale.lines.map((line, index) => (
-          <li key={index} className="between" style={{ alignItems: "start" }}>
+          <li key={index} className="row gap-10 receipt-line">
+            <ItemPreview name={line.name} image={photos.get(line.productId)} />
             <span className="grow">
               <span>
                 {line.quantity > 1 && (
@@ -194,6 +198,7 @@ export function ReceiptSheet({
   shift,
   business,
   preview = false,
+  photos,
   pending,
   canReverse,
   reverseBlocked,
@@ -205,6 +210,7 @@ export function ReceiptSheet({
   shift: Shift;
   business: Business;
   preview?: boolean;
+  photos: ReadonlyMap<string, string>;
   pending?: boolean;
   canReverse: boolean;
   reverseBlocked?: string;
@@ -311,6 +317,7 @@ export function ReceiptSheet({
         sale={sale}
         shift={shift}
         business={business}
+        photos={photos}
         pending={pending}
       />
       {sale.proofs?.length ? <Proofs urls={sale.proofs} /> : null}

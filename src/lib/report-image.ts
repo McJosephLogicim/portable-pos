@@ -2,6 +2,7 @@ import { countRows } from "./cash";
 import { APP_NAME, appIcons, leaderboardCrown } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
 import { differenceText, type ShiftReport } from "./report";
+import { itemInitials } from "./item-photos";
 import { round, unitText } from "./stock";
 import { leaderboardColors } from "./theme";
 
@@ -34,13 +35,17 @@ function rr(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
   ctx.roundRect(x, y, w, h, Math.max(0, Math.min(r, h / 2, w / 2)));
 }
 
+function drawCover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const scale = Math.max(w / img.width, h / img.height);
+  ctx.drawImage(img, x + (w - img.width * scale) / 2, y + (h - img.height * scale) / 2, img.width * scale, img.height * scale);
+}
+
 /** Draw an image to fill a box, cropped to the middle, with rounded corners. */
 function cover(ctx: Ctx, img: HTMLImageElement, x: number, y: number, w: number, h: number, r: number) {
   ctx.save();
   rr(ctx, x, y, w, h, r);
   ctx.clip();
-  const s = Math.max(w / img.width, h / img.height);
-  ctx.drawImage(img, x + (w - img.width * s) / 2, y + (h - img.height * s) / 2, img.width * s, img.height * s);
+  drawCover(ctx, img, x, y, w, h);
   ctx.restore();
 }
 
@@ -119,11 +124,15 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   };
 
   const sold = r.sold.slice(0, 12);
-  const [brandIcon, logo, ...pics] = await Promise.all([
+  const sources = [...new Set([...sold, ...r.stock].flatMap((row) => row.image ? [row.image] : []))];
+  const [brandIcon, logo, photos] = await Promise.all([
     loadImage(BRAND_ICON),
     r.business.logo ? loadImage(r.business.logo) : Promise.resolve(null),
-    ...sold.map((s) => (s.image ? loadImage(s.image) : Promise.resolve(null))),
+    Promise.all(sources.map(async (src) => [src, await loadImage(src)] as const)),
   ]);
+  const itemImages = new Map(photos);
+  // Match the item preview mask used by the app.
+  const squircle = new Path2D("M50 0C91 0 100 9 100 50S91 100 50 100 0 91 0 50 9 0 50 0Z");
   const people = r.people.slice(0, 8);
   const faces = await Promise.all(people.map((p) => (r.faces[p] ? loadImage(r.faces[p]) : Promise.resolve(null))));
   const payFaces = await Promise.all(r.payBack.map((p) => (r.faces[p.name] ? loadImage(r.faces[p.name]) : Promise.resolve(null))));
@@ -184,6 +193,23 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
     });
     y += total + 12;
   };
+  const itemPreview = (ctx: Ctx, item: { name: string; image?: string }, x: number, top: number, size: number) => {
+    ctx.save();
+    ctx.translate(x, top);
+    ctx.scale(size / 100, size / 100);
+    ctx.clip(squircle);
+    const photo = item.image ? itemImages.get(item.image) : null;
+    if (photo) {
+      drawCover(ctx, photo, 0, 0, 100, 100);
+    } else {
+      ctx.fillStyle = muted;
+      ctx.fillRect(0, 0, 100, 100);
+      ctx.textBaseline = "middle";
+      text(ctx, itemInitials(item.name), 50, 50, font(35, 600), ink2, "center");
+    }
+    ctx.restore();
+  };
+
   const divider = (ctx: Ctx, ty: number) => {
     ctx.fillStyle = line;
     ctx.fillRect(L, ty, R - L, 1);
@@ -329,16 +355,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         const ty = top + i * row;
         if (i) divider(ctx, ty - 12);
         const size = 56;
-        const img = pics[i];
-        if (img) cover(ctx, img, L, ty, size, size, rSm);
-        else {
-          ctx.fillStyle = muted;
-          rr(ctx, L, ty, size, size, rSm);
-          ctx.fill();
-          ctx.textBaseline = "middle";
-          text(ctx, initials(s.name), L + size / 2, ty + size / 2, font(16, 500), ink3, "center");
-          ctx.textBaseline = "top";
-        }
+        itemPreview(ctx, s, L, ty, size);
         const money = fmt(s.revenue);
         const mw = width(money, font(15, 500));
         text(ctx, fit(s.name, font(15, 500), R - L - size - 30 - mw), L + size + 14, ty + 10, font(15, 500), ink);
@@ -378,15 +395,17 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
     card(heights.reduce((a, b) => a + b, 0) - 10, (ctx, top) => {
       let ty = top;
       rows.forEach(({ s, left, off }, i) => {
-        text(ctx, fit(s.name, font(15, 500), 240), L, ty, font(15, 500), ink);
+        const start = L + 44;
+        itemPreview(ctx, s, L, ty, 34);
+        text(ctx, fit(s.name, font(15, 500), 196), start, ty, font(15, 500), ink);
         text(ctx, `${unitText(left, s.unit)} left`, R, ty + 1, font(14), ink2, "right");
-        bar(ctx, L, ty + 28, R - L, s.start ? left / s.start : 0);
+        bar(ctx, start, ty + 28, R - start, s.start ? left / s.start : 0);
         if (off) {
-          dot(ctx, L, ty + 48, dangerDot);
+          dot(ctx, start, ty + 48, dangerDot);
           text(
             ctx,
             off < 0 ? `${unitText(-off, s.unit)} missing` : `${unitText(off, s.unit)} more than expected`,
-            L + 16,
+            start + 16,
             ty + 41,
             font(13.5),
             off < 0 ? danger : ink2,

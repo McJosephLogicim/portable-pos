@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import { amountText, parseMoney } from "@/lib/domain";
+import { ItemPreview } from "./item-preview";
 import { catalogSku, menuCostingOverview, pricingRules, readTargetMargin } from "@/lib/stock";
 import type { Business, Product } from "@/lib/types";
 import type { RecipesProps } from "./recipes";
@@ -60,6 +61,7 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
             {overview.rows.map(({ item, cost, suggested }) => (
               <article className="costing-entry" key={item.id}>
                 <button className="costing-title between gap-8" {...blocked(!online && OFFLINE)} onClick={() => onEdit(item)}>
+                  <ItemPreview name={item.name} image={item.image} />
                   <span className="stack grow gap-4">
                     <span className="strong">{item.name}</span>
                     <span className="label">{[item.costing?.sku ?? catalogSku("product", item.id), item.category].filter(Boolean).join(" · ")}</span>

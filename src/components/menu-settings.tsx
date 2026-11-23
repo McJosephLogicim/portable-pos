@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, ListPlus, Plus, ShoppingBag, Tag as TagIcon, Trash2, X } from "lucide-react";
+import { ListPlus, Plus, ShoppingBag, Tag as TagIcon, Trash2, X } from "lucide-react";
 import type { OptionGroup, PricingRules, Product, ProductCosting, StockItem } from "@/lib/types";
 import { amountText, parseMoney, saveMenuItem, stockLeft } from "@/lib/domain";
 import { menuCategoryNames } from "@/lib/menu-categories";
@@ -13,6 +13,7 @@ import { MenuCostingOverview } from "./recipe-costing";
 import { blankUseDraft, costGap, CostPreview, resolveUses, stockForUse, stockUseRows, UsesEditor, useDrafts, usesText } from "./stock-settings";
 import { countOf, StockCount } from "./stock-count";
 import { SuggestInput, type Suggestion } from "./combobox";
+import { ItemPreview } from "./item-preview";
 import { MultiSelect } from "./multi-select";
 import { AddButton, AddMenu } from "./add-menu";
 import { buzz, currencySymbol, EmptyState, Explain, formatMoney, Money, MoneyField, PhotoPicker, usePin } from "./ui";
@@ -230,16 +231,6 @@ function ItemChoices({ groups, reuse, currency, onChange }: {
         </button>
       </div>
     </>
-  );
-}
-
-function Thumb({ src }: { src?: string }) {
-  return src ? (
-    <img className="thumb" src={src} alt="" width={40} height={40} />
-  ) : (
-    <span className="well">
-      <ImageIcon size={18} strokeWidth={1.6} className="g" />
-    </span>
   );
 }
 
@@ -542,7 +533,9 @@ export function ItemSheet({
           placeholder="e.g. Drinks"
           onAdd={onAddCategory}
         />
-        <PhotoPicker value={image} onChange={setImage} label="item photo" />
+        <div className="item-photo-picker">
+          <PhotoPicker value={image} onChange={setImage} label="item photo" />
+        </div>
       </div>
 
       {(!simple || !product?.uses?.length) && <div className="card card-pad stack gap-14">
@@ -872,7 +865,7 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
                     disabled={!props.online}
                     onClick={() => setEditing(p)}
                     select={select.row(p.id)}
-                    lead={<Thumb src={p.image} />}
+                    lead={<ItemPreview name={p.name} image={p.image} size={40} />}
                     title={p.name}
                     detail={detailOf(p)}
                     end={<Money value={p.price} currency={business.currency} />}
@@ -1247,6 +1240,7 @@ function BulkEditSheet({
             const old = before.get(p.id)!;
             return (
               <div className="list-row" key={p.id}>
+                <ItemPreview name={p.name} image={p.image} />
                 <span className="grow stack">
                   <span className="ellipsis">{p.name}</span>
                   {old.category !== p.category && (

@@ -4,9 +4,15 @@ import { useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { countFilterOptions, matchesFilters, type FilterFacets, type FilterSelection, type FilterValue } from "@/lib/filters";
 import { buzz, Sheet } from "./ui";
+import { ItemPreview } from "./item-preview";
 import { MultiSelect } from "./multi-select";
 
-type FilterGroup<Key extends string> = { key: Key; name: string; options: FilterValue[] };
+type FilterGroup<Key extends string> = {
+  key: Key;
+  name: string;
+  options: (FilterValue & { image?: string })[];
+  showThumbnails?: boolean;
+};
 const VISIBLE_FILTER_PILLS = 8;
 
 function toggleFilter<Key extends string>(filter: FilterSelection<Key>, key: Key, value: string) {
@@ -22,13 +28,14 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
   onChange: (next: FilterSelection<Key>) => void;
   onOpen: () => void;
 }) {
-  const chips: { key: Key; name: string; value: string; label: string }[] = [];
+  const chips: { key: Key; name: string; value: string; label: string; image?: string; showThumbnail?: boolean }[] = [];
   let total = 0;
-  for (const { key, name, options } of groups) {
+  for (const { key, name, options, showThumbnails } of groups) {
     const selected = filter[key] ?? [];
     total += selected.length;
     for (const value of selected.slice(0, Math.max(0, VISIBLE_FILTER_PILLS - chips.length))) {
-      chips.push({ key, name, value, label: options.find((option) => option.value === value)?.label ?? value });
+      const option = options.find((entry) => entry.value === value);
+      chips.push({ key, name, value, label: option?.label ?? value, image: option?.image, showThumbnail: showThumbnails });
     }
   }
   return (
@@ -44,6 +51,7 @@ export function FilterBar<Key extends string>({ label, groups, filter, onChange,
           aria-label={`Remove ${chip.name.toLowerCase()} ${chip.label}`}
           onClick={() => onChange(toggleFilter(filter, chip.key, chip.value))}
         >
+          {chip.showThumbnail && <ItemPreview name={chip.label} image={chip.image} size={24} />}
           <span className="g">{chip.name}</span>
           <span className="grow ellipsis">{chip.label}</span>
           <X size={14} aria-hidden="true" />
