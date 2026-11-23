@@ -9,6 +9,7 @@ import { leaderboardImage } from "@/lib/report-image";
 import { addDays, dayOf, weekday, zonedInstant } from "@/lib/team";
 import { leaderboardColors } from "@/lib/theme";
 import type { RegisterState } from "@/lib/types";
+import { FilterSelect } from "./filter-select";
 import { ImageShareSheet } from "./share";
 import { useBookingExpenses, useBookingSales } from "./shift-list";
 import { Avatar } from "./team";
@@ -141,34 +142,12 @@ export function LeaderboardPage({ state, demo, onBack }: { state: RegisterState;
         </header>
 
         <div className={styles.filters}>
-          <div className={styles.filterControl}>
-            <select
-              className={styles.filter}
-              aria-label="Leaderboard category"
-              value={board}
-              onChange={(event) => {
-                buzz.tap();
-                setBoard(event.target.value as Board);
-              }}
-            >
-              {categories.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <ChevronDown className={styles.filterChevron} size={15} aria-hidden="true" />
-          </div>
-          <div className={styles.filterControl}>
-            <select
-              className={styles.filter}
-              aria-label="Date range"
-              value={range}
-              onChange={(event) => {
-                buzz.tap();
-                setRange(event.target.value as Period);
-              }}
-            >
-              {periods.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <ChevronDown className={styles.filterChevron} size={15} aria-hidden="true" />
-          </div>
+          <FilterSelect className={styles.filterControl} label="Leaderboard category" value={board} onChange={(value) => setBoard(value as Board)}>
+            {categories.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+          </FilterSelect>
+          <FilterSelect className={styles.filterControl} label="Date range" value={range} onChange={(value) => setRange(value as Period)}>
+            {periods.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+          </FilterSelect>
         </div>
 
         {podium.length > 0 ? (

@@ -37,7 +37,7 @@ import { paymentPreset, paymentPresets } from "@/lib/payment-presets";
 import { applyTheme, brandColors, defaultBrand, fonts, inks, onColor, radii } from "@/lib/theme";
 import { BusinessMark, businessList } from "./businesses";
 import { AddButton } from "./add-menu";
-import { SingleSelect } from "./single-select";
+import { SuggestInput } from "./combobox";
 import { PaymentMethodIcon } from "./payment-method-icon";
 import {
   buzz,
@@ -663,6 +663,7 @@ function MethodSheet({
   const existingPreset = method && paymentPreset(method);
   const [mode, setMode] = useState<"preset" | "custom">(method && !existingPreset ? "custom" : "preset");
   const [presetId, setPresetId] = useState(existingPreset?.id ?? "");
+  const [presetQuery, setPresetQuery] = useState(existingPreset?.name ?? "");
   const [name, setName] = useState(method?.name ?? "");
   const [customKind, setCustomKind] = useState<PaymentKind>(method?.kind ?? "wallet");
   const [icon, setIcon] = useState(method?.icon);
@@ -724,11 +725,18 @@ function MethodSheet({
         </div>
       </div>
       {mode === "preset" ? (
-        <SingleSelect label="Payment method" searchNoun="payment methods" value={presetId} onChange={setPresetId}
-          items={choices.map((entry) => ({
-            id: entry.id, name: entry.name, detail: entry.category, searchText: entry.searchText,
-            icon: <PaymentMethodIcon method={{ ...entry, presetId: entry.id }} />,
-          }))} />
+        <div className="field">
+          <span>Payment method</span>
+          <SuggestInput label="Payment method" placeholder="Search payment methods" className="payment-preset-search"
+            value={presetQuery} maxLength={100} newText={false} openOnFocus={false}
+            onChange={(query) => { setPresetQuery(query); setPresetId(""); }}
+            onPick={(entry) => { setPresetQuery(entry.name); setPresetId(entry.key); }}
+            suggestions={choices.map((entry) => ({
+              key: entry.id, name: entry.name, detail: entry.category,
+              searchText: [entry.category, entry.searchText].filter(Boolean).join(" "),
+              icon: <PaymentMethodIcon method={{ ...entry, presetId: entry.id }} />,
+            }))} />
+        </div>
       ) : <>
         <label className="field">
           <span>Name customers hear</span>

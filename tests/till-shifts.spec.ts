@@ -189,17 +189,11 @@ test("Opening and closing tills can review stock, with expenses available after 
   };
   const pickPayer = async (form: Locator) => {
     await form.getByRole("button", { name: "From team", exact: true }).click();
-    const trigger = form.getByRole("button", { name: "Teammate", exact: true });
-    await trigger.click();
-    const teammates = form.getByRole("listbox", { name: "Teammate", exact: true });
-    await expect(teammates.getByRole("option", { name: "Ana Cruz Owner" })).toBeVisible();
-    await expect(teammates.getByRole("option", { name: /Kim Dela Cruz/ })).toHaveCount(0);
-    await expect.poll(async () => {
-      const button = await trigger.boundingBox();
-      const list = await teammates.boundingBox();
-      return button && list && list.y - (button.y + button.height);
-    }).toBeGreaterThanOrEqual(0);
-    await teammates.getByRole("option", { name: "Bea Santos Member" }).click();
+    const teammates = form.getByRole("combobox", { name: "Teammate", exact: true });
+    await expect(teammates).toHaveClass("filter-select-input");
+    await expect(teammates.locator("option").filter({ hasText: "Ana Cruz · Owner" })).toHaveCount(1);
+    await expect(teammates.locator("option").filter({ hasText: "Kim Dela Cruz" })).toHaveCount(0);
+    await teammates.selectOption({ label: "Bea Santos · Member" });
   };
   const logExpense = async (label: string, amount: string, source: "cash" | "gcash" | "team", within: Page | Locator = page) => {
     const add = within.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true });
@@ -211,8 +205,7 @@ test("Opening and closing tills can review stock, with expenses available after 
     await form.getByRole("textbox", { name: "Amount" }).fill(amount);
     if (source === "team") await pickPayer(form);
     else if (source === "gcash") {
-      await form.getByRole("button", { name: "Payment method: Cash", exact: true }).click();
-      await form.getByRole("listbox", { name: "Payment method" }).getByRole("option", { name: "GCash", exact: true }).click();
+      await form.getByRole("combobox", { name: "Payment method", exact: true }).selectOption({ label: "GCash" });
     }
     await form.getByRole("button", { name: /^Log ₱/ }).click();
     await expect(form).toBeHidden();
@@ -247,7 +240,7 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(edit.getByRole("combobox", { name: "What for" })).toHaveValue("Till supplies");
   await expect(edit.getByRole("textbox", { name: "Amount" })).toHaveValue("20.00");
   await expect(edit.getByRole("button", { name: "From till" })).toHaveAttribute("aria-pressed", "true");
-  await expect(edit.getByRole("button", { name: "Payment method: Cash" })).toBeVisible();
+  await expect(edit.getByRole("combobox", { name: "Payment method" })).toHaveValue("cash");
   await edit.getByRole("combobox", { name: "What for" }).fill("Ice packs");
   await edit.getByRole("textbox", { name: "Amount" }).fill("25.50");
   await edit.getByRole("button", { name: "Save changes" }).click();
@@ -508,7 +501,7 @@ test("Blue Halo raises first place and can jump to your row on a narrow screen",
   await expect(crown).toBeVisible();
   await expect.poll(() => crown.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   for (const photo of [top.nth(0), top.nth(1), myRank, jump].map((element) => element.locator(".avatar img"))) {
-    await expect(photo).toHaveCSS("border-radius", "50%");
+    await expect(photo.locator("..")).toHaveCSS("mask-image", /svg/);
     await expect(photo).toHaveCSS("object-fit", "cover");
     await expect.poll(() => photo.evaluate((img: HTMLImageElement) => img.naturalHeight)).toBe(240);
     const size = await photo.boundingBox();

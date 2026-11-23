@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import { fadeOnExit } from "@/lib/exit";
 
@@ -9,6 +9,8 @@ export interface Suggestion {
   name: string;
   /** A second line, such as what picking it brings along. */
   detail?: string;
+  searchText?: string;
+  icon?: ReactNode;
 }
 
 /**
@@ -24,6 +26,7 @@ export function SuggestInput({
   placeholder,
   maxLength = 60,
   autoFocus,
+  openOnFocus = true,
   className = "",
   newText = "New",
 }: {
@@ -36,6 +39,7 @@ export function SuggestInput({
   placeholder?: string;
   maxLength?: number;
   autoFocus?: boolean;
+  openOnFocus?: boolean;
   className?: string;
   newText?: string | false;
 }) {
@@ -48,7 +52,11 @@ export function SuggestInput({
   const search = editing || !hasMatch ? q : "";
   const shown = suggestions
     .filter((s) => s.name.toLocaleLowerCase() !== search || s.detail)
-    .filter((s) => !search || s.name.toLocaleLowerCase().includes(search));
+    .filter((s) => {
+      if (!search) return true;
+      const text = s.searchText ? `${s.name} ${s.searchText}`.toLocaleLowerCase() : s.name.toLocaleLowerCase();
+      return text.includes(search);
+    });
   const visible = open && shown.length > 0;
   const activeSuggestion = visible ? shown[active] : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -103,7 +111,7 @@ export function SuggestInput({
         maxLength={maxLength}
         placeholder={placeholder}
         value={value}
-        onFocus={() => setOpen(true)}
+        onFocus={() => { if (openOnFocus) setOpen(true); }}
         onClick={() => setOpen(true)}
         onBlur={close}
         onChange={(e) => {
@@ -156,6 +164,7 @@ export function SuggestInput({
                 if (event.detail > 0) inputRef.current?.blur();
               }}
             >
+              {s.icon}
               <span className="grow stack">
                 <span className="ellipsis">{s.name}</span>
                 {s.detail && <span className="label ellipsis">{s.detail}</span>}
@@ -182,8 +191,8 @@ const EDGE = 8;
  * scrolls with the field and the keyboard can't pull them apart. When there isn't room under
  * the field, the field's scroll box scrolls up to make room; the list never moves above it.
  */
-export function useAnchoredList(
-  inputRef: React.RefObject<HTMLElement | null>,
+function useAnchoredList(
+  inputRef: React.RefObject<HTMLInputElement | null>,
   listRef: React.RefObject<HTMLDivElement | null>,
   visible: boolean,
   rows: number,

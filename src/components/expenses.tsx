@@ -6,10 +6,8 @@ import { expenseSourceLabel } from "@/lib/report";
 import type { Expense, ExpenseDeduction, ExpenseInput, PaymentMethod, RegisterState, TeamRosterMember } from "@/lib/types";
 import { AddButton } from "./add-menu";
 import { SuggestInput } from "./combobox";
-import { SingleSelect } from "./single-select";
-import { PaymentMethodIcon } from "./payment-method-icon";
+import { FilterSelect } from "./filter-select";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
-import { Avatar } from "./team";
 import { buzz, ConfirmSheet, EmptyRow, errorText, formatMoney, Money, MoneyField, Sheet } from "./ui";
 import styles from "./operations.module.css";
 
@@ -63,26 +61,23 @@ function ExpenseSheet({
   const deduction: ExpenseDeduction | null = source === "till"
     ? oldDeduction ?? (payment ? { id: payment.id, name: payment.name, kind: payment.kind } : null)
     : oldDeduction ?? (member ? { id: member.id, name: member.name, kind: "member" } : null);
-  const paymentOptions = payments.map((method) => ({ id: method.id, name: method.name, icon: <PaymentMethodIcon method={method} /> }));
+  const paymentOptions = payments.map((method) => ({ id: method.id, name: method.name }));
   const memberOptions = sources.teammates.map((person) => ({
     id: person.id,
-    name: person.name,
-    detail: person.primaryOwner ? "Owner" : person.owner ? "Co-owner" : "Member",
-    icon: <Avatar id={person.id} name={person.name} small />,
+    name: `${person.name} · ${person.primaryOwner ? "Owner" : person.owner ? "Co-owner" : "Member"}`,
   }));
+  const options = source === "till" ? paymentOptions : memberOptions;
   if (expense?.deduction && expense.source === source) {
-    const options = source === "till" ? paymentOptions : memberOptions;
     const saved = expense.deduction;
-    if (!options.some((option) => option.id === saved.id)) {
-      if (saved.kind === "member") memberOptions.push({ id: saved.id, name: saved.name, detail: "Previously selected", icon: <Avatar id={saved.id} name={saved.name} small /> });
-      else paymentOptions.push({ id: saved.id, name: saved.name, icon: <PaymentMethodIcon method={{ name: saved.name, kind: saved.kind }} /> });
-    }
+    if (!options.some((option) => option.id === saved.id)) options.push({ id: saved.id, name: saved.name });
   }
-  if (legacy === "till") paymentOptions.unshift({ id: "", name: "Cash", icon: <PaymentMethodIcon method={{ kind: "cash" }} /> });
-  if (legacy === "pocket") {
-    const loggedBy = expense?.by || "Staff";
-    memberOptions.unshift({ id: "", name: loggedBy, detail: "Originally recorded payer", icon: <Avatar name={loggedBy} small /> });
-  }
+  if (legacy === "till") paymentOptions.unshift({ id: "", name: "Cash" });
+  if (legacy === "pocket") memberOptions.unshift({ id: "", name: expense?.by || "Staff" });
+  const sourceLabel = source === "till" ? "Payment method" : "Teammate";
+  const sourceId = source === "till" ? paymentId : memberId;
+  const sourcePlaceholder = options.length
+    ? `Select ${sourceLabel.toLowerCase()}`
+    : source === "till" ? "No payment methods available" : "No teammates available";
   const missingSource = !deduction && source !== legacy;
   const invalid = !label.trim() ? "Say what the expense was for."
     : !value ? "Enter how much it cost."
@@ -160,9 +155,13 @@ function ExpenseSheet({
               From team
             </button>
           </div>
-          {source === "till"
-            ? <SingleSelect key="till" label="Payment method" searchNoun="payment methods" items={paymentOptions} value={paymentId} onChange={setPaymentId} disabled={busy} />
-            : <SingleSelect key="team" label="Teammate" searchNoun="teammates" items={memberOptions} value={memberId} onChange={setMemberId} disabled={busy} />}
+          <div className="field">
+            <span>{sourceLabel}</span>
+            <FilterSelect label={sourceLabel} value={sourceId} onChange={source === "till" ? setPaymentId : setMemberId} disabled={busy || !options.length}>
+              {legacy !== source && <option value="" disabled>{sourcePlaceholder}</option>}
+              {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+            </FilterSelect>
+          </div>
         </div>
         {error && (
           <p className="alert" role="alert">
