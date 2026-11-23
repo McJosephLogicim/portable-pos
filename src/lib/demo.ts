@@ -2,6 +2,7 @@ import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
 import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftStock, shiftTotals, stockReplay, updateShiftMenu, type MenuItemChange } from "./domain";
 import { batchIngredientProblem, checkPrepRecipes, duplicateSku, hasStockCostAmounts, pricingInCurrency, round, withoutMenuCosts, withoutStockCosts } from "./stock";
+import { changeMenuCategories, menuCategoryNames, type MenuCategoryChange } from "./menu-categories";
 import { demoPlan } from "./demo-plan";
 import { applyPlan, linkBookingProblem, PlanError, startProblem, walkInBooking, type PlanCommand } from "./team";
 import { RequestFailure } from "./client";
@@ -123,7 +124,6 @@ export interface Opening {
   openingCount?: CashCount;
   stock: Record<string, number>;
   checked: string[];
-  expenses?: OpeningExpense[];
   bookingId?: string;
   /** Start a shift now when none is scheduled. */
   newShift?: WalkIn;
@@ -142,12 +142,12 @@ export interface Closing {
 export type OwnerAction =
   | { action: "completeOnboarding" }
   | { action: "deleteBusiness"; businessId: string; pin: string }
-  | ({ action: "open" } & Opening)
+  | ({ action: "open"; expenses?: OpeningExpense[] } & Opening)
   | { action: "link"; newShift: WalkIn }
   | { action: "linkBooking"; shiftId: string; bookingId: string }
   | { action: "profile"; memberId?: string; name?: string; photo?: string | null; pin?: string }
   | { action: "menu"; menu: Product[]; pin: string; stock?: Record<string, number> }
-  | (MenuItemChange & { pin: string })
+  | ((MenuItemChange | MenuCategoryChange) & { pin: string })
   | (PlanCommand & { pin?: string })
   | { action: "reverse"; saleId: string; reason: string; pin: string }
   | { action: "mergeStock"; shiftIds: string[]; pin: string }
@@ -193,7 +193,7 @@ export function demoAction(
         throw Error("This shift already closed. Add a new one on Shifts.");
       const problem = startProblem(booking, business.timeZone);
       if (problem) throw Error(problem);
-      const { mode: _mode, ...checkoutSettings } = business.settings;
+      const { mode: _mode, menuCategories: _categories, ...checkoutSettings } = business.settings;
       const shift: Shift = {
         ...newShift(
           state.deviceId,
@@ -265,16 +265,30 @@ export function demoAction(
     }
     case "removeMenuItem":
     case "restoreMenuItem":
-    case "menu": {
-      const { menu, deletedRecord } = input.action === "menu" ? { menu: input.menu, deletedRecord: undefined } : changeMenuItem(state.menu, input);
+    case "menu":
+    case "saveMenuCategory":
+    case "removeMenuCategories": {
+      const { business } = state;
+      const saved = business?.settings.menuCategories;
+      let menu, deletedRecord, menuCategories;
+      if (input.action === "menu") menu = input.menu;
+      else if (input.action === "saveMenuCategory" || input.action === "removeMenuCategories") {
+        ({ menu, menuCategories } = changeMenuCategories(state.menu, saved, input));
+      } else {
+        ({ menu, deletedRecord } = changeMenuItem(state.menu, input));
+      }
+      menuCategories ??= menuCategoryNames(menu, menuCategoryNames(state.menu, saved));
       const duplicate = duplicateSku(menu.map((item) => item.costing?.sku));
       if (duplicate) throw Error(`Menu SKU ${duplicate} is already in use.`);
       const problem = batchIngredientProblem(menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
-      const updated = state.shift && updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, state.business?.settings.stockItems);
-      const shift = updated && { ...updated, menuVersion: crypto.randomUUID() };
+      const updated = state.shift && menu !== state.menu
+        ? updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, business?.settings.stockItems)
+        : null;
+      const shift = updated ? { ...updated, menuVersion: crypto.randomUUID() } : state.shift;
       return {
         ...state,
+        business: business && { ...business, settings: { ...business.settings, menuCategories } },
         menu,
         deletedRecord,
         shift,
@@ -313,6 +327,7 @@ export function demoAction(
           settings: {
             ...pricingInCurrency(input.settings, business.currency, input.currency),
             stockLists: input.settings.stockLists ?? business.settings.stockLists,
+            menuCategories: business.settings.menuCategories,
             mode: business.settings.mode,
           },
         },

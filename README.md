@@ -47,7 +47,7 @@ Recipes › Menu costing compares unit cost, cost percentage, gross profit, gros
 
 Stock items can record purchase details, supplier, cost update date, SKU, and notes. Menu items and prep recipes have their own SKU and notes, and ingredient rows can carry a note.
 
-When adding an item, categories, pick-one choices, add-ons and options already on the menu are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
+Create categories in Recipes › Categories or Menu items, including from the item editor. A category can be saved before assigning any items. It appears on Sell once it has items. When adding an item, saved categories, pick-one choices, add-ons and existing options are offered as you type, so a choice like Size or Milk is set up once and reused. Picking a choice copies its options, which can then be changed for that item.
 
 Settings › Opening checklist holds the steps to tick before the till opens. The ticked list is saved with the shift.
 

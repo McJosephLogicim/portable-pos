@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { checkCount } from "../lib/cash";
+import { changeMenuCategories, menuCategoryNames } from "../lib/menu-categories";
 import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftStock, updateShiftMenu } from "../lib/domain";
 import {
   currencyDigits,
@@ -21,7 +22,7 @@ import { presentShift, snapshot as baseSnapshot } from "./snapshot";
 import { applyEvents, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
-const ownerActions = ["menu", "removeMenuItem", "restoreMenuItem", "settings", "mode", "mergeStock", ...ownerPlanActions];
+const ownerActions = ["menu", "saveMenuCategory", "removeMenuCategories", "removeMenuItem", "restoreMenuItem", "settings", "mode", "mergeStock", ...ownerPlanActions];
 const pinActions = ["reverse", "close", ...ownerActions];
 
 async function deleteBusiness(tx: Transaction, businessId: string) {
@@ -167,10 +168,18 @@ export async function runCommand(
       return snapshot(access);
     }
 
-    if (cmd.action === "menu" || cmd.action === "removeMenuItem" || cmd.action === "restoreMenuItem") {
-      let menu, deletedRecord;
+    if (cmd.action === "menu" || cmd.action === "removeMenuItem" || cmd.action === "restoreMenuItem" ||
+      cmd.action === "saveMenuCategory" || cmd.action === "removeMenuCategories") {
+      const settings = business.settings ?? defaultSettings(business.currency);
+      let menu, deletedRecord, menuCategories;
       if (cmd.action === "menu") {
         menu = cmd.menu;
+      } else if (cmd.action === "saveMenuCategory" || cmd.action === "removeMenuCategories") {
+        try {
+          ({ menu, menuCategories } = changeMenuCategories(business.menu, settings.menuCategories, cmd));
+        } catch (error) {
+          ensure(false, (error as Error).message, 409);
+        }
       } else {
         if (cmd.action === "restoreMenuItem" &&
           isDeepStrictEqual(business.menu.find((item) => item.id === cmd.item.id), cmd.item))
@@ -184,10 +193,12 @@ export async function runCommand(
       }
       const problem = batchIngredientProblem(menu, business.settings?.stockItems);
       if (problem) ensure(false, problem);
+      menuCategories ??= menuCategoryNames(menu, menuCategoryNames(business.menu, settings.menuCategories));
       await tx
         .update(businesses)
-        .set({ menu })
+        .set({ menu, settings: { ...settings, menuCategories } })
         .where(eq(businesses.id, business.id));
+      if (menu === business.menu) return snapshot(access);
       // Every booth running now gets the change. Counts asked for on this phone go to its own shift;
       // the others start new stock items from their saved amount.
       const till = await tillShift();
@@ -252,6 +263,7 @@ export async function runCommand(
           settings: {
             ...pricingInCurrency(cmd.settings, business.currency, cmd.currency),
             stockLists: cmd.settings.stockLists ?? business.settings?.stockLists,
+            menuCategories: business.settings?.menuCategories,
             mode: business.settings?.mode,
           },
         })
@@ -324,7 +336,7 @@ export async function runCommand(
           .where(eq(shifts.businessId, business.id))
           .orderBy(desc(shifts.number))
           .limit(1);
-        const { mode: _mode, ...checkoutSettings } = withoutStockCosts(settings);
+        const { mode: _mode, menuCategories: _categories, ...checkoutSettings } = withoutStockCosts(settings);
         const [opened] = await tx.insert(shifts).values({
           stock: Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,

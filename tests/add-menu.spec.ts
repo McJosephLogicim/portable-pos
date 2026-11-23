@@ -447,3 +447,68 @@ test("the sale slider springs back after a short drag and saves on a full releas
   await done.getByRole("button", { name: "New sale" }).click();
   await expect(page.getByText(/Shift .* · 1 sale$/)).toBeVisible();
 });
+
+test("all menu category entry points save zero-item categories", async ({ page }) => {
+  await startDemo(page);
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("portable-pos-register", 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("registers", "readwrite");
+        const store = tx.objectStore("registers");
+        const get = store.get("demo-register-v2");
+        get.onsuccess = () => store.put({ ...get.result, menu: [], shift: null, shifts: [], sales: [], pending: [] }, "demo-register-v2");
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = () => reject(tx.error);
+      };
+    });
+  });
+  await page.reload();
+  const recipes = page.getByRole("button", { name: "Recipes", exact: true });
+  const back = page.getByRole("button", { name: "Back to recipes", exact: true });
+  const category = page.getByRole("dialog", { name: "New category", exact: true });
+
+  async function addCategory(name: string, pin = false) {
+    await category.getByRole("textbox", { name: "Name", exact: true }).fill(name);
+    await category.getByRole("button", { name: "Add category", exact: true }).click();
+    if (pin) await confirmPin(page);
+    await expect(category).toBeHidden();
+  }
+
+  await recipes.click();
+  await page.getByRole("button", { name: /^Categories/ }).click();
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await addCategory("Seasonal", true);
+  await expect(page.getByRole("button", { name: "Seasonal 0 items" })).toBeVisible();
+
+  await back.click();
+  await page.getByRole("button", { name: /^Menu items/ }).click();
+  const tabs = page.getByRole("group", { name: "Categories", exact: true });
+  await tabs.getByRole("button", { name: "New category" }).click();
+  await addCategory("Bundles");
+  await expect(tabs.getByRole("button", { name: "Bundles" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add an item" }).click();
+  const item = page.getByRole("dialog", { name: "New item" });
+  await item.getByRole("button", { name: "New category" }).click();
+  await addCategory("Pop-ups");
+  await expect(item.getByRole("combobox", { name: "Category" })).toHaveValue("Pop-ups");
+  await item.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add bulk" }).click();
+  const bulk = page.getByRole("dialog", { name: "Add menu items in bulk" });
+  await bulk.getByRole("button", { name: "New category" }).click();
+  await addCategory("Market drinks");
+  await expect(bulk.getByRole("combobox", { name: "Category for these items" })).toHaveValue("Market drinks");
+  await bulk.getByRole("button", { name: "Close", exact: true }).click();
+
+  await page.reload();
+  await recipes.click();
+  await page.getByRole("button", { name: /^Categories/ }).click();
+  for (const name of ["Seasonal", "Bundles", "Pop-ups", "Market drinks"])
+    await expect(page.getByRole("button", { name: `${name} 0 items` })).toBeVisible();
+});

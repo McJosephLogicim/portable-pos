@@ -402,3 +402,35 @@ test(
     });
   },
 );
+
+test(
+  "menu categories persist independently of items and settings edits",
+  { skip: !process.env.POS_TEST_DATABASE_URL && "Set POS_TEST_DATABASE_URL to a migrated local test database." },
+  async () => {
+    process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+    const owner = randomUUID();
+    const pin = "1833";
+    const cmd = (input: object) => runCommand(owner, { ...input, pin });
+    const setup = await cmd({ action: "setup", name: "Categories", currency: "USD", timeZone: "UTC" });
+    await Promise.all([
+      cmd({ action: "saveMenuCategory", name: "Seasonal" }),
+      cmd({ action: "saveMenuCategory", name: "Bundles" }),
+    ]);
+    const saved = await cmd({ action: "bootstrap" });
+    assert.deepEqual(saved.menu, []);
+    assert.deepEqual([...saved.business!.settings.menuCategories!].sort(), ["Bundles", "Seasonal"]);
+
+    const tea = { id: "tea", name: "Tea", category: "Seasonal", price: 350, groups: [] };
+    await cmd({ action: "menu", menu: [tea] });
+    const renamed = await cmd({ action: "saveMenuCategory", previous: "Seasonal", name: "Spring", itemIds: ["tea"] });
+    assert.equal(renamed.menu[0].category, "Spring");
+    await cmd({ action: "removeMenuItem", productId: "tea" });
+    const updated = await cmd({
+      action: "settings", name: "New name", currency: "USD", timeZone: "UTC", deviceId: randomUUID(),
+      settings: setup.business!.settings,
+    });
+    assert.deepEqual([...updated.business!.settings.menuCategories!].sort(), ["Bundles", "Spring"]);
+    const removed = await cmd({ action: "removeMenuCategories", names: ["Spring"] });
+    assert.deepEqual(removed.business!.settings.menuCategories, ["Bundles"]);
+  },
+);

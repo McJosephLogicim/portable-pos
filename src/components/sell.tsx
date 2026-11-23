@@ -23,6 +23,7 @@ import {
   stockLeft,
   totalLines,
 } from "@/lib/domain";
+import { menuCategoryNames, type MenuCategoryChange } from "@/lib/menu-categories";
 import { ItemSheet } from "./menu-settings";
 import { MultiSelect } from "./multi-select";
 import { blobToDataUrl, compressPhoto } from "@/lib/photo";
@@ -939,6 +940,7 @@ export interface SellProps {
   ) => Promise<Sale>;
   onAvailability: (targetId: string, soldOut: boolean) => Promise<void>;
   onReverse: (saleId: string, reason: string, pin: string) => Promise<void>;
+  onMenuCategory?: (change: MenuCategoryChange, pin: string) => Promise<void>;
   onMenu: (menu: Product[], pin: string, stock?: Record<string, number>) => Promise<void>;
   onSaved: (text: string) => void;
   /** Opens the Till, where the shift is run and closed. */
@@ -1005,6 +1007,7 @@ export function SellScreen({
   onAvailability,
   onReverse,
   onMenu,
+  onMenuCategory,
   onSaved,
   onTill,
 }: SellProps) {
@@ -1033,9 +1036,13 @@ export function SellScreen({
   const currency = shift.settings.currency;
   const menu = shift.menu;
   const categories = useMemo(
-    () => Array.from(new Set(menu.map((i) => i.category).filter(Boolean))),
-    [menu],
+    () => {
+      const used = new Set(menuCategoryNames(menu));
+      return menuCategoryNames(menu, business.settings.menuCategories).filter((name) => used.has(name));
+    },
+    [menu, business.settings.menuCategories],
   );
+  const activeCategory = category && categories.includes(category) ? category : null;
   const busy = working || pending;
   let lines: ReceiptLine[] = [];
   let total = 0;
@@ -1058,7 +1065,7 @@ export function SellScreen({
   const q = query.trim().toLocaleLowerCase();
   const items = menu.filter(
     (i) =>
-      (!category || i.category === category) &&
+      (!activeCategory || i.category.trim() === activeCategory) &&
       (!q || (i.name + " " + i.category).toLocaleLowerCase().includes(q)),
   );
   const shiftSales = state.sales.filter(
@@ -1204,7 +1211,7 @@ export function SellScreen({
             onChange={(e) => setQuery(e.target.value)}
           />
         )}
-        {categories.length > 1 && <CategoryTabs categories={categories} value={category} onChange={setCategory} />}
+        {categories.length > 1 && <CategoryTabs categories={categories} value={activeCategory} onChange={setCategory} />}
       </div>
       {error && (
         <Notice tone="danger" live="assertive">
@@ -1416,6 +1423,12 @@ export function SellScreen({
           simple={simple}
           currency={currency}
           menu={state.menu}
+          menuCategories={business.settings.menuCategories}
+          onAddCategory={onMenuCategory && (async (name, itemIds) => {
+            const saved = await withPin((pin) => onMenuCategory({ action: "saveMenuCategory", name, itemIds }, pin));
+            if (saved) onSaved("Added " + name);
+            return saved;
+          })}
           liveShift
           counted={Object.keys(left)}
           stockItems={shift.settings.stockItems}

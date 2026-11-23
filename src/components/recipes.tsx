@@ -1,8 +1,9 @@
 "use client";
 
 import { Calculator, CookingPot, LayoutGrid, ListPlus, Package, Tag, Tags } from "lucide-react";
+import { menuCategoryNames, type MenuCategoryChange } from "@/lib/menu-categories";
 import { isSimpleMode } from "@/lib/settings";
-import { CategoriesPage, categoriesOf, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
+import { CategoriesPage, ChoicesPage, choicesOf, MenuPage } from "./menu-settings";
 import { Row, SubPage, type EditorProps } from "./settings";
 import { StockPage } from "./stock-settings";
 import { StockListsPage } from "./stock-list-settings";
@@ -12,6 +13,7 @@ import { PricingRulesPage } from "./recipe-costing";
 export type RecipesPage = "menu" | "categories" | "choices" | "stock" | "prep" | "stock-lists" | "costing" | "pricing" | "preview";
 
 export interface RecipesProps extends EditorProps {
+  onMenuCategory: (change: MenuCategoryChange, pin: string) => Promise<void>;
   onRemoveMenuItem: (productId: string, pin: string) => Promise<void>;
   /** Add up finished shifts' leftovers into what each shift starts with. */
   onMergeStock?: (shiftIds: string[], pin: string) => Promise<void>;
@@ -60,7 +62,7 @@ export function RecipesScreen(props: RecipesProps) {
           icon={<Tag size={18} />}
           title="Categories"
           description="The tabs on Sell, like Coffee or Bakery"
-          detail={count(categoriesOf(state.menu).length)}
+          detail={count(menuCategoryNames(state.menu, state.business?.settings.menuCategories).length)}
           onClick={() => onPage("categories")}
         />
         <Row
