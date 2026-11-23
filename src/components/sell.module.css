@@ -111,6 +111,16 @@
   opacity: .45;
 }
 
+.menuGrid > .product > :global(.item-preview-tile) {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  mask: none;
+  color: var(--ink-tertiary);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: inherit;
+}
+
 .product:global(.item):active:not(:disabled):not([aria-disabled="true"]),
 .stepper:global(.stepper) > button:active:not(:disabled):not([aria-disabled="true"]),
 .paymentMethod:global(.method):active:not(:disabled):not([aria-disabled="true"]),

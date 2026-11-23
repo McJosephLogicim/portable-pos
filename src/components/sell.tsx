@@ -1240,7 +1240,7 @@ export function SellScreen({
       )}
       <div>
         {items.length ? (
-          <div className="items">
+          <div className={preview || practice ? "items" : `items ${styles.menuGrid}`}>
             {items.map((product) => {
               const out = isOut(product);
               const making = canMake(model, afterCart, product.id);
