@@ -151,7 +151,7 @@ export function ShiftStockCount({
               advance();
             }}
           />
-          <button className={"btn compact" + (hasCount ? "" : " ghost")} type="button" onMouseDown={keepKeypad} onClick={advance}>
+          <button className={`btn compact ${hasCount || !next ? "secondary" : "ghost"}`} type="button" onMouseDown={keepKeypad} onClick={advance}>
             {next ? (hasCount ? "Next" : "Skip") : "Review"}
           </button>
         </div>

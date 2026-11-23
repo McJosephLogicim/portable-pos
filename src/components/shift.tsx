@@ -744,7 +744,7 @@ export function ShiftScreen({
           </div>
           <div className="stack gap-8">
               <button
-                className="btn secondary block"
+                className={`btn block${state.closingShiftId ? "" : " secondary"}`}
                 {...blocked(activeBooking ? closeReason : needsShift)}
                 aria-haspopup="dialog"
                 onClick={() => setClosing(shift.id)}
@@ -756,7 +756,7 @@ export function ShiftScreen({
                   {!activeBooking ? needsShift : online ? "Waiting for sales to sync." : "Connect to close the shift."}
                 </p>
               )}
-              <button className="btn secondary" aria-haspopup="dialog" onClick={() => setReport(true)}>
+              <button className="btn ghost" aria-haspopup="dialog" onClick={() => setReport(true)}>
                 <FileText size={17} /> Report so far
               </button>
             </div>

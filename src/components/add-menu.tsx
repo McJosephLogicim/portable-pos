@@ -6,15 +6,16 @@ import { ListPlus, Plus, type LucideIcon } from "lucide-react";
 import { blocked, reject, type Reason } from "@/lib/reject";
 import { buzz } from "./ui";
 
-export function AddButton({ onClick, disabled, blockedReason }: {
+export function AddButton({ onClick, disabled, blockedReason, secondary }: {
   onClick: () => void;
   disabled?: boolean;
   blockedReason?: Reason;
+  secondary?: boolean;
 }) {
   return (
     <button
       type="button"
-      className="add-menu-trigger btn compact"
+      className={`add-menu-trigger btn compact${secondary ? " secondary" : ""}`}
       aria-haspopup="dialog"
       disabled={disabled}
       {...blocked(blockedReason)}

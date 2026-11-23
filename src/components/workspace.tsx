@@ -1086,14 +1086,14 @@ export function Workspace() {
               tone="danger"
               action={
                 <>
-                  <button type="button" className="btn" onClick={() => void flush(true)}>
-                    Retry
-                  </button>
                   {visibleSyncError.needsSignIn && (
-                    <button type="button" className="btn" onClick={() => setAccount(true)}>
+                    <button type="button" className="btn secondary" onClick={() => setAccount(true)}>
                       Sign in
                     </button>
                   )}
+                  <button type="button" className={`btn ${visibleSyncError.needsSignIn ? "ghost" : "secondary"}`} onClick={() => void flush(true)}>
+                    Retry
+                  </button>
                 </>
               }
             >

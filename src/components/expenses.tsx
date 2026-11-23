@@ -254,6 +254,7 @@ export function ExpensesSection({
         <div className="row gap-8">
           {expenses.length > 0 && <span className="label">{formatMoney(total, currency)}</span>}
           <AddButton
+            secondary
             disabled={disabled}
             onClick={() => setEditor("new")}
           />

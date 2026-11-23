@@ -180,7 +180,7 @@ export function CashCounter({
                 <div className="grow">
                   <MoneyField label="One coin or bill is worth" value={newValue} onChange={setNewValue} currency={currency} autoFocus />
                 </div>
-                <button type="button" className="btn compact" style={{ alignSelf: "flex-end" }} onClick={addOther}>
+                <button type="button" className="btn secondary compact" style={{ alignSelf: "flex-end" }} onClick={addOther}>
                   Add
                 </button>
               </div>

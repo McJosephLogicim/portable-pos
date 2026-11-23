@@ -291,7 +291,10 @@ function memberAccessLabel({ primaryOwner, owner }: TeamRosterMember, demo = fal
   return owner ? "Co-owner" : "Team member";
 }
 
-export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onBack" | "backLabel"> & { startAdding?: boolean }) {
+export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" | "onAction" | "onSaved" | "onBack" | "backLabel"> & {
+  startAdding?: boolean;
+  inviteSecondary?: boolean;
+}) {
   const team = props.state.team ?? [];
   const business = props.state.business!;
   const me = props.state.me;
@@ -324,7 +327,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
   const inTab = pending ? waiting : sorted;
   const shown = inTab.filter((m) => matches(query, m.name, m.email));
   const invite = (
-    <button className="btn" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
+    <button className={`btn${props.inviteSecondary ? " secondary" : ""}`} {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
       <UserPlus size={18} /> Invite
     </button>
   );
@@ -456,7 +459,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
         </div>
       )}
       {canLeave && (
-        <button type="button" className="btn destructive block" {...blocked(!props.online && OFFLINE)} onClick={() => setConfirmLeave(true)}>
+        <button type="button" className="btn ghost danger block" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setConfirmLeave(true)}>
           Leave team
         </button>
       )}
@@ -514,7 +517,7 @@ function ChecklistStepSheet({ onAdd, onClose }: { onAdd: (text: string) => void;
 }
 
 export function ChecklistPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props, "Checklist saved");
+  const { draft, setDraft, bar } = useDraft(props, { savedLabel: "Checklist saved", hasAddAction: true });
   const [adding, setAdding] = useState<"single" | "bulk" | null>(null);
   const [photoError, setPhotoError] = useState("");
   const list = draft.settings.checklist ?? [];

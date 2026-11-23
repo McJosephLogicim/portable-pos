@@ -321,7 +321,7 @@ test("menu preview uses the Sell checkout and leaves the live order and sales al
   await expect(page.getByRole("button", { name: "See menu in action" })).toBeVisible();
   await page.getByRole("button", { name: "Sell", exact: true }).click();
   await expect(liveOrder).toBeVisible();
-  await expect(page.getByRole("main").getByText(/Shift .* · 0 sales/)).toBeVisible();
+  await expect(page.getByRole("main").getByText("0 sales", { exact: true })).toBeVisible();
 });
 
 test("recipe back buttons restore each source page and its filters", async ({ page }) => {
@@ -390,9 +390,16 @@ test("checkout Back restores the payment step at the same scroll offset", async 
   await page.getByRole("button", { name: /^Charge .* for 1 item/ }).click();
   const charge = page.getByRole("dialog", { name: "Charge", exact: true });
   await charge.locator("summary").filter({ hasText: "Discount" }).click();
+  const exact = charge.getByRole("button", { name: "Exact", exact: true });
+  await expect(exact).toHaveAttribute("data-primary", "true");
+  await charge.getByRole("textbox", { name: "Other amount" }).fill("1");
+  await expect(charge.getByRole("button", { name: /^Short by/ })).toHaveClass(/\bsecondary\b/);
+  await expect(exact).toHaveAttribute("data-primary", "true");
   await charge.getByRole("textbox", { name: "Other amount" }).fill("200");
   await page.keyboard.press("Tab");
   const next = charge.getByRole("button", { name: /^Next · change/ });
+  await expect(exact).not.toHaveAttribute("data-primary", "true");
+  await expect(next).not.toHaveClass(/\bsecondary\b/);
   const body = charge.locator(".sheet-body");
   await body.evaluate((node) => { node.scrollTop = node.scrollHeight; });
   const scroll = await body.evaluate((node) => node.scrollTop);
@@ -445,7 +452,7 @@ test("the sale slider springs back after a short drag and saves on a full releas
   const done = page.getByRole("dialog", { name: "Sale complete", exact: true });
   await expect(done).toBeVisible();
   await done.getByRole("button", { name: "New sale" }).click();
-  await expect(page.getByText(/Shift .* · 1 sale$/)).toBeVisible();
+  await expect(page.getByRole("main").getByText("1 sale", { exact: true })).toBeVisible();
 });
 
 test("all menu category entry points save zero-item categories", async ({ page }) => {

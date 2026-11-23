@@ -116,6 +116,12 @@
   padding-inline: 10px;
 }
 
+.shiftActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .calendarDay[aria-pressed="true"] :global(.cal-num) {
   background: var(--accent);
   color: var(--on-accent);

@@ -752,7 +752,7 @@ function Checkout({
           </button>
         ) : chosen && typed !== undefined ? (
           <button
-            className="btn block"
+            className={`btn block${typed < total ? " secondary" : ""}`}
             disabled={busy}
             {...blockedBy(payRefusal || (typed < total && "That's less than the total."))}
             onClick={() => ask(typed)}
@@ -885,6 +885,7 @@ function Checkout({
           <div className={`quick ${styles.quickCash}`} role="group" aria-label="Cash received">
             <button
               type="button"
+              data-primary={typed === undefined || typed < total ? true : undefined}
               disabled={busy}
               {...blockedBy(payRefusal)}
               onClick={() => ask(total)}

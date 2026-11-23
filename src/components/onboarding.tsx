@@ -220,7 +220,7 @@ export function Onboarding({
 
   if (action === "team") actionPage = (
     <main>
-      <TeamPage startAdding state={live} online={online} demo={false}
+      <TeamPage startAdding inviteSecondary={hasTeammate} state={live} online={online} demo={false}
         onAction={onAction} onSaved={onSaved} onBack={finish} backLabel="Back to setup guide" />
       {hasTeammate && (
         <div className="page">
@@ -258,11 +258,11 @@ export function Onboarding({
               {steps.map((entry, i) => <span key={entry.id} data-status={i === index ? "current" : i < index ? "complete" : undefined} />)}
             </div>
             {error && <Notice tone="danger">{error}</Notice>}
-            <button type="button" className={`btn block ${styles.cta}`} disabled={busy} {...blocked(!practiceStep && !online && OFFLINE)} onClick={() => void run(start)}>
+            <button type="button" className={`btn block ${step.id === "team" && hasTeammate ? "secondary" : styles.cta}`} disabled={busy} {...blocked(!practiceStep && !online && OFFLINE)} onClick={() => void run(start)}>
               {step.button} <ArrowRight size={18} aria-hidden />
             </button>
             {step.id === "team" && hasTeammate && (
-              <button type="button" className="btn ghost block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>Finish setup</button>
+              <button type="button" className={`btn block ${styles.cta}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onFinish)}>Finish setup</button>
             )}
             {!practiceStep && !online && <p className={styles.storage}>Connect to save changes to your business.</p>}
           </footer>

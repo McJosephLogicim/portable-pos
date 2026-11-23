@@ -454,10 +454,10 @@ function BookingSheet({
     </button>
   ) : !onLinkTill && !me.owner && mine && !over && (
     <div className="grid-2">
-      <button className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
+      <button className={`btn block${tillAction ? " secondary" : ""}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
         {busy ? "Updating…" : "Change role"}
       </button>
-      <button className="btn secondary block" disabled={busy} {...blocked(!online ? OFFLINE : started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
+      <button className="btn ghost danger block" disabled={busy} {...blocked(!online ? OFFLINE : started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
         Leave
       </button>
     </div>
@@ -618,15 +618,14 @@ function BookingSheet({
                 )}
               </div>
             ))}
-            {me.owner && (tillClosed || !open) && (
-              <button type="button" className="list-row" aria-label="Add someone" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setPicking({})}>
-                <span className="avatar seat" aria-hidden="true">
-                  <Plus size={16} />
-                </span>
-                <span className="grow">Add</span>
-              </button>
-            )}
           </div>
+          {me.owner && (tillClosed || !open) && (
+            <div className="row">
+              <button type="button" className="btn secondary compact" disabled={busy} {...blocked(!online && OFFLINE)} aria-haspopup="dialog" onClick={() => setPicking({})}>
+                <Plus size={16} aria-hidden="true" /> Add someone
+              </button>
+            </div>
+          )}
         </div>
 
         {b.quota > 0 && (
@@ -737,6 +736,7 @@ function BookingSheet({
           state={state}
           title={title}
           till={till}
+          primaryReport={Boolean(till && !tillAction && !staffAction)}
           shareText={() => scheduledShiftText(b, business, title, location.origin)}
           busy={busy}
           onDelete={me.owner ? () => setConfirmDelete(true) : undefined}
@@ -810,7 +810,7 @@ function BookingSheet({
                 </button>
               )}
               <button
-                className="btn secondary block"
+                className={`btn block${managing.memberId === me.memberId ? "" : " secondary"}`}
                 onClick={() => {
                   setRoleFor(managing);
                   setManaging(null);
@@ -1298,11 +1298,10 @@ export function BookingEditor({
                 <ChevronRight size={18} className="chev" />
               </button>
             ))}
-            <button type="button" className="list-row" onClick={() => setAdding(true)}>
-              <span className="avatar seat" aria-hidden="true">
-                <Plus size={16} />
-              </span>
-              <span className="grow">{bulk ? "Put someone on every shift" : "Assign someone"}</span>
+          </div>
+          <div className="row">
+            <button type="button" className="btn secondary compact" aria-haspopup="dialog" onClick={() => setAdding(true)}>
+              <Plus size={16} aria-hidden="true" /> {bulk ? "Put someone on every shift" : "Assign someone"}
             </button>
           </div>
         </div>
@@ -1425,14 +1424,14 @@ export function BookingEditor({
 function ShareShift({ text, onClose }: { text: string; onClose: () => void }) {
   const [error, setError] = useState("");
   return (
-    <Sheet title="Share this shift" onClose={onClose} footer={<CopyButton text={text} onError={setError} />}>
+    <Sheet title="Share this shift" onClose={onClose} footer={<CopyButton primary text={text} onError={setError} />}>
       <pre className="schedule-text">{text}</pre>
       {error && <p className="alert" role="alert">{error}</p>}
     </Sheet>
   );
 }
 
-function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, deleteBlock }: {
+function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, deleteBlock, primaryReport = false }: {
   state: RegisterState;
   title: string;
   till?: Shift;
@@ -1440,26 +1439,25 @@ function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, dele
   busy?: boolean;
   onDelete?: () => void;
   deleteBlock?: Reason;
+  primaryReport?: boolean;
 }) {
   const [action, setAction] = useState<"share" | "report" | null>(null);
   return (
     <>
-      <div className="card card-list" role="group" aria-label="Shift actions">
-        <button type="button" className="list-row" disabled={busy} aria-haspopup="dialog" onClick={() => {
+      <div className={styles.shiftActions} role="group" aria-label="Shift actions">
+        <button type="button" className="btn secondary compact" disabled={busy} aria-haspopup="dialog" onClick={() => {
           buzz.tap();
           setAction("share");
         }}>
           <Share2 size={17} aria-hidden="true" />
-          <span className="grow">Share</span>
-          <ChevronRight size={16} className="chev" aria-hidden="true" />
+          Share
         </button>
-        <button type="button" className="list-row" disabled={busy} aria-haspopup="dialog" onClick={() => setAction("report")}>
+        <button type="button" className={`btn compact${primaryReport ? "" : " secondary"}`} disabled={busy} aria-haspopup="dialog" onClick={() => setAction("report")}>
           <FileText size={17} aria-hidden="true" />
-          <span className="grow">Report</span>
-          <ChevronRight size={16} className="chev" aria-hidden="true" />
+          Report
         </button>
         {onDelete && (
-          <button type="button" className="list-row danger" disabled={busy} {...blocked(deleteBlock)} aria-haspopup="dialog" onClick={onDelete}>
+          <button type="button" className="btn secondary danger-text compact" disabled={busy} {...blocked(deleteBlock)} aria-haspopup="dialog" onClick={onDelete}>
             <Trash2 size={17} aria-hidden="true" /> Delete
           </button>
         )}
@@ -1500,7 +1498,7 @@ function ShareSchedule({
     <Sheet
       title="Share the schedule"
       onClose={onClose}
-      footer={shown.length > 0 && <CopyButton text={text} onError={setError} />}
+      footer={shown.length > 0 && <CopyButton primary text={text} onError={setError} />}
     >
       <LiquidSegments
         label="Which shifts"
@@ -1700,6 +1698,7 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
           state={state}
           title={title}
           till={till}
+          primaryReport
           shareText={() => [
             `${business.name} — ${title}`,
             `${date} · ${hours}`,
@@ -1869,7 +1868,7 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
         filter={filter}
         showCalendarObject
         emptyAction={filter !== "open" && openSeats.length > 0 && (
-          <button type="button" className="btn compact" onClick={() => setFilter("open")}>See open seats</button>
+          <button type="button" className={`btn compact${me?.owner ? " secondary" : ""}`} onClick={() => setFilter("open")}>See open seats</button>
         )}
         showDates={filter !== "day"}
         salesOf={salesOf}

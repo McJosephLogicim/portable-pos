@@ -450,6 +450,16 @@ html:not([data-input="keyboard"]) [role="button"]:focus-visible,
   text-align: left;
   color: inherit;
 }
+button.list-row:not(.plain, [role="checkbox"]) {
+  padding-inline: 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.card-list > button.list-row:not(.plain, [role="checkbox"]) {
+  margin-block: 5px;
+}
 button.list-row:not(.sell-option):active {
   opacity: 0.6;
 }
@@ -1045,14 +1055,11 @@ button.list-row:not(.sell-option):active {
   gap: 6px;
   margin-left: auto;
 }
-/* Actions inside a notice stay soft so the page keeps its one black button. */
+/* Notice actions use the standard variants at a compact size. */
 .notice-actions > .btn {
   flex: none;
   min-height: 32px;
   padding: 0 12px;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-  box-shadow: none;
   font-size: 13.5px;
 }
 .notice > .round.small {

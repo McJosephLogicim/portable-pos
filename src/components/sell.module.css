@@ -101,7 +101,7 @@
   text-align: left;
 }
 
-.quickCash:global(.quick) > button:first-child {
+.quickCash:global(.quick) > button[data-primary] {
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: none;
@@ -114,7 +114,7 @@
 .product:global(.item):active:not(:disabled):not([aria-disabled="true"]),
 .stepper:global(.stepper) > button:active:not(:disabled):not([aria-disabled="true"]),
 .paymentMethod:global(.method):active:not(:disabled):not([aria-disabled="true"]),
-.quickCash:global(.quick) > button:active:not(:disabled):not([aria-disabled="true"]):not(:first-child) {
+.quickCash:global(.quick) > button:active:not(:disabled):not([aria-disabled="true"]):not([data-primary]) {
   background: var(--surface-muted);
 }
 
@@ -122,7 +122,7 @@
   transform: none;
 }
 
-.quickCash:global(.quick) > button:first-child:active:not(:disabled):not([aria-disabled="true"]),
+.quickCash:global(.quick) > button[data-primary]:active:not(:disabled):not([aria-disabled="true"]),
 .chargeBar:global(.charge-bar):active:not(:disabled):not([aria-disabled="true"]) {
   background: var(--accent-pressed);
 }

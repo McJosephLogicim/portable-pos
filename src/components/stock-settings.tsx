@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
+import { CookingPot, Merge, Minus, Package, Plus, StickyNote, Tags, Trash2 } from "lucide-react";
 import { SuggestInput } from "./combobox";
 import { AddButton } from "./add-menu";
 import { amountText, parseMoney, stockReplay } from "@/lib/domain";
@@ -629,17 +629,11 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
         </div>
       )}
       {!select.on && props.onMergeStock && mergeable.length > 0 && (
-        <div className="card card-list">
-          <button type="button" className="list-row" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setMerging(true)}>
-            <span className="well">
-              <Merge size={18} strokeWidth={1.8} />
-            </span>
-            <span className="grow stack">
-              <span>Merge leftovers</span>
-              <span className="label">{plural(mergeable.length, "finished shift")}</span>
-            </span>
-            <ChevronRight size={18} className="chev" />
+        <div className="row gap-8">
+          <button type="button" className="btn secondary compact" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setMerging(true)}>
+            <Merge size={18} strokeWidth={1.8} aria-hidden="true" /> Merge leftovers
           </button>
+          <span className="label">{plural(mergeable.length, "finished shift")}</span>
         </div>
       )}
       {merging && props.onMergeStock && (

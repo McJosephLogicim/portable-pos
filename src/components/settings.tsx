@@ -200,7 +200,7 @@ export function SubPage({
  * Edits a copy of the settings and saves each change on its own, behind the owner PIN.
  * Text waits a moment for typing to pause; taps save straight away. Nothing needs a Save button.
  */
-export function useDraft(props: SettingsProps, savedLabel = "Saved") {
+export function useDraft(props: SettingsProps, { savedLabel = "Saved", hasAddAction = false } = {}) {
   const business = props.state.business!;
   const initial: SettingsInput = {
     name: business.name,
@@ -249,7 +249,7 @@ export function useDraft(props: SettingsProps, savedLabel = "Saved") {
   }, [draft, dirty, busy, props.online]);
 
   const bar = error ? (
-    <Notice tone="danger" live="assertive" action={<button className="btn small" onClick={() => void commit()}>Try again</button>}>
+    <Notice tone="danger" live="assertive" action={<button className={`btn small${hasAddAction ? " secondary" : ""}`} onClick={() => void commit()}>Try again</button>}>
       {error}
     </Notice>
   ) : dirty && !props.online ? (
@@ -615,11 +615,9 @@ function BusinessPage(props: SettingsProps) {
       {primaryOwner && (
         <div className="stack gap-10">
           <h2 className="group-title">Danger zone</h2>
-          <div className="card card-list">
-            <button type="button" className="list-row danger" {...blocked(!props.online && OFFLINE)} onClick={() => setConfirmDelete(true)}>
-              <span className="well" aria-hidden="true"><Trash2 size={18} strokeWidth={1.8} /></span>
-              <span className="grow row-title">Delete business</span>
-              <ChevronRight size={18} className="chev" aria-hidden="true" />
+          <div className="row">
+            <button type="button" className="btn secondary danger-text" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" /> Delete business
             </button>
           </div>
         </div>
@@ -760,7 +758,7 @@ function MethodSheet({
 }
 
 function PaymentsPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props);
+  const { draft, setDraft, bar } = useDraft(props, { hasAddAction: true });
   const [editing, setEditing] = useState<PaymentMethod | "new" | null>(null);
   const list = draft.settings.payments;
   const set = (payments: PaymentMethod[]) =>
@@ -794,7 +792,6 @@ function PaymentsPage(props: SettingsProps) {
           <div className="list-row" key={m.id}>
             <button
               className="list-row grow"
-              style={{ padding: 0, minHeight: 0 }}
               onClick={() => setEditing(m)}
             >
               <span className="well">
@@ -1018,7 +1015,7 @@ function DiscountSheet({
 }
 
 function DiscountsPage(props: SettingsProps) {
-  const { draft, setDraft, bar } = useDraft(props);
+  const { draft, setDraft, bar } = useDraft(props, { hasAddAction: true });
   const [editing, setEditing] = useState<Discount | "new" | null>(null);
   const list = draft.settings.discounts;
   const set = (discounts: Discount[]) =>
@@ -1062,7 +1059,6 @@ function DiscountsPage(props: SettingsProps) {
             <div className="list-row" key={d.id}>
               <button
                 className="list-row grow"
-                style={{ padding: 0, minHeight: 0 }}
                 onClick={() => setEditing(d)}
               >
                 <span className="well">

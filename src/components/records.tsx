@@ -316,7 +316,7 @@ export function RecordSelectBar({
           )}
           <button
             type="button"
-            className={"btn secondary danger-text" + (onEdit ? "" : " block")}
+            className={onEdit ? "btn secondary danger-text" : "btn block"}
             aria-label={"Remove " + what}
             {...blocked(!count && `Tap ${nouns} to select them first.`)}
             onClick={() => setConfirming(true)}

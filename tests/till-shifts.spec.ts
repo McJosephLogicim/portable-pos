@@ -50,7 +50,7 @@ async function seedTill(
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = opening ? null : shift;
           state.bookings = withShifts ? [first, second, future, yesterday, closed] : [];
-          if (!staffAs && state.me)
+          if ((!staffAs || opening) && state.me)
             first.staff = [{ memberId: state.me.memberId, name: state.me.name, role: "cashier" }];
           if (linked) second.staff = first.staff;
           if (staffAs) {
@@ -126,6 +126,34 @@ for (const staffAs of ["member", "co-owner", "owner"] as const) {
     await expect(ended.getByRole("button", { name: "Join shift", exact: true })).toHaveCount(0);
   });
 }
+
+test("Starting a shift is the only primary action when a member can also change roles", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 780 });
+  await seedTill(page, true, false, { staffAs: "member", opening: true });
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  await page.getByRole("button", { name: /Atrium/ }).click();
+  const details = page.getByRole("dialog", { name: /^Atrium/ });
+  const primary = details.locator("button.btn:not(.secondary, .ghost, .destructive)");
+  await expect(primary).toHaveCount(1);
+  await expect(primary).toHaveText("Start shift");
+  await expect(details.getByRole("button", { name: "Change role" })).toHaveClass(/\bsecondary\b/);
+  await expect(details.getByRole("button", { name: "Leave", exact: true })).toHaveClass(/\bghost\b/);
+
+  const actions = details.getByRole("group", { name: "Shift actions" });
+  const share = actions.getByRole("button", { name: "Share", exact: true });
+  const report = actions.getByRole("button", { name: "Report", exact: true });
+  for (const button of [share, report]) {
+    await expect(button).toHaveClass(/\bbtn\b.*\bsecondary\b/);
+    await expect(button).not.toHaveClass(/\blist-row\b/);
+  }
+  await share.click();
+  const shareSheet = page.getByRole("dialog", { name: "Share this shift" });
+  await expect(shareSheet.locator("button.btn:not(.secondary)")).toHaveText("Copy");
+  await shareSheet.getByRole("button", { name: "Close", exact: true }).click();
+  await report.click();
+  const reportSheet = page.getByRole("dialog", { name: /^Atrium.*report$/ });
+  await expect(reportSheet.getByText("No till report is available for this shift.")).toBeVisible();
+});
 
 test("Opening and closing tills can review stock, with expenses available after opening", async ({ page }) => {
   await seedTill(page, true, false, { opening: true });
@@ -250,6 +278,7 @@ test("Delete shakes and shows an error for an open till on both Shifts and Till"
     const entry = tab === "Till" ? page.getByRole("button", { name: /^Selling for Atrium/ })
       : page.getByRole("article").filter({ hasText: "Atrium" }).getByRole("button");
     await entry.click();
+    await expect(remove).toHaveClass(/\bbtn\b.*\bdanger-text\b/);
     await expect(remove).toHaveAttribute("aria-disabled", "true");
     const feedback = await remove.evaluate((button: HTMLButtonElement) => {
       button.click();
@@ -351,8 +380,19 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await scheduled.getByRole("button", { name: "Report", exact: true }).click();
   const report = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1 report" });
   await expect(report.getByRole("img", { name: "Closed market • Nov 21 • Shift 1 report" })).toBeVisible();
+  const copy = report.getByRole("button", { name: "Copy", exact: true });
+  await expect(copy).toHaveClass(/\bsecondary\b/);
   await report.getByText("Show as text", { exact: true }).click();
   await expect(report.locator("pre")).toHaveText(/POP POS$/);
+  await report.getByRole("button", { name: "Close", exact: true }).click();
+  await page.evaluate(() => {
+    HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+  });
+  await scheduled.getByRole("button", { name: "Report", exact: true }).click();
+  const unavailable = report.getByRole("button", { name: "Image unavailable", exact: true });
+  await expect(unavailable).toBeDisabled();
+  await expect(unavailable).toHaveClass(/\bsecondary\b/);
+  await expect(copy).not.toHaveClass(/\bsecondary\b/);
   await report.getByRole("button", { name: "Close", exact: true }).click();
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
   await past.getByRole("button", { name: /Sunday Supply • Nov 20 • 11:00 AM/ }).click();
