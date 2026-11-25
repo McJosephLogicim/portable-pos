@@ -41,6 +41,19 @@ function eventForFingerprint(event: InputEvent) {
   return { ...event, sale };
 }
 
+/** A repeated write on the same till must match the first committed request. */
+export async function claimRegisterEvent(tx: Transaction, shiftId: string, id: string, payload: object) {
+  const fingerprint = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  const inserted = await tx.insert(syncedEvents).values({ id, shiftId, fingerprint })
+    .onConflictDoNothing().returning({ id: syncedEvents.id });
+  if (inserted.length) return true;
+  const [prior] = await tx.select({ fingerprint: syncedEvents.fingerprint }).from(syncedEvents)
+    .where(and(eq(syncedEvents.id, id), eq(syncedEvents.shiftId, shiftId)));
+  ensure(prior?.fingerprint === fingerprint,
+    "A record on this phone doesn't match the saved one. This phone's copy is kept.", 409);
+  return false;
+}
+
 /** The drawer difference and stock used, from everything recorded on a closed shift. */
 export async function closingFigures(tx: Transaction, shift: Shift, countedCash: number) {
   const sold = (await tx.select().from(sales).where(eq(sales.shiftId, shift.id))).map(presentSale);
@@ -112,31 +125,7 @@ export async function applyEvents(
   let recorded = false;
 
   for (const event of events) {
-    const fingerprint = createHash("sha256")
-      .update(JSON.stringify(eventForFingerprint(event)))
-      .digest("hex");
-    const inserted = await tx
-      .insert(syncedEvents)
-      .values({ id: event.id, shiftId, fingerprint })
-      .onConflictDoNothing()
-      .returning({ id: syncedEvents.id });
-    if (!inserted.length) {
-      const [prior] = await tx
-        .select({ fingerprint: syncedEvents.fingerprint })
-        .from(syncedEvents)
-        .where(
-          and(
-            eq(syncedEvents.id, event.id),
-            eq(syncedEvents.shiftId, shift.id),
-          ),
-        );
-      ensure(
-        prior?.fingerprint === fingerprint,
-        "A record on this phone doesn't match the saved one. This phone's copy is kept.",
-        409,
-      );
-      continue;
-    }
+    if (!await claimRegisterEvent(tx, shiftId, event.id, eventForFingerprint(event))) continue;
 
     if (event.type === "availability") {
       // Sold-out marks only matter while the shift is open.

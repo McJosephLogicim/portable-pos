@@ -1,3 +1,4 @@
+import { APP_NAME } from "./app-brand";
 import { itemPhotos } from "./item-photos";
 import { joinLink } from "./join-link";
 import { countRows, type CashCount } from "./cash";
@@ -111,9 +112,7 @@ export function shiftReport(
   const top = hours.reduce<{ label: string; total: number } | undefined>((a, b) => (!a || b.total > a.total ? b : a), undefined);
 
   const { items } = stockModel(shift.settings.stockItems, shift.menu);
-  const replay = shift.menu.length
-    ? stockReplay(shift, sales)
-    : { left: { ...(shift.stock ?? {}) }, used: {} as Record<string, number>, start: { ...(shift.stock ?? {}) } };
+  const replay = stockReplay(shift, sales);
   const stock: StockRow[] = Object.keys(replay.left).map((id) => {
     const item = items.find((i) => i.id === id);
     const image = photos.get(id);
@@ -212,9 +211,15 @@ export function countText(count: CashCount | undefined, fmt: Format) {
     .join(", ");
 }
 
-/** The report as plain text to paste in a group chat. */
-export function reportText(r: ShiftReport, fmt: Format) {
-  const out: string[] = [];
+/** Keep the sale and its deduction on a single line in every report format. */
+export function paymentAmounts(method: { amount: number; expenses: number }, fmt: Format) {
+  return { sale: fmt(method.amount), deduction: method.expenses ? " − " + fmt(method.expenses) : "" };
+}
+
+type ReportLine = string | { lead: string; expense: string; tail?: string };
+
+export function reportLines(r: ShiftReport, fmt: Format): ReportLine[] {
+  const out: ReportLine[] = [];
   out.push(r.name);
   out.push([r.date, r.hours].join(" · "));
   if (r.place) out.push(r.place);
@@ -222,8 +227,8 @@ export function reportText(r: ShiftReport, fmt: Format) {
   out.push("");
   out.push(`SALES ${fmt(r.sales.total)} (${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"})`);
   for (const m of r.methods) {
-    out.push(`${m.name} ${fmt(m.amount)}`);
-    if (m.expenses) out.push(`  − ${fmt(m.expenses)} expenses = ${fmt(m.amount - m.expenses)} after expenses`);
+    const { sale, deduction } = paymentAmounts(m, fmt);
+    out.push({ lead: m.name + " " + sale, expense: deduction });
   }
   if (r.sales.discounts) out.push(`Discounts given ${fmt(r.sales.discounts)}`);
   if (r.sales.reversed) out.push(`${r.sales.reversed} reversed`);
@@ -245,13 +250,13 @@ export function reportText(r: ShiftReport, fmt: Format) {
     out.push("", "EXPENSES");
     for (const expense of r.expenses) {
       const source = expenseSourceLabel(expense);
-      out.push(`${expense.label} ${fmt(expense.amount)} (${source[0].toLowerCase() + source.slice(1)})`);
+      out.push({ lead: expense.label + " ", expense: fmt(expense.amount), tail: ` (${source[0].toLowerCase() + source.slice(1)})` });
     }
   }
   out.push("", "CASH");
   out.push(`Float ${fmt(r.cash.float)}`);
   out.push(`+ Cash sales ${fmt(r.cash.sales)}`);
-  if (r.cash.expenses) out.push(`− Till expenses ${fmt(r.cash.expenses)}`);
+  if (r.cash.expenses) out.push({ lead: "− Till expenses ", expense: fmt(r.cash.expenses) });
   out.push(`= Expected ${fmt(r.cash.expected)}`);
   if (r.cash.counted !== undefined) {
     out.push(`Cash on hand ${fmt(r.cash.counted)}${r.cash.difference !== undefined ? ` (${differenceText(r.cash.difference, fmt)})` : ""}`);
@@ -261,7 +266,16 @@ export function reportText(r: ShiftReport, fmt: Format) {
     out.push("");
     for (const p of r.payBack) out.push(`Pay back ${p.name} ${fmt(p.amount)}`);
   }
-  return brandShareText(out.join("\n"));
+  out.push("", APP_NAME);
+  return out;
+}
+
+export function plainReportText(lines: ReportLine[]) {
+  return lines.map((line) => typeof line === "string" ? line : line.lead + line.expense + (line.tail ?? "")).join("\n");
+}
+
+export function reportText(r: ShiftReport, fmt: Format) {
+  return plainReportText(reportLines(r, fmt));
 }
 
 function num(n: number) {

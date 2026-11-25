@@ -33,6 +33,33 @@
   overflow-wrap: anywhere;
 }
 
+.editFloat {
+  align-self: flex-start;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.paymentAmounts {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.paymentAmounts > span {
+  display: inline-block;
+  white-space: pre;
+}
+
+.expenseAmount {
+  color: var(--danger);
+}
+
 .drawerMascot {
   --popo-width: var(--drawer-popo-size);
   position: absolute;

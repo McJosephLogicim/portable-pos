@@ -270,6 +270,20 @@ test(
     });
     assert.equal(reset.shift!.stockSets?.length, 1);
     assert.equal(stockLeft(reset.shift!, reset.sales).ice, 10);
+    const adjust = (change: object, requestId = randomUUID()) => cmd({ action: "adjustTill", deviceId, till: shift.id, shiftId: shift.id, change, requestId });
+    const added = await adjust({ kind: "stock", stockId: "sb", previous: 26, amount: 30 });
+    assert.equal(stockLeft(added.shift!, added.sales).sb, 30);
+    await assert.rejects(adjust({ kind: "stock", stockId: "sb", previous: 26, amount: 30 }), /Stock changed/);
+    const cup = { kind: "stock", stockId: randomUUID(), previous: null, amount: 3, newItem: { name: "Cups", unit: "piece" } };
+    const requestId = randomUUID();
+    await adjust(cup, requestId);
+    const retry = await adjust(cup, requestId);
+    assert.equal(retry.shift!.stockSets?.filter((s) => s.stockId === cup.stockId).length, 1);
+    const recounted = await adjust({ kind: "float", previous: 17000, previousCount: shift.openingCount, amount: 18000, count: { "1000": 18 } });
+    assert.deepEqual(recounted.shift!.openingCount, { "1000": 18 });
+    assert.equal(shiftTotals(recounted.shift!, recounted.sales, recounted.expenses).expectedCash, 28000);
+    await assert.rejects(adjust({ kind: "float", previous: 17000, amount: 19000 }), /float changed/);
+    await assert.rejects(adjust({ kind: "float", previous: 18000, previousCount: { "1000": 18 }, amount: 17000, count: { "1000": 10 } }), /add up/);
     // Counting stock items at closing is optional.
     const closed = await cmd({
       action: "close", deviceId, shiftId: shift.id, pin,
@@ -277,16 +291,21 @@ test(
       closingStock: { sb: 26 },
     });
     const done = closed.shifts.find((s) => s.id === shift.id)!;
-    // 170 float + 300 cash sales − 200 rent from the till. The pocket ride was taken back.
-    assert.equal(done.difference, 27000 - 27000);
+    // 180 float + 300 cash sales − 200 rent from the till.
+    assert.equal(done.difference, -1000);
+    await assert.rejects(adjust({ kind: "float", previous: 18000, amount: 19000 }), /active till/);
     assert.deepEqual(done.closingStock, { sb: 26 });
-    assert.deepEqual(done.usedStock, { sb: 2, ice: 0.4 });
+    assert.deepEqual(done.usedStock, { sb: 2, ice: 0.4, [cup.stockId]: 0 });
     // Closing never overwrites what each shift starts with, so other booths and shifts keep theirs.
     assert.deepEqual(closed.business!.settings.stockItems?.map((i) => [i.id, i.onHand]), [["sb", undefined], ["ice", 6]]);
     assert.deepEqual(done.closingCount, { "10000": 2, "5000": 1, "1000": 2 });
     // The closed shift drops its menu but keeps the names its report needs.
     assert.deepEqual(done.menu, []);
-    assert.deepEqual(done.settings.stockItems?.map((i) => i.name), ["Strawberry pack", "Ice"]);
+    assert.deepEqual(done.settings.stockItems?.map((i) => i.name), ["Strawberry pack", "Ice", "Cups"]);
+    const report = shiftReport(done, closed.sales, closed.expenses!, closed.business!);
+    assert.equal(report.stock.find((i) => i.id === cup.stockId)?.expected, 3);
+    assert.match(reportText(report, fmt), /^Cash ₱300 − ₱200$/m);
+    assert.match(reportText(report, fmt), /^GCash ₱0 − ₱45$/m);
   },
 );
 

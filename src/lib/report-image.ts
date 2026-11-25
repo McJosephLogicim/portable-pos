@@ -1,7 +1,7 @@
 import { countRows } from "./cash";
 import { APP_NAME, appIcons, leaderboardCrown } from "./app-brand";
 import type { LeaderboardShare } from "./insights";
-import { differenceText, expenseSourceLabel, type ShiftReport } from "./report";
+import { differenceText, expenseSourceLabel, paymentAmounts, type ShiftReport } from "./report";
 import { itemInitials } from "./item-photos";
 import { round, unitText } from "./stock";
 import { leaderboardColors } from "./theme";
@@ -348,7 +348,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         const vf = font(24, 500);
         let size = 24;
         while (size > 15 && width(tile.value, font(size, 500)) > tw - 32) size--;
-        text(ctx, tile.value, x + 16, t + 42, size === 24 ? vf : font(size, 500), ink);
+        text(ctx, tile.value, x + 16, t + 42, size === 24 ? vf : font(size, 500), tile.label === "Expenses" ? danger : ink);
         text(ctx, fit(tile.note, font(12.5), tw - 32), x + 16, t + 80, font(12.5), ink3);
       });
     });
@@ -393,20 +393,25 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   /* ---------- how they paid ---------- */
   // One way of paying needs no card: the sentence already has the total.
   if (r.methods.length > 1 || r.methods.some((method) => method.expenses)) {
-    const row = r.methods.some((method) => method.expenses) ? 72 : 54;
+    const row = 54;
     const total = r.methods.reduce((n, x) => n + x.amount, 0) || 1;
     card(r.methods.length * row - 10, (ctx, top) => {
       r.methods.forEach((x, i) => {
         const ty = top + i * row;
-        text(ctx, x.name, L, ty, font(15, 500), ink);
-        const amount = fmt(x.amount);
-        text(ctx, amount, R, ty, font(15, 500), ink, "right");
-        const cw = width(amount, font(15, 500));
-        text(ctx, `${x.count} ${x.count === 1 ? "sale" : "sales"}`, R - cw - 10, ty + 1, font(14), ink3, "right");
+        const { sale, deduction } = paymentAmounts(x, fmt);
+        let size = 15;
+        while (size > 11 && width(sale + deduction, font(size, 500)) > (R - L) * 0.72) size--;
+        const f = font(size, 500);
+        const rightWidth = width(sale + deduction, f);
+        const count = `${x.count} ${x.count === 1 ? "sale" : "sales"}`;
+        const countX = R - rightWidth - 12;
+        text(ctx, fit(x.name, f, countX - width(count, font(13)) - L - 10), L, ty, f, ink);
+        text(ctx, count, countX, ty + 1, font(13), ink2, "right");
+        text(ctx, sale, R - width(deduction, f), ty, f, ink, "right");
+        if (deduction) text(ctx, deduction, R, ty, f, danger, "right");
         bar(ctx, L, ty + 28, R - L, x.amount / total);
-        if (x.expenses) text(ctx, `− ${fmt(x.expenses)} expenses · ${fmt(x.amount - x.expenses)} after expenses`, L, ty + 39, font(13.5), ink2);
       });
-    }, "How they paid");
+    }, "By payment");
   }
 
   /* ---------- stock ---------- */
@@ -459,7 +464,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         if (s.label === "Expected") divider(ctx, ty - 11);
         const f = font(15, s.strong ? 500 : 400);
         text(ctx, s.label, L, ty, f, s.strong ? ink : ink2);
-        text(ctx, s.value, R, ty, f, ink, "right");
+        text(ctx, s.value, R, ty, f, s.label === "Paid from the till" ? danger : ink, "right");
       });
       const ct = top + steps.length * row + 6;
       ctx.font = font(13.5);
@@ -482,7 +487,7 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
         const amount = fmt(e.amount);
         text(ctx, fit(e.label, font(15, 500), R - L - width(amount, font(15, 500)) - 16), L, ty, font(15, 500), ink);
         text(ctx, expenseSourceLabel(e), L, ty + 22, font(13.5), ink2);
-        text(ctx, amount, R, ty, font(15, 500), ink, "right");
+        text(ctx, amount, R, ty, font(15, 500), danger, "right");
       });
     }, "Expenses");
   }

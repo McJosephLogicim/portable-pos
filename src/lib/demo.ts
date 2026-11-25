@@ -1,3 +1,4 @@
+import { adjustTillCount, type TillCount } from "./till-counts";
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
 import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftStock, shiftTotals, stockReplay, updateShiftMenu, type MenuItemChange } from "./domain";
@@ -141,6 +142,7 @@ export interface Closing {
   pin: string;
 }
 export type OwnerAction =
+  | { action: "adjustTill"; shiftId: string; requestId: string; change: TillCount }
   | { action: "completeOnboarding" }
   | { action: "deleteBusiness"; businessId: string; pin: string }
   | ({ action: "open"; expenses?: OpeningExpense[] } & Opening)
@@ -219,6 +221,11 @@ export function demoAction(
         by: state.me?.name?.slice(0, 80) || undefined,
       })) ?? [];
       return { ...state, shift, shifts: [shift, ...state.shifts], soldOut: [], expenses: [...expenses, ...(state.expenses ?? [])] };
+    }
+    case "adjustTill": {
+      if (!state.shift || state.shift.id !== input.shiftId || state.closingShiftId) throw Error("Reopen the active till to change its counts.");
+      const shift = adjustTillCount(state.shift, state.sales, state.business?.settings.stockItems, input.change);
+      return { ...state, shift, shifts: state.shifts.map((s) => s.id === shift.id ? shift : s) };
     }
     case "profile": {
       const me = state.me!;

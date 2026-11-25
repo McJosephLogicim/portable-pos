@@ -306,6 +306,16 @@ const command = z.discriminatedUnion("action", [
   z.object({ action: z.literal("bootstrap") }),
   z.object({ action: z.literal("deleteBusiness"), businessId: z.uuid(), pin }),
   z.object({ action: z.literal("completeOnboarding") }),
+  z.object({
+    action: z.literal("adjustTill"), deviceId: key, shiftId: z.uuid(), requestId: z.uuid(),
+    change: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("float"), previous: amount, previousCount: cashCount.optional(), amount, count: cashCount.optional() }),
+      z.object({
+        kind: z.literal("stock"), stockId: key, previous: z.number().nullable(), amount: z.number().min(0).max(1000000),
+        newItem: z.object({ name: z.string().trim().min(1).max(60), unit: z.string().trim().min(1).max(16) }).optional(),
+      }).refine((change) => !change.newItem || z.uuid().safeParse(change.stockId).success),
+    ]),
+  }),
   z.object({ action: z.literal("acceptInvite"), code: z.string().regex(/^[0-9A-Za-z]{8}$/) }),
   z.object({
     action: z.literal("setup"),

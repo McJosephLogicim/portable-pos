@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { adjustTillCount } from "../lib/till-counts";
 import { checkCount } from "../lib/cash";
 import { changeMenuCategories, menuCategoryNames } from "../lib/menu-categories";
 import { changeMenuItem, checkClosing, checkOpening, mergeLeftovers, setShiftStock, updateShiftMenu } from "../lib/domain";
@@ -18,8 +19,8 @@ import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
 import { bookings, businesses, completedOnboarding, expenses, images, members, sales, shifts, syncedEvents } from "./schema";
-import { activeTill, presentShift, snapshot as baseSnapshot, tillBooking } from "./snapshot";
-import { applyEvents, closingFigures } from "./sync";
+import { activeTill, presentSale, presentShift, snapshot as baseSnapshot, tillBooking } from "./snapshot";
+import { applyEvents, claimRegisterEvent, closingFigures } from "./sync";
 import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const ownerActions = ["menu", "saveMenuCategory", "removeMenuCategories", "removeMenuItem", "restoreMenuItem", "settings", "mode", "mergeStock", ...ownerPlanActions];
@@ -372,6 +373,20 @@ export async function runCommand(
           expense: { ...expense, shiftId, by },
         })), { memberId: member.id, deviceId: cmd.deviceId, primaryOwner });
       }
+    } else if (cmd.action === "adjustTill") {
+      const open = await tillShift();
+      ensure(open && open.id === cmd.shiftId, "Reopen the active till to change its counts.", 409);
+      if (!await claimRegisterEvent(tx, open.id, cmd.requestId, { action: cmd.action, change: cmd.change })) return snapshot(access);
+      const sold = cmd.change.kind === "stock" ? (await tx.select().from(sales).where(eq(sales.shiftId, open.id))).map(presentSale) : [];
+      let next;
+      try {
+        next = adjustTillCount(presentShift(open, business.currency), sold, business.settings?.stockItems, cmd.change);
+      } catch (error) {
+        ensure(false, (error as Error).message, 409);
+      }
+      await tx.update(shifts).set(cmd.change.kind === "float"
+        ? { openingCash: next.openingCash, openingCount: next.openingCount ?? null }
+        : { stockSets: next.stockSets, settings: next.settings }).where(eq(shifts.id, open.id));
     } else if (cmd.action === "mergeStock") {
       const rows = await tx
         .select()

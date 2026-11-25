@@ -69,6 +69,7 @@ export function ImageShareSheet({
   title,
   filename,
   text,
+  textPreview,
   build,
   onClose,
   children,
@@ -78,6 +79,7 @@ export function ImageShareSheet({
   filename: string;
   text: string;
   build: () => Promise<Blob>;
+  textPreview?: ReactNode;
   onClose: () => void;
   children?: ReactNode;
   continueLabel?: string;
@@ -194,7 +196,7 @@ export function ImageShareSheet({
       </div>
       <details ref={details} className={`report-text ${styles.details}`}>
         <summary>Show as text</summary>
-        <pre>{text}</pre>
+        <pre>{textPreview ?? text}</pre>
       </details>
     </Sheet>
   );

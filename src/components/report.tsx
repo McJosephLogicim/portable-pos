@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { reportText, shiftReport } from "@/lib/report";
+import { Fragment, useCallback, useMemo } from "react";
+import { plainReportText, reportLines, shiftReport } from "@/lib/report";
 import { reportImage } from "@/lib/report-image";
 import type { Business, RegisterState, Shift } from "@/lib/types";
 import { shiftCurrency } from "./receipt";
@@ -41,14 +41,16 @@ export function ReportSheet({
     [shift, state, business, booking],
   );
   const fmt = (n: number) => formatMoney(n, currency);
-  const text = reportText(report, fmt);
+  const lines = reportLines(report, fmt);
   const build = useCallback(() => reportImage(report, (n) => formatMoney(n, currency)), [report, currency]);
 
   return (
     <ImageShareSheet
       title={`${report.name}${justClosed ? " closed" : " report"}`}
       filename={report.name}
-      text={text}
+      text={plainReportText(lines)}
+      textPreview={lines.map((line, i) => <Fragment key={i}>{i > 0 && "\n"}{typeof line === "string" ? line :
+        <>{line.lead}<span className={styles.expenseAmount}>{line.expense}</span>{line.tail}</>}</Fragment>)}
       build={build}
       onClose={onDismiss}
       continueLabel={continueLabel}

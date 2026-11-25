@@ -305,6 +305,69 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(report.locator("pre")).not.toContainText("Closing fare");
 });
 
+test("an open till can add and correct stock and float, then share each payment deduction once", async ({ page }) => {
+  await seedTill(page, true, false, { linked: true, withExpenses: true });
+  const till = page.getByRole("button", { name: "Till", exact: true });
+  await till.click();
+  const stock = page.getByRole("dialog", { name: "Adjust stock" });
+  await page.getByRole("button", { name: "Adjust stock" }).click();
+  await stock.getByLabel("Stock item").selectOption({ label: "New item for this till" });
+  await stock.getByLabel("Item name").fill("Paper cups");
+  await stock.getByLabel("Quantity to add").fill("8");
+  await stock.getByRole("button", { name: "Save changes" }).click();
+  await expect(stock).toBeHidden();
+  await page.getByRole("button", { name: "Adjust stock" }).click();
+  await stock.getByLabel("Stock item").selectOption({ label: "Paper cups" });
+  await stock.getByRole("button", { name: "Set total" }).click();
+  await expect(stock.getByLabel("New count")).toHaveValue("8");
+  await stock.getByLabel("New count").fill("5");
+  await stock.getByRole("button", { name: "Save changes" }).click();
+  await expect(stock).toBeHidden();
+
+  const float = page.getByRole("dialog", { name: "Cash float" });
+  await page.getByRole("button", { name: "Edit cash float" }).click();
+  await float.getByRole("button", { name: "Add", exact: true }).click();
+  await float.getByLabel("Cash to add").fill("50");
+  await float.getByRole("button", { name: "Save changes" }).click();
+  await expect(float).toBeHidden();
+  await page.getByRole("button", { name: "Edit cash float" }).click();
+  await expect(float.getByRole("textbox", { name: "Cash float" })).toHaveValue("2550.00");
+  await float.getByLabel("Cash float", { exact: true }).fill("3000");
+  await float.getByRole("button", { name: "Save changes" }).click();
+  await expect(float).toBeHidden();
+  await page.reload();
+  await till.click();
+  await expect(page.getByText("₱3,000 float", { exact: false })).toBeVisible();
+  const deduction = page.locator(".list-row").filter({ hasText: "0 sales" }).getByText("− ₱50", { exact: false }).last();
+  await expect(deduction).toBeVisible();
+  const red = await deduction.evaluate((node) => getComputedStyle(node).color);
+  expect(red).toMatch(/^rgb\(\d+, /);
+  const [r, g, b] = red.match(/\d+/g)!.map(Number);
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+  // The shareable report draws onto a canvas. Capture the ink used for this deduction.
+  await page.evaluate(() => {
+    const drawText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+      if (args[0].trim() === "− ₱50") document.body.dataset.reportExpenseInk = String(this.fillStyle);
+      drawText.apply(this, args);
+    };
+  });
+  await page.getByRole("button", { name: "Report so far" }).click();
+  const report = page.getByRole("dialog", { name: /report$/i });
+  await expect(report.locator(".report-preview img")).toBeVisible();
+  expect(await page.locator("body").getAttribute("data-report-expense-ink")).toBe(
+    "#" + [r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join(""),
+  );
+  await report.getByText("Show as text").click();
+  const text = report.locator("pre");
+  await expect(text).toContainText("Cash ₱0 − ₱50");
+  expect((await text.innerText()).match(/^Cash ₱0 − ₱50$/gm)).toHaveLength(1);
+  await expect(text.getByText("− ₱50", { exact: true })).toHaveCSS("color", red);
+  await expect(text).toContainText("Paper cups 8 / 0 / 5");
+  await expect(text).toContainText("= Expected ₱2,950");
+});
+
 test("Delete shakes and shows an error for an open till on both Shifts and Till", async ({ page }) => {
   await seedTill(page, true, false, { linked: true });
   const reason = "Close the till before deleting this shift.";

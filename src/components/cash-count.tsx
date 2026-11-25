@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { countTotal, denominationPhoto, denominations, type CashCount } from "@/lib/cash";
-import { parseMoney } from "@/lib/domain";
+import { amountText, parseMoney } from "@/lib/domain";
 import { buzz, formatMoney, MoneyField } from "./ui";
 
 export interface CashValue {
@@ -21,14 +21,16 @@ export function CashCounter({
   currency,
   onChange,
   initial,
+  initialAmount,
   label,
 }: {
   currency: string;
   onChange: (value: CashValue) => void;
   initial?: CashCount;
+  initialAmount?: number;
   label: string;
 }) {
-  const [mode, setMode] = useState<"count" | "total">("count");
+  const [mode, setMode] = useState<"count" | "total">(initialAmount !== undefined && !initial ? "total" : "count");
   const [qty, setQty] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(initial ?? {}).map(([k, v]) => [k, String(v)])),
   );
@@ -36,7 +38,7 @@ export function CashCounter({
     const known = new Set(denominations(currency).map((d) => d.value));
     return Object.keys(initial ?? {}).map(Number).filter((v) => !known.has(v));
   });
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => initialAmount === undefined ? "" : amountText(initialAmount, currency));
   const [adding, setAdding] = useState(false);
   const [newValue, setNewValue] = useState("");
   const [addError, setAddError] = useState("");

@@ -11,6 +11,7 @@ import { ItemPreview } from "./item-preview";
 import { shiftCurrency } from "./receipt";
 import { JoinTillSheet, ShiftDetailsSheet, TillShiftsSheet, type ScheduleProps } from "./schedule";
 import { DrawerDifference, ShiftList } from "./shift-list";
+import { TillCountEditor } from "./till-count-editor";
 import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { Popo } from "./popo";
@@ -19,6 +20,7 @@ import { PaymentMethodIcon } from "./payment-method-icon";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
 import { ItemsSold, PaymentSales } from "./insights";
+import { paymentAmounts } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
 import { isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import { shiftName } from "@/lib/shift-name";
@@ -476,7 +478,7 @@ export function CloseSheet({
       <p className="strong">{shiftName(shift, state)}</p>
       <div className="tile">
         <span className="label">Expected in the drawer</span>
-        <Money value={expected} currency={currency} className="big-num" />
+        <Money value={expected} sign={expected < 0} currency={currency} className="big-num" />
       </div>
       <ExpensesSection {...expenseProps} disabled={busy || expenseProps.disabled} />
       <div className="stack gap-10">
@@ -546,6 +548,7 @@ export function ShiftScreen({
   const [report, setReport] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
   const [method, setMethod] = useState<string | null>(null);
+  const [editingCount, setEditingCount] = useState<{ shiftId: string; kind: "stock" | "float" } | null>(null);
   const [allStock, setAllStock] = useState(false);
   const [allPayments, setAllPayments] = useState(false);
   const business = state.business!;
@@ -578,6 +581,7 @@ export function ShiftScreen({
     onEditExpense,
     onUnexpense,
   };
+  const countBlocked = !online ? OFFLINE : state.closingShiftId ? "This till is closing." : false;
   const canClose = online && !state.pending.length;
   const closeReason = !canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till.");
   const needsShift = "Link this till to a shift before closing.";
@@ -629,11 +633,13 @@ export function ShiftScreen({
           <div className={`hero ${styles.tillDrawer}`}>
             <div className={`stack gap-10 ${styles.tillDrawerTotal}`}>
               <span className="hero-label">Expected in the drawer</span>
-              <Money value={totals.expectedCash} currency={currency} className="big-num" />
+              <Money value={totals.expectedCash} sign={totals.expectedCash < 0} currency={currency} className="big-num" />
               <span className="hero-label">
                 {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
                 {totals.cashExpenses ? ` − ${formatMoney(totals.cashExpenses, currency)} expenses` : ""}
               </span>
+              <button type="button" className={styles.editFloat} aria-haspopup="dialog" {...blocked(countBlocked)}
+                onClick={() => setEditingCount({ kind: "float", shiftId: shift.id })}>Edit cash float</button>
             </div>
             <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />
           </div>
@@ -661,38 +667,50 @@ export function ShiftScreen({
             </div>
           </div>
           <ExpensesSection key={shift.id} {...expenseProps} />
-          {remainingStock.length > 0 && (
-            <div className="stack gap-10">
+          <section className="stack gap-10" aria-label="Stock left">
+            <div className="between section-head">
               <p className="group-title">Stock left</p>
-              <div className="card card-list">
-                {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
-                  const item = stockItems.find((i) => i.id === id);
-                  const name = item?.name ?? "Stock item";
-                  const opened = replay!.start[id];
-                  const out = left <= 0 || replay!.short.has(id);
-                  return (
-                    <div className="list-row" key={id}>
-                      <ItemPreview name={name} image={stockPhotos.get(id)} />
-                      <span className="grow stack">
-                        <span className="ellipsis">{name}</span>
-                        <span className="meter" aria-hidden="true">
-                          <i style={progressStyle(opened ? Math.max(0, left / opened) * 100 : 0)} />
-                        </span>
-                      </span>
-                      <span className={"num" + (out ? " g" : "")}>
-                        {out ? "Ran out" : `${unitText(left, item?.unit ?? "piece")} left`}
-                      </span>
-                    </div>
-                  );
-                })}
-                {remainingStock.length > 5 && (
-                  <button type="button" className="list-row" onClick={() => setAllStock(!allStock)} aria-expanded={allStock}>
-                    <span className="grow">{allStock ? "Show less" : `Show ${remainingStock.length - 5} more`}</span>
-                    <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
-                  </button>
-                )}
-              </div>
+              <button type="button" className="link small-link" aria-haspopup="dialog" {...blocked(countBlocked)}
+                onClick={() => setEditingCount({ kind: "stock", shiftId: shift.id })}>{remainingStock.length ? "Adjust stock" : "Add stock"}</button>
             </div>
+            {remainingStock.length > 0 && <div className="card card-list">
+              {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
+                const item = stockItems.find((i) => i.id === id);
+                const name = item?.name ?? "Stock item";
+                const opened = replay!.start[id];
+                const out = left <= 0 || replay!.short.has(id);
+                return (
+                  <div className="list-row" key={id}>
+                    <ItemPreview name={name} image={stockPhotos.get(id)} />
+                    <span className="grow stack">
+                      <span className="ellipsis">{name}</span>
+                      <span className="meter" aria-hidden="true">
+                        <i style={progressStyle(opened ? Math.max(0, left / opened) * 100 : 0)} />
+                      </span>
+                    </span>
+                    <span className={"num" + (out ? " g" : "")}>
+                      {out ? "Ran out" : `${unitText(left, item?.unit ?? "piece")} left`}
+                    </span>
+                  </div>
+                );
+              })}
+              {remainingStock.length > 5 && (
+                <button type="button" className="list-row" onClick={() => setAllStock(!allStock)} aria-expanded={allStock}>
+                  <span className="grow">{allStock ? "Show less" : `Show ${remainingStock.length - 5} more`}</span>
+                  <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
+                </button>
+              )}
+            </div>}
+          </section>
+          {editingCount?.shiftId === shift.id && (
+            <TillCountEditor
+              key={shift.id + editingCount.kind} kind={editingCount.kind} shift={shift} state={state} currency={currency}
+              onClose={() => setEditingCount(null)}
+              onSave={async (change, requestId) => {
+                await schedule.onAction({ action: "adjustTill", shiftId: shift.id, change, requestId });
+                schedule.onSaved(change.kind === "float" ? "Cash float updated" : "Stock updated");
+              }}
+            />
           )}
           <ItemsSold
             state={state}
@@ -706,33 +724,26 @@ export function ShiftScreen({
             <p className="group-title">By payment</p>
             <div className="card card-list">
               {!paymentMethods.length && <EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
-              {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => (
-                <button
-                  type="button"
-                  className="list-row"
-                  key={m.id}
-                  onClick={() => {
-                    buzz.tap();
-                    setMethod(m.id);
-                  }}
-                >
-                  <span className="well">
-                    <PaymentMethodIcon method={m} size={18} />
-                  </span>
+              {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => {
+                const { sale, deduction } = paymentAmounts(m, (value) => formatMoney(value, currency));
+                const row = <>
+                  <span className="well"><PaymentMethodIcon method={m} size={18} /></span>
                   <span className="grow stack">
                     <span>{m.name}</span>
-                    <span className="label">
-                      {m.count} {m.count === 1 ? "sale" : "sales"}
-                      {m.expenses ? ` · ${formatMoney(m.expenses, currency)} expenses` : ""}
-                    </span>
+                    <span className="label">{m.count} {m.count === 1 ? "sale" : "sales"}</span>
                   </span>
-                  <span className="stack end">
-                    <Money value={m.amount - m.expenses} currency={currency} />
-                    {m.expenses > 0 && <span className="label">After expenses</span>}
+                  <span className={styles.paymentAmounts}>
+                    <span><span className="sr-only">Sales </span>{sale}</span>
+                    {deduction && <span className={styles.expenseAmount}>{deduction}<span className="sr-only"> expenses</span></span>}
                   </span>
-                  <ChevronRight size={18} className="chev" />
-                </button>
-              ))}
+                </>;
+                return m.count ? (
+                  <button type="button" key={m.id} className="list-row" aria-haspopup="dialog"
+                    onClick={() => { buzz.tap(); setMethod(m.id); }}>
+                    {row}<ChevronRight size={18} className="chev" />
+                  </button>
+                ) : <div key={m.id} className="list-row">{row}</div>;
+              })}
               {paymentMethods.length > 5 && (
                 <button type="button" className="list-row" onClick={() => setAllPayments(!allPayments)} aria-expanded={allPayments}>
                   <span className="grow">{allPayments ? "Show less" : `Show ${paymentMethods.length - 5} more`}</span>
