@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { itemPhotos } from "@/lib/item-photos";
 import { ItemPreview, ReceiptItemPreviews } from "./item-preview";
+import { PaymentMethodIcon } from "./payment-method-icon";
 import { paymentAmounts } from "@/lib/report";
 import type { MethodTotal } from "@/lib/domain";
 import { bestSellers, salesByHour } from "@/lib/insights";
@@ -248,7 +249,7 @@ export function ItemSales({
   );
 }
 
-export function PaymentEquation({ method, currency, header = false }: {
+function PaymentEquation({ method, currency, header = false }: {
   method: MethodTotal;
   currency: string;
   header?: boolean;
@@ -263,36 +264,61 @@ export function PaymentEquation({ method, currency, header = false }: {
   );
 }
 
-/** One payment method over the till: what came in that way and the receipts. */
-export function PaymentSales({
-  state,
-  shiftIds,
-  method,
-  title,
-  currency,
-  onClose,
-  onSales,
-}: {
+export function ByPayment({ state, methods, receipts, title, currency, status, onSales }: {
   state: RegisterState;
-  shiftIds: string[];
-  method: MethodTotal;
+  methods: MethodTotal[];
+  receipts: Receipts;
   title: string;
   currency: string;
-  onClose: () => void;
-  onSales?: () => void;
+  status?: ShiftRecordStatus;
+  onSales?: (payment: string) => void;
 }) {
-  const sales = shiftReceipts(state, shiftIds).filter((s) => s.payment.id === method.id);
+  const [all, setAll] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const active = methods.filter((method) => method.count || method.expenses);
+  const method = active.find((row) => row.id === picked);
+  const sales = method ? receipts.filter((sale) => sale.payment.id === method.id) : [];
   return (
-    <SalesSheet
-      state={state}
-      title={method.name}
-      amount={<PaymentEquation method={method} currency={currency} header />}
-      summary={`${sales.length} ${sales.length === 1 ? "sale" : "sales"} at ${title}`}
-      sales={sales}
-      currency={currency}
-      onClose={onClose}
-      onSales={sales.length ? onSales : undefined}
-    />
+    <section className="stack gap-10" aria-label="By payment">
+      <p className="group-title">By payment</p>
+      <ShiftRecordList
+        label="Payment methods"
+        status={status}
+        hasRecords={!status && active.length > 0}
+        empty={<EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
+      >
+        {(all ? active : active.slice(0, 5)).map((m) => (
+          <button type="button" key={m.id} className="list-row" aria-haspopup="dialog"
+            onClick={() => { buzz.tap(); setPicked(m.id); }}>
+            <span className="well"><PaymentMethodIcon method={m} size={18} /></span>
+            <span className="grow stack">
+              <span className="ellipsis">{m.name}</span>
+              <span className="label">{m.count} {m.count === 1 ? "sale" : "sales"}</span>
+            </span>
+            <PaymentEquation method={m} currency={currency} />
+            <ChevronRight size={18} className="chev" />
+          </button>
+        ))}
+        {active.length > 5 && (
+          <button type="button" className="list-row" onClick={() => setAll(!all)} aria-expanded={all}>
+            <span className="grow">{all ? "Show less" : `Show ${active.length - 5} more`}</span>
+            <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
+          </button>
+        )}
+      </ShiftRecordList>
+      {method && !status && (
+        <SalesSheet
+          state={state}
+          title={method.name}
+          amount={<PaymentEquation method={method} currency={currency} header />}
+          summary={`${sales.length} ${sales.length === 1 ? "sale" : "sales"} at ${title}`}
+          sales={sales}
+          currency={currency}
+          onClose={() => setPicked(null)}
+          onSales={sales.length && onSales ? () => onSales(method.id) : undefined}
+        />
+      )}
+    </section>
   );
 }
 

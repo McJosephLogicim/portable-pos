@@ -435,6 +435,13 @@ test("phone payment rows show only net, with the calculation in the sheet and on
   await expect(sheet.getByText("Espresso", { exact: true })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "See in Sales" })).toBeVisible();
   expect(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await sheet.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: /Selling for Atrium/ }).click();
+  const shift = page.getByRole("dialog", { name: /^Atrium/ });
+  const shiftCash = shift.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash/ });
+  await expect(shiftCash).toHaveAccessibleName(/Cash.*₱60 total/);
+  await page.setViewportSize({ width: 768, height: 844 });
+  await expect(shiftCash).toHaveAccessibleName(/Sales ₱110.*− ₱50.*= ₱60/);
 });
 
 test("long shift names fit the schedule cards, till strip and sheets", async ({ page }, testInfo) => {
@@ -596,6 +603,7 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await expect(past.getByRole("article")).toHaveCount(2);
   await past.getByRole("button", { name: /Closed market/ }).click();
   const scheduled = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1", exact: true });
+  await expect(scheduled.getByRole("region", { name: "By payment" }).getByText("No sales yet")).toBeVisible();
   await expect(scheduled.getByRole("group", { name: "Shift actions" }).getByRole("button")).toHaveText(["Report", "Share", "Delete"]);
   await scheduled.getByRole("button", { name: "Report", exact: true }).click();
   const report = page.getByRole("dialog", { name: "Closed market • Nov 21 • Shift 1 report" });
@@ -620,6 +628,10 @@ test("Past shift cards open details for both scheduled and unscheduled tills", a
   await scheduled.getByRole("button", { name: "Close", exact: true }).click();
   await past.getByRole("button", { name: /Sunday Supply • Nov 20 • 11:00 AM/ }).click();
   const unscheduled = page.getByRole("dialog", { name: "Sunday Supply • Nov 20 • 11:00 AM", exact: true });
+  await unscheduled.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash.*1 sale/ }).click();
+  const cash = page.getByRole("dialog", { name: "Cash", exact: true });
+  await expect(cash.getByText("Espresso", { exact: true })).toBeVisible();
+  await cash.getByRole("button", { name: "Close", exact: true }).click();
   await unscheduled.getByRole("button", { name: "All 1 sale" }).click();
   const sales = page.getByRole("dialog", { name: "Sales", exact: true });
   await expect(sales.getByText("Espresso", { exact: true })).toBeVisible();
@@ -803,6 +815,17 @@ test("Shift profitability opens the sales and expenses behind its totals", async
   const espresso = demoBootstrap("test-device").menu.find((item) => item.name === "Espresso")!;
   const php = (amount: number) => "₱" + (amount / 100);
   await expect(shift.locator(".list-row").filter({ hasText: /^(Profit|Loss)/ })).toContainText(php(Math.abs(espresso.price - 5000)));
+
+  const payment = shift.getByRole("region", { name: "By payment" });
+  await payment.getByRole("button", { name: /Cash.*1 sale.*₱90 total/ }).click();
+  const cash = page.getByRole("dialog", { name: "Cash", exact: true });
+  await expect(cash).toContainText(/Sales ₱110.*− ₱20.*= ₱90/);
+  await expect(cash.getByText("Espresso", { exact: true })).toBeVisible();
+  await cash.getByRole("button", { name: "See in Sales" }).click();
+  await expect(page.getByRole("button", { name: "Remove payment Cash" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Remove shift Closed market/ })).toBeVisible();
+  await page.getByRole("button", { name: "Back to till" }).click();
+  await cash.getByRole("button", { name: "Close", exact: true }).click();
 
   const salesRow = shift.getByRole("button", { name: /^Sales ₱/ });
   await expect(salesRow).toHaveCSS("box-shadow", "none");

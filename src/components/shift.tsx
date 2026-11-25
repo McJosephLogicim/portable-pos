@@ -16,10 +16,9 @@ import { CashCounter, type CashValue } from "./cash-count";
 import { ReportSheet } from "./report";
 import { Popo } from "./popo";
 import { ExpensesSection, expenseTeammates } from "./expenses";
-import { PaymentMethodIcon } from "./payment-method-icon";
 import { countedOnly, countOf, OptionalStockCount } from "./stock-count";
 import { ShiftStrip } from "./sell";
-import { ItemsSold, PaymentEquation, PaymentSales } from "./insights";
+import { ByPayment, ItemsSold, shiftReceipts } from "./insights";
 import { AddButton } from "./add-menu";
 import { shiftKey } from "@/lib/sales-filter";
 import { isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
@@ -539,10 +538,8 @@ export function ShiftScreen({
   const [pastTillId, setPastTillId] = useState<string | null>(null);
   const [report, setReport] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
-  const [method, setMethod] = useState<string | null>(null);
   const [editingCount, setEditingCount] = useState<{ shiftId: string; kind: "stock" | "float"; stockId?: string } | null>(null);
   const [allStock, setAllStock] = useState(false);
-  const [allPayments, setAllPayments] = useState(false);
   const business = state.business!;
   const shift = state.shift && !state.shift.closedAt ? state.shift : null;
   const activeBooking = state.bookings?.find((b) => b.id === shift?.bookingId);
@@ -559,7 +556,6 @@ export function ShiftScreen({
   const remainingStock = replay ? Object.entries(replay.left) : [];
   const stockItems = shift ? shiftStock(shift).items : [];
   const stockPhotos = itemPhotos(shift?.menu ?? [], state.menu);
-  const paymentMethods = totals?.methods.filter((m) => m.count || m.expenses) ?? [];
   const total = useCountUp(totals?.total ?? 0);
   const currency = shiftCurrency(shift ?? undefined, business);
   const expenseProps = {
@@ -714,43 +710,15 @@ export function ShiftScreen({
             title="this till"
             onSales={(productId) => onSales({ filter: { shift: [shiftKey(shift)], item: [productId] } })}
           />
-          <section className="stack gap-10" aria-label="By payment">
-            <p className="group-title">By payment</p>
-            <div className="card card-list">
-              {!paymentMethods.length && <EmptyRow object="payment" title="No sales yet" detail="Each payment method adds up here as you sell." />}
-              {(allPayments ? paymentMethods : paymentMethods.slice(0, 5)).map((m) => (
-                <button type="button" key={m.id} className="list-row" aria-haspopup="dialog"
-                  onClick={() => { buzz.tap(); setMethod(m.id); }}>
-                  <span className="well"><PaymentMethodIcon method={m} size={18} /></span>
-                  <span className="grow stack">
-                    <span className="ellipsis">{m.name}</span>
-                    <span className="label">{m.count} {m.count === 1 ? "sale" : "sales"}</span>
-                  </span>
-                  <PaymentEquation method={m} currency={currency} />
-                  <ChevronRight size={18} className="chev" />
-                </button>
-              ))}
-              {paymentMethods.length > 5 && (
-                <button type="button" className="list-row" onClick={() => setAllPayments(!allPayments)} aria-expanded={allPayments}>
-                  <span className="grow">{allPayments ? "Show less" : `Show ${paymentMethods.length - 5} more`}</span>
-                  <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
-                </button>
-              )}
-            </div>
-            {method && totals.methods.some((m) => m.id === method) && (
-              <PaymentSales
-                state={state}
-                shiftIds={[shift.id]}
-                method={totals.methods.find((m) => m.id === method)!}
-                title="this till"
-                currency={currency}
-                onClose={() => setMethod(null)}
-                onSales={() => {
-                  onSales({ filter: { shift: [shiftKey(shift)], payment: [method] } });
-                }}
-              />
-            )}
-          </section>
+          <ByPayment
+            key={shift.id}
+            state={state}
+            methods={totals.methods}
+            receipts={shiftReceipts(state, [shift.id])}
+            currency={currency}
+            title="this till"
+            onSales={(payment) => onSales({ filter: { shift: [shiftKey(shift)], payment: [payment] } })}
+          />
           <div className="stack gap-8">
               <button
                 className={`btn block${state.closingShiftId ? "" : " secondary"}`}

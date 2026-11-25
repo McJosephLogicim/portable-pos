@@ -209,14 +209,16 @@ export async function bookingRecords(tx: Transaction, businessId: string, input:
   ensure(id.success && (kind === "sales" || kind === "expenses"), "Choose a shift to see its sales and expenses.");
   const bookingId = id.data;
   const tills = await tx
-    .select({ id: shifts.id, number: shifts.number })
+    .select({ id: shifts.id, number: shifts.number, settings: shifts.settings })
     .from(shifts)
     .where(and(eq(shifts.businessId, businessId), eq(shifts.bookingId, bookingId)))
     .orderBy(shifts.number);
   if (!tills.length) return { sales: [], expenses: [] };
   if (kind === "sales") {
     const receipts = await receiptsPage(tx, businessId, tills[0].number, tills.at(-1)!.number, undefined, bookingId);
-    return { ...receipts, expenses: [] };
+    const settings = tills[0].settings;
+    const paymentSettings = settings ? { currency: settings.currency, payments: settings.payments } : undefined;
+    return { ...receipts, expenses: [], paymentSettings };
   }
   const spent = await tx.select().from(expenses)
     .where(and(inArray(expenses.shiftId, tills.map((till) => till.id)), isNull(expenses.voidedAt)))

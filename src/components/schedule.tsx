@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { OwnerAction } from "@/lib/demo";
 import { RequestFailure } from "@/lib/client";
-import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
+import { amountText, parseMoney, shiftTotals, totalsForRecords } from "@/lib/domain";
 import { blocked, reject, type Reason } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
@@ -61,7 +61,7 @@ import type {
 } from "@/lib/types";
 import { SuggestInput } from "./combobox";
 import { AddMenu } from "./add-menu";
-import { SalesSheet, ShiftSales, shiftReceipts } from "./insights";
+import { ByPayment, SalesSheet, ShiftSales, shiftReceipts } from "./insights";
 import type { ShiftRecordStatus } from "./shift-record-list";
 import { ShiftExpensesSheet, expenseTeammates } from "./expenses";
 import { LiquidSegments } from "./liquid-segments";
@@ -493,6 +493,7 @@ function BookingSheet({
     ? [...salesHistory.records.sales].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     : cachedSales;
   const spent = expenseHistory.records?.expenses ?? cachedExpenses;
+  const paymentSettings = till?.settings ?? salesHistory.records?.paymentSettings;
   const salesStatus = salesHistory.status ?? (props.demo && !receipts.length && salesAmount > 0
     ? { kind: "unavailable" as const, message: "This sample shift only has a sales total." }
     : undefined);
@@ -725,6 +726,17 @@ function BookingSheet({
           onAllSales={openSales}
           onSales={(productId) => props.onSales({ filter: { shift: [b.id], item: [productId] } })}
         />
+        {(till || me.owner || !b.tillClosed) && (
+          <ByPayment
+            state={state}
+            methods={totalsForRecords(paymentSettings?.payments ?? [], receipts, spent).methods}
+            receipts={receipts}
+            currency={paymentSettings?.currency ?? currency}
+            title={title}
+            status={salesStatus ?? expenseHistory.status}
+            onSales={salesHistory.records ? undefined : (payment) => props.onSales({ filter: { shift: [b.id], payment: [payment] } })}
+          />
+        )}
 
         {error && (
           <p className="alert" role="alert">
@@ -1664,7 +1676,8 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
   const date = long.format(new Date(till.openedAt));
   const hours = time.format(new Date(till.openedAt)) + (till.closedAt ? ` to ${time.format(new Date(till.closedAt))}` : "");
   const currency = shiftCurrency(till, business);
-  const total = shiftTotals(till, state.sales, state.expenses).total;
+  const totals = shiftTotals(till, state.sales, state.expenses);
+  const receipts = shiftReceipts(state, [till.id]);
   return (
     <>
       <Sheet title={title} truncateTitle onClose={onClose}>
@@ -1675,7 +1688,7 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
         <div className="card card-list">
           <div className="list-row">
             <span className="grow">Sales</span>
-            <Money value={total} currency={currency} />
+            <Money value={totals.total} currency={currency} />
           </div>
           {till.difference !== undefined && (
             <div className="list-row"><DrawerDifference value={till.difference} currency={currency} /></div>
@@ -1693,6 +1706,14 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
           }}
           onSales={(productId) => onSales({ filter: { shift: [shiftKey(till)], item: [productId] } })}
         />
+        <ByPayment
+          state={state}
+          methods={totals.methods}
+          receipts={receipts}
+          currency={currency}
+          title={title}
+          onSales={(payment) => onSales({ filter: { shift: [shiftKey(till)], payment: [payment] } })}
+        />
         <ShiftSheetActions
           state={state}
           title={title}
@@ -1709,9 +1730,9 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
         <SalesSheet
           state={state}
           title="Sales"
-          amount={total}
+          amount={totals.total}
           summary={title}
-          sales={shiftReceipts(state, [till.id])}
+          sales={receipts}
           currency={currency}
           onClose={() => setShowSales(false)}
           onSales={() => onSales({ filter: { shift: [shiftKey(till)] } })}

@@ -368,7 +368,11 @@ export interface Booking {
   tillClosed?: boolean;
 }
 export type BookingRecordKind = "sales" | "expenses";
-export type BookingRecords = { sales: Sale[]; expenses: Expense[] };
+export type BookingRecords = {
+  sales: Sale[];
+  expenses: Expense[];
+  paymentSettings?: Pick<ShiftSettings, "currency" | "payments">;
+};
 
 /** A business this person can switch to. */
 export interface BusinessSummary {

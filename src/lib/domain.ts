@@ -498,8 +498,14 @@ export interface MethodTotal extends Pick<PaymentMethod, "id" | "name" | "kind" 
 }
 
 export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = []) {
+  const totals = totalsForRecords(shift.settings.payments, sales, expenses, shift.id);
+  return { ...totals, expectedCash: shift.openingCash + totals.cash - totals.cashExpenses };
+}
+
+/** Booking history is already scoped. Register snapshots contain records from other tills. */
+export function totalsForRecords(payments: PaymentMethod[], sales: Sale[], expenses: Expense[], shiftId?: string) {
   const methods = new Map<string, MethodTotal>(
-    shift.settings.payments
+    payments
       .filter((p) => p.on)
       .map((p) => [p.id, { ...p, amount: 0, count: 0, expenses: 0 }]),
   );
@@ -507,7 +513,6 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     cash: 0,
     total: 0,
     discounts: 0,
-    expectedCash: shift.openingCash,
     count: 0,
     reversed: 0,
     methods: [] as MethodTotal[],
@@ -518,7 +523,7 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     pocketExpenses: 0,
   };
   for (const e of expenses) {
-    if (e.shiftId !== shift.id || e.voidedAt) continue;
+    if ((shiftId !== undefined && e.shiftId !== shiftId) || e.voidedAt) continue;
     if (e.source === "pocket") {
       result.pocketExpenses += e.amount;
       continue;
@@ -527,17 +532,17 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     const deduction = e.deduction;
     if (!deduction || deduction.kind === "cash") result.cashExpenses += e.amount;
     if (deduction?.kind === "member") continue;
-    const saved = shift.settings.payments.find((method) => deduction
+    const saved = payments.find((method) => deduction
       ? method.id === deduction.id
       : method.id === "cash" && method.kind === "cash")
-      ?? (!deduction ? shift.settings.payments.find((method) => method.kind === "cash") : undefined);
+      ?? (!deduction ? payments.find((method) => method.kind === "cash") : undefined);
     const payment = saved ?? (deduction ? { ...deduction, kind: deduction.kind } : legacyPayment("cash"));
     const row = methods.get(payment.id) ?? { ...payment, amount: 0, count: 0, expenses: 0 };
     row.expenses += e.amount;
     methods.set(row.id, row);
   }
   for (const sale of sales) {
-    if (sale.shiftId !== shift.id) continue;
+    if (shiftId !== undefined && sale.shiftId !== shiftId) continue;
     if (sale.reversedAt) {
       result.reversed++;
       continue;
@@ -557,6 +562,5 @@ export function shiftTotals(shift: Shift, sales: Sale[], expenses: Expense[] = [
     result.count++;
   }
   result.methods = [...methods.values()];
-  result.expectedCash += result.cash - result.cashExpenses;
   return result;
 }

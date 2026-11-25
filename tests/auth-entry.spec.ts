@@ -681,6 +681,8 @@ test.describe("account-enabled link entry", () => {
       await page.getByRole("button", { name: /Saturday market/ }).click();
       const shift = page.getByRole("dialog", { name: "Saturday market" });
       await expect.poll(() => [...requested].sort()).toEqual(["expenses", "sales"]);
+      const payments = shift.getByRole("region", { name: "By payment" });
+      await expect(payments.getByRole("group", { name: "Payment methods" })).toHaveAttribute("aria-busy", "true");
 
       await shift.getByRole("button", { name: /^Sales ₱/ }).click();
       const sales = page.getByRole("dialog", { name: "Sales", exact: true });
@@ -701,6 +703,11 @@ test.describe("account-enabled link entry", () => {
       await shift.getByRole("button", { name: /^Expenses/ }).click();
       await expect(expenses.getByText("Ice packs")).toBeVisible();
       await expect(expenses.getByRole("group", { name: "Expenses" })).not.toHaveAttribute("aria-busy", "true");
+      await expenses.getByRole("button", { name: "Close", exact: true }).click();
+      await payments.getByRole("button", { name: /Cash.*1 sale.*₱90 total/ }).click();
+      const cash = page.getByRole("dialog", { name: "Cash", exact: true });
+      await expect(cash.getByText("Espresso", { exact: true })).toBeVisible();
+      await expect(cash.getByRole("button", { name: "See in Sales" })).toHaveCount(0);
     } finally {
       finishSales.resolve();
       finishExpenses.resolve();
