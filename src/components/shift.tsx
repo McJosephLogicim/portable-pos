@@ -24,7 +24,7 @@ import { AddButton } from "./add-menu";
 import { shiftKey } from "@/lib/sales-filter";
 import { isOnShift, OPEN_EARLY, startProblem, upcomingBookings } from "@/lib/team";
 import { shiftName } from "@/lib/shift-name";
-import { blocked, OFFLINE, type Reason } from "@/lib/reject";
+import { blocked, type Reason } from "@/lib/reject";
 import {
   errorText,
   formatMoney,
@@ -205,7 +205,6 @@ function NoShift({
 function OpenShift({
   state,
   booking,
-  online,
   onOpen,
   openTill,
   onJoin,
@@ -213,7 +212,6 @@ function OpenShift({
 }: {
   state: RegisterState;
   booking: Booking;
-  online: boolean;
   onOpen: (opening: Opening) => Promise<void>;
   openTill?: Shift;
   onJoin?: (shiftId: string) => Promise<void>;
@@ -243,7 +241,7 @@ function OpenShift({
         <h1 className="headline">This shift is already open</h1>
         <div className="card card-list"><BookingRow booking={booking} state={state} /></div>
         <p className="muted">The till is using the opening counts from the other device.</p>
-        <button type="button" className="btn block" aria-haspopup="dialog" {...blocked(!online && OFFLINE)} onClick={() => setConfirmJoin(true)}>
+        <button type="button" className="btn block" aria-haspopup="dialog" onClick={() => setConfirmJoin(true)}>
           Join till
         </button>
         <button type="button" className="btn ghost compact" onClick={onBack}>Change shift</button>
@@ -343,12 +341,6 @@ function OpenShift({
         </div>
       )}
       <div className="stack gap-10">
-        {!online && (
-          <p className="label row gap-6">
-            <span className="dot danger" /> Connect once to open the shift. Sales
-            work offline after that.
-          </p>
-        )}
         {error && (
           <p className="alert" role="alert">
             {error}
@@ -361,7 +353,7 @@ function OpenShift({
             value === undefined ? "Count the starting cash first."
               : uncounted ? `Count ${uncounted === 1 ? "the item" : `the ${uncounted} items`} marked Count it first.`
                 : unticked ? `Tick ${unticked === 1 ? "the last checklist item" : `the ${unticked} checklist items left`} first.`
-                  : !online && "Connect to the internet to open the shift.",
+                  : false,
           )}
           onClick={async (event) => {
             const origin = event.detail > 0 ? centerOf(event.currentTarget) : undefined;
@@ -539,7 +531,7 @@ export function ShiftScreen({
   sellLabel: string;
 }) {
   const schedule = { ...scheduleProps, onEditExpense, onUnexpense };
-  const { state, online, onSales } = schedule;
+  const { state, onSales } = schedule;
   const [closing, setClosing] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [closedId, setClosedId] = useState<string | null>(null);
@@ -582,8 +574,6 @@ export function ShiftScreen({
     onUnexpense,
   };
   const countBlocked = state.closingShiftId ? "This till is closing." : false;
-  const canClose = online && !state.pending.length;
-  const closeReason = !canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till.");
   const needsShift = "Link this till to a shift before closing.";
   const history = [
     ...new Map(
@@ -638,7 +628,7 @@ export function ShiftScreen({
                 {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
                 {totals.cashExpenses ? ` − ${formatMoney(totals.cashExpenses, currency)} expenses` : ""}
               </span>
-              <button type="button" className={styles.editFloat} aria-haspopup="dialog" {...blocked(countBlocked || (!online && OFFLINE))}
+              <button type="button" className={styles.editFloat} aria-haspopup="dialog" {...blocked(countBlocked)}
                 onClick={() => setEditingCount({ kind: "float", shiftId: shift.id })}>Edit cash float</button>
             </div>
             <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />
@@ -764,15 +754,15 @@ export function ShiftScreen({
           <div className="stack gap-8">
               <button
                 className={`btn block${state.closingShiftId ? "" : " secondary"}`}
-                {...blocked(activeBooking ? closeReason : needsShift)}
+                {...blocked(!activeBooking && needsShift)}
                 aria-haspopup="dialog"
                 onClick={() => setClosing(shift.id)}
               >
                 Count drawer and close
               </button>
-              {(!activeBooking || !canClose) && (
+              {!activeBooking && (
                 <p className="label" style={{ textAlign: "center" }}>
-                  {!activeBooking ? needsShift : online ? "Waiting for sales to sync." : "Connect to close the shift."}
+                  {needsShift}
                 </p>
               )}
               <button className="btn ghost" aria-haspopup="dialog" onClick={() => setReport(true)}>
@@ -786,7 +776,6 @@ export function ShiftScreen({
             key={startingBooking.id}
             state={state}
             booking={startingBooking}
-            online={online}
             onOpen={onOpen}
             openTill={openingTill}
             onJoin={onJoin}
@@ -804,7 +793,6 @@ export function ShiftScreen({
               const linked = state.bookings?.some((b) => b.id === record.bookingId);
               return (
                 <button key={record.id} type="button" className="list-row" aria-haspopup="dialog"
-                  {...blocked(linked && closeReason)}
                   onClick={() => linked ? setClosing(record.id) : setLinking(record.id)}>
                   <Wallet size={17} aria-hidden="true" />
                   <span className="grow stack">

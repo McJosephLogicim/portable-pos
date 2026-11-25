@@ -130,6 +130,12 @@ export const sales = register
   )
   .enableRLS();
 
+export const offlineCommands = register.table("offline_commands", {
+  id: uuid().primaryKey(),
+  businessId: uuid("business_id").notNull().references(() => businesses.id, { onDelete: "cascade" }),
+  fingerprint: text().notNull(),
+}).enableRLS();
+
 export const syncedEvents = register
   .table(
     "synced_events",

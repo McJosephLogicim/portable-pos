@@ -26,16 +26,15 @@ async function summaryAdd(page: Page) {
   return add;
 }
 
-test("Sell explains why Add is blocked while offline", async ({ page, context }) => {
+test("Sell opens the menu editor while offline", async ({ page, context }) => {
   await startDemo(page);
   await page.getByRole("button", { name: "Sell", exact: true }).click();
   const add = page.getByRole("button", { name: "Add an item to the menu", exact: true });
   await expect(page.locator(".sell-head").getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await context.setOffline(true);
-  await expect(add).toHaveAttribute("aria-disabled", "true");
-  await add.click({ force: true });
-  await expect(page.locator(".toast:not(.exit-ghost)")).toContainText("Connect to the internet to add items.");
-  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
 });
 
 test("Bulk menu items share one choice editor and go live on Sell", async ({ page }) => {

@@ -24,6 +24,7 @@ export function presentShift(
     id: row.id,
     businessId: row.businessId,
     number: row.number,
+    soldOut: row.soldOut ?? [],
     deviceId: row.deviceId,
     openedAt: new Date(row.openedAt).toISOString(),
     closedAt: row.closedAt && new Date(row.closedAt).toISOString(),
@@ -398,7 +399,7 @@ export async function snapshot(
     business: { id, name, currency, timeZone, settings },
     menu: me.owner ? menu : withoutMenuCosts(menu),
     shift: active ? presentShift(active, currency) : null,
-    ...(active ? { offlineReversalKey: await reversalPublicKey(tx, business) } : {}),
+    offlineReversalKey: await reversalPublicKey(tx, business),
     soldOut: active?.soldOut ?? [],
     recoveryTillIds,
     shifts: recent.map((row) =>

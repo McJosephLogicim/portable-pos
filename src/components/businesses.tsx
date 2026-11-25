@@ -4,7 +4,7 @@ import { Check, Plus } from "lucide-react";
 import type { BusinessSummary, RegisterState } from "@/lib/types";
 import { brandColors } from "@/lib/theme";
 import { Sheet } from "./ui";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 
 export function initialsOf(name: string) {
   return (
@@ -67,14 +67,12 @@ export function businessList(state: RegisterState): BusinessSummary[] {
 export function BusinessSwitcher({
   state,
   demo,
-  online,
   onSwitch,
   onAdd,
   onClose,
 }: {
   state: RegisterState;
   demo: boolean;
-  online: boolean;
   onSwitch: (id: string) => void;
   onAdd: () => void;
   onClose: () => void;
@@ -93,7 +91,7 @@ export function BusinessSwitcher({
         </>
       }
       footer={
-        <button className="btn secondary block" {...blocked(demo ? "Sign in to run more than one business." : !online && OFFLINE)} onClick={onAdd}>
+        <button className="btn secondary block" {...blocked(demo ? "Sign in to run more than one business." : null)} onClick={onAdd}>
           <Plus size={18} /> Add
         </button>
       }

@@ -50,6 +50,8 @@ function toPlace(f: Feature): Place | null {
 }
 
 async function placeAtPin(point: Point, signal: AbortSignal): Promise<Place> {
+  const coordinates = { name: `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`, ...point };
+  if (!navigator.onLine) return coordinates;
   const url = new URL(REVERSE);
   url.searchParams.set("lat", String(point.lat));
   url.searchParams.set("lon", String(point.lon));
@@ -66,7 +68,7 @@ async function placeAtPin(point: Point, signal: AbortSignal): Promise<Place> {
   } catch {
     // The pin can still be used when reverse geocoding is unavailable.
   }
-  return { name: `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`, ...point };
+  return coordinates;
 }
 
 export function distanceText(km: number) {
@@ -238,6 +240,11 @@ export function LocationPicker({
       return;
     }
     const id = ++seq.current;
+    if (!navigator.onLine) {
+      setResults([]);
+      setStatus("error");
+      return;
+    }
     setStatus("loading");
     const timer = setTimeout(async () => {
       try {
@@ -307,7 +314,9 @@ export function LocationPicker({
   }
 
   const typed = query.trim();
-  const list = typed.length >= 2 ? results : recent;
+  const list = typed.length < 2 ? recent : status === "error"
+    ? recent.filter((p) => [p.name, p.address].join(" ").toLowerCase().includes(typed.toLowerCase()))
+    : results;
   const away = (p: Place) =>
     here && p.lat !== undefined && p.lon !== undefined
       ? distanceText(distanceKm(here, { lat: p.lat, lon: p.lon }))
@@ -364,7 +373,7 @@ export function LocationPicker({
           })}
           {status === "loading" && !results.length && <p className="label pad-y">Searching…</p>}
           {status === "error" && (
-            <p className="label pad-y">Search needs a connection. You can still use the name you typed.</p>
+            <p className="label pad-y">Choose a saved place or use the name you typed.</p>
           )}
           {status === "idle" && typed.length >= 2 && !results.length && (
             <p className="label pad-y">No places found.</p>

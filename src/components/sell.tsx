@@ -1033,7 +1033,7 @@ export function SellScreen({
   const simple = isSimpleMode(business.settings);
   const practice = Boolean(onPracticeDone);
   const canEdit = !preview && !practice && (!state.me || state.me.owner);
-  const addItemReason = !online ? "Connect to the internet to add items." : state.menu.length >= 1000 && "The menu can hold up to 1,000 items.";
+  const addItemReason = state.menu.length >= 1000 && "The menu can hold up to 1,000 items.";
   const currency = shift.settings.currency;
   const menu = shift.menu;
   const categories = useMemo(
@@ -1306,7 +1306,7 @@ export function SellScreen({
               >
                 <span className="add-plus" aria-hidden="true"><Plus size={22} /></span>
                 <span className="name">Add</span>
-                <span className="price">{online ? "Sells from now" : "Connect to add"}</span>
+                <span className="price">Sells from now</span>
               </button>
             )}
           </div>

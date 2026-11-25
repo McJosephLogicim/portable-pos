@@ -1,3 +1,5 @@
+import { readOfflineCommand } from "./offline-command";
+import { commandBase, digest } from "../lib/offline-command";
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { adjustTillCount } from "../lib/till-counts";
@@ -18,10 +20,10 @@ import { ensure } from "./errors";
 import { parseCommand, readTill, validateMenu } from "./input";
 import { sendInvitationEmail } from "./invitation-email";
 import { hashPin, verifyPin } from "./pin";
-import { bookings, businesses, completedOnboarding, expenses, images, members, sales, shifts, syncedEvents } from "./schema";
+import { bookings, businesses, completedOnboarding, expenses, images, members, offlineCommands, sales, shifts, syncedEvents } from "./schema";
 import { activeTill, presentSale, presentShift, snapshot as baseSnapshot, tillBooking } from "./snapshot";
 import { applyEvents, claimRegisterEvent, closingFigures } from "./sync";
-import { acceptInvite, listBusinesses, presentMe, resolveAccess, runPlan, type Actor } from "./team";
+import { acceptInvite, listBusinesses, presentBooking, presentMe, resolveAccess, runPlan, type Actor } from "./team";
 
 const ownerActions = ["menu", "saveMenuCategory", "removeMenuCategories", "removeMenuItem", "restoreMenuItem", "settings", "mode", "mergeStock", ...ownerPlanActions];
 const pinActions = ["reverse", "close", ...ownerActions];
@@ -48,8 +50,10 @@ async function addWalkIn(
   me: ReturnType<typeof presentMe>,
   input: { place?: string; hours: number },
   at?: number,
+  id?: string,
 ) {
   const b = walkInBooking(input, me, at);
+  if (id) b.id = id;
   await tx.insert(bookings).values({
     id: b.id,
     businessId,
@@ -69,16 +73,20 @@ export async function runCommand(
   input: unknown,
 ): Promise<RegisterResponse & { nextSales?: string }> {
   const actor: Actor = typeof who === "string" ? { id: who } : { ...who };
+  const offline = await readOfflineCommand(actor, input);
+  if (offline) input = offline.input;
+  const occurredAt = new Date(Math.min(Date.now(), offline ? Date.parse(offline.request.at) : Date.now())).toISOString();
+  let replay = false;
   const cmd = parseCommand(input);
   const view = readTill(input);
-  if (cmd.action === "deleteBusiness") {
+  if (cmd.action === "deleteBusiness" && !offline) {
     await verifyPin(cmd.businessId, cmd.pin, {
       userId: actor.id,
       run: (tx) => deleteBusiness(tx, cmd.businessId),
     });
   }
   const selfAction = cmd.action === "leave" || cmd.action === "role" || cmd.action === "profile";
-  if (pinActions.includes(cmd.action) || selfAction) {
+  if (pinActions.includes(cmd.action) || selfAction || (offline && cmd.action === "deleteBusiness")) {
     // Joining by invite happens here too, so the PIN is checked against the right business.
     const access = await getDb().transaction((tx) => resolveAccess(tx, actor));
     ensure(access, "Create your business first.", 404);
@@ -104,8 +112,8 @@ export async function runCommand(
         ...(joinedExistingTill ? { joinedExistingTill } : {}),
       };
     };
-    if (cmd.action === "deleteBusiness") return snapshot(null);
-    if (cmd.action === "setup") {
+    if (offline?.finishedExit || (cmd.action === "deleteBusiness" && !offline)) return snapshot(null);
+    if (cmd.action === "setup" && !offline) {
       if (cmd.id) {
         // Another business: the new one is what the app works in from now on.
         await tx
@@ -139,6 +147,43 @@ export async function runCommand(
     // The business is the write lock for its register. Independent sellers never
     // block each other. Snapshots are taken while the same lock is still held.
     const access = await resolveAccess(tx, actor);
+    if (offline) {
+      const { request, fingerprint } = offline;
+      ensure(access && access.business.id === request.businessId && access.member.id === request.memberId, "This membership has changed.", 403);
+      const inserted = await tx.insert(offlineCommands).values({ id: request.id, businessId: request.businessId, fingerprint })
+        .onConflictDoNothing().returning({ id: offlineCommands.id });
+      if (!inserted.length) {
+        const [prior] = await tx.select().from(offlineCommands).where(eq(offlineCommands.id, request.id));
+        ensure(prior?.fingerprint === fingerprint, "This saved change has a different identity.", 409);
+        replay = true;
+        if (cmd.action === "open") view.till = cmd.bookingId;
+        return snapshot(access);
+      }
+      if (cmd.action === "deleteBusiness") {
+        ensure(access.business.ownerId === actor.id && cmd.businessId === access.business.id, "Only the primary owner can delete this business.", 403);
+        await deleteBusiness(tx, cmd.businessId);
+        return snapshot(null);
+      }
+      if (cmd.action === "setup") {
+        await tx.insert(businesses).values({ id: request.id, ownerId: actor.id, name: cmd.name, currency: cmd.currency,
+          timeZone: cmd.timeZone, pinHash: await hashPin(cmd.pin) });
+        await resolveAccess(tx, { ...actor, businessId: request.id });
+        return snapshot(access);
+      }
+      if (offline.join) {
+        const result = await snapshot(access);
+        ensure(result.shift && result.shift.id === view.till, "This till closed or your assignment changed.", 409);
+        return result;
+      }
+      const business = access.business;
+      const bookingId = cmd.action === "booking" ? cmd.booking.id : cmd.action === "deleteBooking" ? cmd.bookingId : undefined;
+      const [booking] = bookingId ? await tx.select().from(bookings)
+        .where(and(eq(bookings.businessId, business.id), eq(bookings.id, bookingId))) : [];
+      const base = commandBase(cmd.action, { ...business, settings: business.settings ?? defaultSettings(business.currency) },
+        business.menu, business.organizers, booking && presentBooking(booking));
+      if (base !== undefined) ensure(request.before === await digest(base),
+        "Someone edited this business while you were offline. Review the latest version and reapply your change.", 409);
+    }
     if (cmd.action === "bootstrap" || cmd.action === "setup" || cmd.action === "acceptInvite")
       return snapshot(access);
     if (cmd.action === "leaveTeam") {
@@ -163,7 +208,7 @@ export async function runCommand(
       activeTill(tx, running ?? await openShifts(), view, { id: me.memberId, primaryOwner });
 
     if ((planActions as readonly string[]).includes(cmd.action)) {
-      const deleted = await runPlan(tx, business, me, cmd as PlanCommand);
+      const deleted = await runPlan(tx, business, me, cmd as PlanCommand, offline?.request.id);
       if (deleted) return { ...(await snapshot(access)), deletedRecord: { kind: "booking" as const, booking: deleted } };
       return snapshot(access);
     }
@@ -203,7 +248,7 @@ export async function runCommand(
       // the others start new stock items from their saved amount.
       const till = await tillShift();
       for (const open of await openShifts()) {
-        const appliedAt = new Date().toISOString();
+        const appliedAt = occurredAt;
         const next = updateShiftMenu(
           presentShift(open, business.currency),
           menu,
@@ -220,7 +265,7 @@ export async function runCommand(
               stockSets: next.stockSets ?? null,
               settings: next.settings,
               ...(menuChanged ? { menuHistory: [...open.menuHistory, {
-                id: crypto.randomUUID(),
+                id: offline?.request.id ?? crypto.randomUUID(),
                 appliedAt,
                 previousMenu: open.menu,
               }] } : {}),
@@ -278,7 +323,7 @@ export async function runCommand(
         );
         // "Left this shift" is what this phone's booth has. Other booths keep theirs.
         const next = cmd.stockNow && open.id === till?.id
-          ? setShiftStock({ ...presentShift(open, business.currency), settings }, cmd.settings.stockItems, cmd.stockNow)
+          ? setShiftStock({ ...presentShift(open, business.currency), settings }, cmd.settings.stockItems, cmd.stockNow, occurredAt)
           : undefined;
         await tx
           .update(shifts)
@@ -322,6 +367,13 @@ export async function runCommand(
       ensure(booking, "That scheduled shift was removed.", 404);
       ensure(isOnShift(booking, me.memberId), "You need to be on this shift to use its till.", 403);
       if (joined) {
+        ensure(!offline || joined.id === bookingId, "This shift already has a different till. Your local records are still saved.", 409);
+        if (offline) {
+          ensure(isDeepStrictEqual(joined.menuHistory[0]?.previousMenu ?? joined.menu, withoutMenuCosts(business.menu)),
+            "Another phone opened this till with a different menu. Review its register before syncing sales.", 409);
+          ensure(joined.openingCash === cmd.openingCash && isDeepStrictEqual(joined.stock ?? {}, cmd.stock),
+            "Another phone opened this till with different counts. Review the opening float and stock.", 409);
+        }
         view.till = joined.id;
         joinedExistingTill = true;
       } else {
@@ -344,7 +396,11 @@ export async function runCommand(
           .orderBy(desc(shifts.number))
           .limit(1);
         const { mode: _mode, menuCategories: _categories, ...checkoutSettings } = withoutStockCosts(settings);
+        // A relinked legacy till can already own the preferred id for this booking.
+        const [used] = await tx.select({ id: shifts.id }).from(shifts).where(eq(shifts.id, bookingId));
+        ensure(!offline || !used, "This shift was relinked. Open its current till before syncing new records.", 409);
         const [opened] = await tx.insert(shifts).values({
+          id: used ? undefined : bookingId,
           stock: stock && Object.keys(stock).length ? stock : null,
           openingCount: openingCount ?? null,
           openedBy: me.name || null,
@@ -355,7 +411,7 @@ export async function runCommand(
           deviceId: cmd.deviceId,
           openingCash: cmd.openingCash,
           number: (last?.number ?? 0) + 1,
-          openedAt: new Date().toISOString(),
+          openedAt: occurredAt,
           menu: withoutMenuCosts(business.menu),
           settings: {
             ...checkoutSettings,
@@ -364,7 +420,7 @@ export async function runCommand(
         }).returning({ id: shifts.id });
         view.till = opened.id;
       }
-      if (!joined && cmd.expenses?.length) {
+      if ((!joined || offline) && cmd.expenses?.length) {
         const shiftId = view.till;
         const by = me.name.slice(0, 80) || undefined;
         await applyEvents(tx, business.id, business.currency, cmd.expenses.map((expense) => ({
@@ -429,7 +485,7 @@ export async function runCommand(
       const open = await tillShift();
       ensure(open, "Open the till first.", 409);
       if (!await tillBooking(tx, open)) {
-        const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt));
+        const bookingId = await addWalkIn(tx, business.id, me, cmd.newShift, Date.parse(open.openedAt), offline?.request.id);
         await tx.update(shifts).set({ bookingId }).where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "linkBooking") {
@@ -502,7 +558,7 @@ export async function runCommand(
         await tx
           .update(shifts)
           .set({
-            closedAt: new Date().toISOString(),
+            closedAt: new Date(Math.max(Date.parse(shift.openedAt), Date.parse(occurredAt))).toISOString(),
             countedCash: cmd.countedCash,
             closingStock: closingStock ?? null,
             closingCount: closingCount ?? null,
@@ -513,7 +569,7 @@ export async function runCommand(
     }
     return snapshot(access);
   });
-  if (cmd.action === "invite" && data.business && cmd.email.trim()) {
+  if (!replay && cmd.action === "invite" && data.business && cmd.email.trim()) {
     const email = normalEmail(cmd.email);
     const code = data.team?.find((m) => normalEmail(m.email) === email)?.inviteCode;
     return { ...data, inviteDelivery: await sendInvitationEmail(data.business, email, code) };

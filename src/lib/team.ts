@@ -144,7 +144,7 @@ function staffFrom(slots: StaffSlot[], members: Member[]): StaffSlot[] {
  * Apply one command to the plan. Pure, so the server and the on-device demo
  * enforce the same rules. The caller loads every booking the command names.
  */
-export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()): Plan {
+export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now(), inviteId?: string): Plan {
   if ((ownerPlanActions as readonly string[]).includes(cmd.action))
     check(me.owner, "Only the owner can change this.", 400);
   const members = plan.members;
@@ -174,7 +174,7 @@ export function applyPlan(plan: Plan, me: Me, cmd: PlanCommand, now = Date.now()
         members: [
           ...members,
           {
-            id: crypto.randomUUID(),
+            id: inviteId ?? crypto.randomUUID(),
             name: cmd.name.trim(),
             email,
             roles: ["cashier", "server"],

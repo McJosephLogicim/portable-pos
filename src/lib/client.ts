@@ -207,10 +207,10 @@ async function registerRequest<T extends { sales: Sale[] }>(
 }
 
 /** Upload a photo and return the address it is served from. Proofs stay private. */
-export async function uploadImage(key: string, photo: Blob, proof = false, face = false): Promise<string> {
+export async function uploadImage(key: string, photo: Blob, proof = false, face = false, id?: string): Promise<string> {
   const { headers } = await sessionFor(key, "add photos");
   const { response, data } = await post(
-    "/api/images" + (proof ? "?proof=1" : face ? "?face=1" : ""),
+    "/api/images?" + new URLSearchParams({ ...(proof && { proof: "1" }), ...(face && { face: "1" }), ...(id && { id }) }),
     { headers: { "Content-Type": photo.type, ...headers }, body: photo },
     30_000,
     "Couldn't upload the photo. Check your connection and try again.",
@@ -220,11 +220,11 @@ export async function uploadImage(key: string, photo: Blob, proof = false, face 
   return data.url as string;
 }
 
-/** A proof photo needs the account's sign-in, so it's fetched and shown from memory. */
-export async function proofBlob(key: string, url: string): Promise<string> {
-  if (url.startsWith("data:")) return url;
+/** Download a private receipt photo using the signed-in account. */
+export async function proofBlob(key: string, url: string): Promise<Blob> {
+  if (!/^\/api\/proofs\/[0-9a-f-]{36}$/.test(url)) throw Error("Invalid receipt photo.");
   const { headers } = await sessionFor(key, "see this photo");
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw Error("The photo isn't available.");
-  return URL.createObjectURL(await response.blob());
+  return response.blob();
 }

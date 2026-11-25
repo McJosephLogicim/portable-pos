@@ -1,3 +1,4 @@
+import { canonical } from "./offline-command";
 import { adjustTillCount, type TillCount } from "./till-counts";
 import { demoMenu, demoStockItems } from "./demo-menu";
 import { checkCount, type CashCount } from "./cash";
@@ -179,6 +180,11 @@ export function demoAction(
 ): RegisterResponse {
   if ("pin" in input && input.pin !== undefined && input.pin !== DEMO_PIN)
     throw new RequestFailure(403, "Wrong PIN. The demo PIN is 1234.");
+  return projectAction(state, input);
+}
+
+/** Project an authorized screen's local edit. The server independently authorizes replay. */
+export function projectAction(state: RegisterState, input: OwnerAction, operation?: { id: string; at: string }): RegisterResponse {
   switch (input.action) {
     case "deleteBusiness":
       throw Error("Sign in to delete a business.");
@@ -203,12 +209,13 @@ export function demoAction(
       const shift: Shift = {
         ...newShift(
           state.deviceId,
-          "demo",
+          business.id,
           Math.max(0, ...state.shifts.map((s) => s.number)) + 1,
           input.openingCash,
           state.menu,
           { ...checkoutSettings, currency: business.currency },
         ),
+        ...(operation ? { id: booking.id, openedAt: operation.at } : {}),
         ...(Object.keys(stock).length ? { stock } : {}),
         ...(openingCount ? { openingCount } : {}),
         openedBy: state.me?.name,
@@ -250,6 +257,7 @@ export function demoAction(
       if (!open) throw Error("Open the till first.");
       if (state.bookings?.some((booking) => booking.id === open.bookingId)) return state;
       const b = walkInBooking(input.newShift, state.me!, Date.parse(open.openedAt));
+      if (operation) b.id = operation.id;
       const shift = { ...open, bookingId: b.id };
       return {
         ...state,
@@ -298,17 +306,20 @@ export function demoAction(
       if (duplicate) throw Error(`Menu SKU ${duplicate} is already in use.`);
       const problem = batchIngredientProblem(menu, state.business?.settings.stockItems);
       if (problem) throw Error(problem);
-      const updated = state.shift && menu !== state.menu
-        ? updateShiftMenu(state.shift, menu, input.action === "menu" ? input.stock : undefined, business?.settings.stockItems)
-        : null;
-      const shift = updated ? { ...updated, menuVersion: crypto.randomUUID() } : state.shift;
+      const shifts = state.shifts.map((record) => {
+        if (record.closedAt || menu === state.menu) return record;
+        const counts = input.action === "menu" && record.id === state.shift?.id ? input.stock : undefined;
+        const updated = updateShiftMenu(record, menu, counts, business?.settings.stockItems, operation?.at);
+        return canonical(updated.menu) === canonical(record.menu) ? updated : { ...updated, menuVersion: operation?.id ?? crypto.randomUUID() };
+      });
+      const shift = shifts.find((s) => s.id === state.shift?.id) ?? state.shift;
       return {
         ...state,
         business: business && { ...business, settings: { ...business.settings, menuCategories } },
         menu,
         deletedRecord,
         shift,
-        shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),
+        shifts,
       };
     }
     case "mode": {
@@ -319,20 +330,20 @@ export function demoAction(
       const business = state.business!;
       const duplicate = duplicateSku(input.settings.stockItems?.map((item) => item.details?.sku) ?? []);
       if (duplicate) throw Error(`Stock SKU ${duplicate} is already in use.`);
-      if (input.currency !== business.currency && state.shift)
+      if (input.currency !== business.currency && state.shifts.some((shift) => !shift.closedAt))
         throw Error("Close the shift before changing currency.");
       if (hasStockCostAmounts(input.settings) && currencyDigits(input.currency) !== currencyDigits(business.currency))
         throw Error(`${input.currency} uses different decimals. Clear the stock and batch costs first or keep ${business.currency}.`);
       checkPrepRecipes(input.settings.stockItems);
       const problem = batchIngredientProblem(state.menu, input.settings.stockItems);
       if (problem) throw Error(problem);
-      const merged = state.shift && {
-        ...state.shift,
-        settings: mergeShiftSettings(state.shift.settings, input.settings),
-      };
-      const shift = merged && (input.stockNow
-        ? setShiftStock(merged, input.settings.stockItems, input.stockNow)
-        : merged);
+      const shifts = state.shifts.map((record) => {
+        if (record.closedAt) return record;
+        const merged = { ...record, settings: mergeShiftSettings(record.settings, input.settings) };
+        return input.stockNow && record.id === state.shift?.id
+          ? setShiftStock(merged, input.settings.stockItems, input.stockNow, operation?.at) : merged;
+      });
+      const shift = shifts.find((s) => s.id === state.shift?.id) ?? state.shift;
       return {
         ...state,
         business: {
@@ -348,7 +359,7 @@ export function demoAction(
           },
         },
         shift,
-        shifts: state.shifts.map((s) => (shift && s.id === shift.id ? shift : s)),
+        shifts,
       };
     }
     case "reverse": {
@@ -391,7 +402,7 @@ export function demoAction(
         difference:
           input.countedCash -
           shiftTotals(shift, state.sales, state.expenses).expectedCash,
-        closedAt: new Date().toISOString(),
+        closedAt: operation?.at ?? new Date().toISOString(),
         ...(closingStock ? { closingStock } : {}),
         ...(closingCount ? { closingCount } : {}),
         ...(Object.keys(leftStock).length ? { leftStock } : {}),
@@ -428,19 +439,26 @@ export function demoAction(
     }
     case "leaveTeam":
       throw Error("Sign in to leave a team.");
-    case "setup":
     case "completeOnboarding":
+      if (operation && state.me?.owner) return { ...state, onboardingComplete: true };
+      // Demo accounts have no onboarding record.
+    case "setup":
       throw Error("Create a live account to set up a business.");
     default: {
       const me = state.me!;
       try {
         const closedBookings = new Set(state.shifts.filter((shift) => shift.closedAt).map((shift) => shift.bookingId));
         const before = {
-          members: state.team ?? [],
+          members: me.owner ? state.team ?? [] : (state.teamRoster ?? [{ id: me.memberId, name: me.name, owner: false }])
+            .map((m) => ({ ...m, roles: me.roles, rate: m.id === me.memberId ? me.rate ?? 0 : 0, email: "", joined: true })),
           organizers: state.organizers ?? [],
           bookings: (state.bookings ?? []).map((booking) => closedBookings.has(booking.id) ? { ...booking, tillClosed: true } : booking),
         };
-        const plan = applyPlan(before, me, input);
+        const plan = applyPlan(before, me, input, Date.now(), operation?.id);
+        if (operation && input.action === "invite") {
+          const invite = plan.members.find((m) => m.id === operation.id);
+          if (invite) delete invite.inviteCode;
+        }
         checkOpenShiftRoster(before, plan, before.bookings.filter((booking) =>
           state.shifts.some((shift) => !shift.closedAt && shift.bookingId === booking.id)));
         return {
@@ -448,7 +466,7 @@ export function demoAction(
           deletedRecord: input.action === "deleteBooking"
             ? { kind: "booking", booking: state.bookings!.find((b) => b.id === input.bookingId)! }
             : undefined,
-          team: plan.members,
+          team: me.owner ? plan.members : state.team,
           organizers: plan.organizers,
           bookings: plan.bookings.sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
         };

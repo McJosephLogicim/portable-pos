@@ -15,7 +15,7 @@ import { Account, AccountLinkError, AccountSwitcher, Setup, type AccountEntry } 
 import { BusinessMark, BusinessSwitcher, initialsOf } from "./businesses";
 import { LoadingScreen } from "./loading-screen";
 import { Onboarding } from "./onboarding";
-import { OfflineBanner, SyncBanner } from "./register-banners";
+import { OfflineBanner, SyncBanner, ReviewCommand } from "./register-banners";
 import { buzz, CelebrateProvider, ConfirmSheet, FacesProvider, facesOf, Notice, PhotoProvider, PinProvider, ProofProvider, Toast } from "./ui";
 import { installRejects, onReject } from "@/lib/reject";
 import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
@@ -28,9 +28,9 @@ import {
   clearRegister,
   editExpense,
   dismissSyncIssue,
-  queueReversal,
+  queueReversal, queueCommand, pauseCommand, retryCommand,
   saveStockCount,
-  loadRegister,
+  loadRegister, readDownload, saveDownload,
   logExpense,
   mergeServer,
   removeExpense,
@@ -45,9 +45,10 @@ import { friendlyError } from "@/lib/errors";
 import { demoAction, demoBootstrap, DEMO, type Opening, type OwnerAction } from "@/lib/demo";
 import { prepareOffline } from "@/lib/service-worker";
 import { LoginExpired, loginDeadline } from "@/lib/login-session";
+import { commandBase, digest, exitsRegister } from "@/lib/offline-command";
 import { isOnShift } from "@/lib/team";
 import type { MenuCategoryChange } from "@/lib/menu-categories";
-import type { BookingRecordKind, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
+import type { BookingRecordKind, BookingRecords, CartLine, ExpenseInput, RegisterResponse, RegisterState, Tender } from "@/lib/types";
 
 const tabs = [
   { id: "sell", name: "Sell", icon: ShoppingBag },
@@ -131,16 +132,17 @@ async function keyForBusiness(userId: string, businessId: string) {
 async function prepareBusiness(userId: string, businessId: string, isCurrent: () => boolean) {
   const id = await keyForBusiness(userId, businessId);
   const saved = await loadRegister(id);
-  if (saved.business?.id === businessId) return { id, downloaded: false };
+  if (saved.business?.id === businessId && (saved.offlineReversalKey || !navigator.onLine)) return { id, downloaded: false };
   if (!navigator.onLine) throw Error("Connect once to download this business to this device.");
   return locked("sync-" + id, async () => {
     if (!isCurrent()) return;
     const current = await loadRegister(id);
-    if (current.business?.id === businessId) return { id, downloaded: false };
-    const data = await api(id, { action: "bootstrap", deviceId: current.deviceId, till: null });
+    if (current.business?.id === businessId && (current.offlineReversalKey || current.pending.length)) return { id, downloaded: false };
+    const data = await api(id, { action: "bootstrap", deviceId: current.deviceId, till: current.shift?.id ?? null });
     if (!isCurrent()) return;
     if (data.business?.id !== businessId) throw Error("This business is no longer available to your account.");
-    await cacheBusinessRegister(id, data);
+    if (current.business?.id === businessId) await mergeServer(id, data);
+    else await cacheBusinessRegister(id, data);
     return { id, downloaded: true };
   });
 }
@@ -155,7 +157,7 @@ function message(e: unknown) {
   return friendlyError(e, "The register couldn't finish that. Try again.");
 }
 function syncFailure(error: unknown) {
-  return { text: message(error), needsSignIn: error instanceof RequestFailure && error.status === 401 };
+  return { text: message(error), unreachable: error instanceof Error && Boolean(error.cause) && !(error instanceof RequestFailure), needsSignIn: error instanceof RequestFailure && error.status === 401 };
 }
 async function syncRegister(
   key: string,
@@ -175,23 +177,50 @@ async function syncRegister(
     }
     if (!current.pending.length && force)
       return mergeServer(key, await api(key, { action: "bootstrap", deviceId: current.deviceId, till: current.shift?.id ?? null }));
-    if (current.pending.length) {
-      await uploadProofs(key, (url) => uploadImage(key, dataUrlToBlob(url), true));
-      current = await loadRegister(key);
-    }
+    const accountBusiness = current.business ? registerKey(parseKey(key).userId, current.business.id) : key;
     while (current.pending.length) {
+      const first = current.pending[0];
+      if (first.type === "command") {
+        if (first.failure) throw Error(first.failure);
+        let data: RegisterResponse;
+        try {
+          for (const [id, photo] of Object.entries(first.photos ?? {}))
+            await uploadImage(accountBusiness, dataUrlToBlob(photo), false, first.request.command.action === "profile", id);
+          data = await api(accountBusiness, { action: "offlineCommand", request: first.request, approval: first.approval });
+        } catch (error) {
+          if (error instanceof RequestFailure && [400, 403, 404, 409, 413, 415, 422].includes(error.status))
+            await pauseCommand(key, first.id, message(error));
+          throw error;
+        }
+        if (data.inviteDelivery && data.inviteDelivery !== "sent")
+          data.syncIssues = [{ id: first.id, message: "Invitation saved. Open the pending invitation to resend its email or copy the link." }];
+        current = await mergeServer(key, data, [first.id]);
+        continue;
+      }
       const events = [];
       let bytes = 0;
       // The server takes one shift per batch. Work for a shift another phone closed goes first.
       const shiftId = current.pending[0].shiftId;
       for (const event of current.pending.slice(0, 25)) {
-        if (event.shiftId !== shiftId) break;
+        if (event.type === "command" || event.shiftId !== shiftId) break;
         const size = new TextEncoder().encode(JSON.stringify(event)).length;
         if (events.length && bytes + size > 1_500_000) break;
         events.push(event);
         bytes += size;
       }
-      const data = await api(key, {
+      const withPhotos = events.filter((e) => e.type === "sale" && e.sale.proofs?.some((url) => url.startsWith("data:")));
+      if (withPhotos.length) {
+        const businessId = current.business!.id;
+        await uploadProofs(key, async (url) => {
+          const photo = dataUrlToBlob(url);
+          const address = await uploadImage(accountBusiness, photo, true);
+          await saveDownload(key, businessId, address, photo);
+          return address;
+        }, new Set(withPhotos.map((e) => e.id)));
+        current = await loadRegister(key);
+        continue;
+      }
+      const data = await api(accountBusiness, {
         action: "sync",
         deviceId: current.deviceId,
         till: current.shift?.id ?? null,
@@ -209,10 +238,35 @@ async function syncRegister(
 export function Workspace() {
   const [key, setKey] = useState<string | null>(null),
     [state, setState] = useState<RegisterState | null>(null);
-  const bookingRecords = useCallback((bookingId: string, kind: BookingRecordKind) => {
-    if (!key) throw Error("Register unavailable.");
-    return loadBookingRecords(key, bookingId, kind);
-  }, [key]);
+  const businessId = state?.business?.id;
+  const historyRequests = useRef(new Map<string, Promise<BookingRecords>>());
+  const bookingRecords = useCallback(async (bookingId: string, kind: BookingRecordKind, amount: number, cached = false) => {
+    if (!key || !businessId) throw Error("Register unavailable.");
+    const resource = "booking:" + bookingId + ":" + kind;
+    const saved = await readDownload<{ amount: number; records: BookingRecords }>(key, businessId, resource);
+    if (saved && (!navigator.onLine || (cached && saved.amount === amount))) return saved.records;
+    if (!navigator.onLine) throw Error("This shift history has not downloaded yet.");
+    const id = JSON.stringify([key, businessId, resource, amount]);
+    let loading = historyRequests.current.get(id);
+    if (!loading) {
+      loading = loadBookingRecords(registerKey(parseKey(key).userId, businessId), bookingId, kind).then(async (records) => {
+        await saveDownload(key, businessId, resource, { amount, records });
+        return records;
+      }).finally(() => historyRequests.current.delete(id));
+      historyRequests.current.set(id, loading);
+    }
+    return loading;
+  }, [key, businessId]);
+
+  const downloadProof = useCallback(async (url: string) => {
+    if (!key || !businessId) throw Error("Register unavailable.");
+    const saved = await readDownload<Blob>(key, businessId, url);
+    if (saved) return saved;
+    if (!navigator.onLine) throw Error("This receipt photo has not downloaded yet.");
+    const blob = await proofBlob(registerKey(parseKey(key).userId, businessId), url);
+    await saveDownload(key, businessId, url, blob);
+    return blob;
+  }, [key, businessId]);
   const navigation = useScreenHistory<Screen>(SELL);
   const resetNavigation = navigation.reset;
   const [online, setOnline] = useState(true),
@@ -310,8 +364,8 @@ export function Workspace() {
       setLinkProblem(null);
       setResolvingLink(Boolean(linked));
       try {
-        if (linked && !navigator.onLine)
-          throw Error("Connect to the internet to open this link.");
+        if (invite && !navigator.onLine)
+          throw Error("Reconnect to accept this team invitation.");
         if (invite) {
           let data: RegisterResponse | undefined;
           try {
@@ -496,7 +550,14 @@ export function Workspace() {
       try {
         if (id !== DEMO) checkSavedLogin(parseKey(id).userId);
         if (!navigator.onLine) return;
-        await sync(id, force);
+        const before = await loadRegister(id);
+        const result = await sync(id, force);
+        if (active.current === id && !result.business && before.pending.some((e) => e.type === "command" && exitsRegister(e.request.command.action))) {
+          const user = parseKey(id).userId;
+          const next = result.businesses?.[0];
+          await connect(next ? await keyForBusiness(user, next.id) : user, false);
+          return;
+        }
         show(id, await loadRegister(id));
         if (active.current === id) setSyncError(null);
       } catch (e) {
@@ -512,7 +573,7 @@ export function Workspace() {
         syncBusy.current = false;
       }
     },
-    [openLogin, show, sync],
+    [openLogin, show, sync, connect],
   );
   useEffect(() => {
     const network = () => {
@@ -540,16 +601,46 @@ export function Workspace() {
       clearInterval(timer);
     };
   }, [flush]);
+  const publicPhotoPaths = [...new Set(JSON.stringify([state?.menu, state?.business?.settings, state?.faces])
+    .match(/\/api\/images\/[0-9a-f-]{36}/g) ?? [])].sort().join(",");
   useEffect(() => {
     if (!state?.business) return;
     let alive = true;
-    void prepareOffline().then((value) => {
+    void prepareOffline(publicPhotoPaths).then((value) => {
       if (alive) setReady(value);
     });
     return () => {
       alive = false;
     };
-  }, [state?.business?.id, state?.shift?.id, online]);
+  }, [state?.business?.id, state?.shift?.id, online, publicPhotoPaths]);
+
+  // Warm older shift reports and private receipt photos while the business is available.
+  const recentBookings = new Set(state?.shifts.filter((t) => !t.closedAt).concat(
+    state.shifts.filter((t) => t.closedAt).sort((a, b) => b.number - a.number).slice(0, 30)).map((t) => t.bookingId));
+  const downloads = JSON.stringify({
+    history: state?.me?.owner ? state.bookings?.filter((b) => !recentBookings.has(b.id) && (b.sales || b.expenses))
+      .map((b) => ({ id: b.id, sales: b.sales, expenses: b.expenses })) : [],
+    photos: [...new Set(state?.sales.flatMap((sale) => sale.proofs?.filter((p) => p.startsWith("/api/proofs/")) ?? []))],
+  });
+  useEffect(() => {
+    if (!online || !key || key === DEMO) return;
+    let cancelled = false;
+    async function warm() {
+      const work = JSON.parse(downloads) as { history?: { id: string; sales?: number; expenses?: number }[]; photos: string[] };
+      for (const booking of work.history ?? []) {
+        for (const kind of ["sales", "expenses"] as const) {
+          if (cancelled || !navigator.onLine) return;
+          if (booking[kind]) await bookingRecords(booking.id, kind, booking[kind], true).catch(() => {});
+        }
+      }
+      for (const url of work.photos) {
+        if (cancelled || !navigator.onLine) return;
+        await downloadProof(url).catch(() => {});
+      }
+    }
+    void warm();
+    return () => { cancelled = true; };
+  }, [key, online, downloads, bookingRecords, downloadProof]);
 
   const otherBusinessIds = state?.businesses?.filter((b) => b.id !== state.business?.id).map((b) => b.id).join(",") ?? "";
   useEffect(() => {
@@ -561,7 +652,13 @@ export function Workspace() {
       for (const businessId of otherBusinessIds.split(",")) {
         if (!isCurrent()) return;
         // One unavailable business mustn't prevent the others from being ready offline.
-        await prepareBusiness(userId, businessId, isCurrent).catch(() => {});
+        try {
+          const destination = await prepareBusiness(userId, businessId, isCurrent);
+          if (destination && isCurrent() && (await loadRegister(destination.id)).pending.length)
+            await syncRegister(destination.id);
+        } catch {
+          // Other businesses still download if one is unavailable.
+        }
       }
     }
     void downloadMissing();
@@ -595,6 +692,23 @@ export function Workspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
+  function offerUndo(key: string, deletedRecord: NonNullable<RegisterResponse["deletedRecord"]>) {
+    if (active.current !== key) return;
+    const item = deletedRecord.kind === "menuItem";
+    const undoNotice: UndoNotice = {
+      id: crypto.randomUUID(),
+      text: item ? "Removed " + deletedRecord.item.name : "Shift deleted",
+      restoredText: item ? "Item restored" : "Shift restored",
+      restore: async (pin) => {
+        if (active.current !== key) throw Error("This business is no longer open.");
+        await owner(deletedRecord.kind === "menuItem"
+          ? { action: "restoreMenuItem", item: deletedRecord.item, index: deletedRecord.index, pin }
+          : { action: "restoreBooking", booking: deletedRecord.booking, pin });
+      },
+    };
+    setUndoNotices((current) => [...current, undoNotice]);
+  }
+
   async function owner(input: OwnerAction) {
     if (!key) throw Error("Register unavailable.");
     if (input.action === "adjustTill" && input.change.kind === "stock") {
@@ -603,8 +717,20 @@ export function Workspace() {
       void flush();
       return;
     }
-    if (!navigator.onLine)
-      throw Error("Connect to the internet to complete this action.");
+    if (!navigator.onLine || syncError?.unreachable || JSON.stringify(input).includes('"data:image/') || (state?.pending.some((e) => e.type === "command") && input.action !== "reverse")) {
+      await locked("write-" + key, () => locked("sync-" + key, async () => {
+        const { state: next, deletedRecord } = await queueCommand(key, input);
+        if (input.action === "close") closingHere.current = true;
+        show(key, next);
+        if (deletedRecord) offerUndo(key, deletedRecord);
+      }));
+      if (exitsRegister(input.action)) setNotice(input.action === "deleteBusiness"
+        ? "Deletion is saved. This business will be deleted when this phone reconnects."
+        : "Your request to leave is saved. It will finish when this phone reconnects.");
+      if (input.action === "invite" && key !== DEMO) setNotice("Invitation saved on this phone. It will be available after sync.");
+      void flush();
+      return;
+    }
     if (input.action === "open" && !(await prepareOffline()))
       throw Error(
         "Could not prepare offline storage. Reload while online and try again.",
@@ -636,21 +762,7 @@ export function Workspace() {
           show(key, await mergeServer(key, snapshot));
           setSyncError(null);
           if (joinedExistingTill) setNotice("This shift was already open. You joined its till using the saved opening counts.");
-          if (deletedRecord && active.current === key) {
-            const item = deletedRecord.kind === "menuItem";
-            const undoNotice: UndoNotice = {
-              id: crypto.randomUUID(),
-              text: item ? "Removed " + deletedRecord.item.name : "Shift deleted",
-              restoredText: item ? "Item restored" : "Shift restored",
-              restore: async (pin) => {
-                if (active.current !== key) throw Error("This business is no longer open.");
-                await owner(deletedRecord.kind === "menuItem"
-                  ? { action: "restoreMenuItem", item: deletedRecord.item, index: deletedRecord.index, pin }
-                  : { action: "restoreBooking", booking: deletedRecord.booking, pin });
-              },
-            };
-            setUndoNotices((current) => [...current, undoNotice]);
-          }
+          if (deletedRecord) offerUndo(key, deletedRecord);
           if (input.action === "invite") {
             if (key === DEMO) setToast("Invitation saved in demo");
             else if (!input.email.trim()) setToast("Invite link ready");
@@ -727,7 +839,12 @@ export function Workspace() {
   /** Sell on a booth another phone already opened. Each phone runs one shift at a time. */
   async function join(shiftId: string) {
     if (!key) throw Error("Register unavailable.");
-    if (!navigator.onLine) throw Error("Connect to the internet to join this shift.");
+    if (!navigator.onLine || syncError?.unreachable || state?.pending.some((e) => e.type === "command")) {
+      await locked("write-" + key, () => locked("sync-" + key, async () =>
+        show(key, (await queueCommand(key, { action: "joinTill", shiftId })).state)));
+      void flush();
+      return;
+    }
     if (!(await prepareOffline()))
       throw Error("Could not prepare offline storage. Reload while online and try again.");
     await locked("write-" + key, async () => {
@@ -770,7 +887,7 @@ export function Workspace() {
         throw Error("Sync this device before signing out.");
       const userId = parseKey(key).userId;
       const { error } = await authForUser(userId).auth.signOut({ scope: "local" });
-      if (error) throw error;
+      if (error && !(isAuthRetryableFetchError(error) && !(await authForUser(userId).auth.getSession()).data.session)) throw error;
       await clearRegister(key);
       forgetAccount(userId);
     });
@@ -787,6 +904,7 @@ export function Workspace() {
   const faces = state ? facesOf(state) : { byId: {}, byName: {} };
   const business = state?.business;
   const queued = state?.pending ?? [];
+  const review = queued[0]?.type === "command" && queued[0].failure ? queued[0] : null;
   const syncing = online && syncAttempts.some((attempt) => attempt.key === key);
   const visibleSyncError = online && !syncing && !bootError ? syncError : null;
   const connection = !online ? { text: "Offline", dot: "warn" }
@@ -810,9 +928,8 @@ export function Workspace() {
   };
   async function upload(file: File, face = false, icon = false) {
     const photo = icon ? await compressPhoto(file, 256, 0.85, "image/webp") : await compressPhoto(file);
-    if (!key || key === DEMO) return blobToDataUrl(photo);
-    if (!navigator.onLine) throw Error("Connect to add photos.");
-    return uploadImage(key, photo, false, face);
+    if (!key || key === DEMO || !navigator.onLine || syncError?.unreachable || state?.pending.some((e) => e.type === "command")) return blobToDataUrl(photo);
+    return uploadImage(registerKey(parseKey(key).userId, businessId), photo, false, face);
   }
   /** Open another business on this phone. Each keeps its own till and sync queue. */
   async function switchBusiness(businessId: string) {
@@ -838,7 +955,13 @@ export function Workspace() {
   async function addBusiness(input: OwnerAction) {
     if (!key || key === DEMO) throw Error("Sign in to add a business.");
     if (input.action !== "setup") return;
-    if (!navigator.onLine) throw Error("Connect to the internet to add a business.");
+    if (!navigator.onLine) {
+      await locked("write-" + key, () => locked("sync-" + key, async () =>
+        show(key, (await queueCommand(key, { ...input, action: "createBusiness" })).state)));
+      resetNavigation({ tab: "settings" });
+      setNotice("Business setup saved. It will appear in Businesses after sync.");
+      return;
+    }
     const id = crypto.randomUUID();
     const next = registerKey(parseKey(key).userId, id);
     await locked("write-" + next, async () => {
@@ -897,8 +1020,8 @@ export function Workspace() {
     </>
   );
   const loadProof = useCallback(
-    (url: string) => (!key || key === DEMO || url.startsWith("data:") ? Promise.resolve(url) : proofBlob(key, url)),
-    [key],
+    async (url: string) => !key || key === DEMO || url.startsWith("data:") ? url : URL.createObjectURL(await downloadProof(url)),
+    [key, downloadProof],
   );
   async function reverse(saleId: string, reason: string, pin: string) {
     if (!key) throw Error("Register unavailable.");
@@ -1140,7 +1263,7 @@ export function Workspace() {
           {offlineBanner}
           {queued.length > 0 && (
             <SyncBanner events={queued} online={online} syncing={syncing} failed={Boolean(visibleSyncError)}
-              action={visibleSyncError && (
+              action={!review && visibleSyncError && (
                 <button type="button" className="register-banner-button"
                   onClick={visibleSyncError.needsSignIn ? () => setAccount(true) : () => void flush(true)}>
                   {visibleSyncError.needsSignIn ? "Sign in" : "Retry sync"}
@@ -1148,6 +1271,33 @@ export function Workspace() {
               )}
             />
           )}
+          {visibleSyncError && queued.length > 0 && !review && <Notice tone="danger">{visibleSyncError.text}</Notice>}
+          {review && <ReviewCommand event={review} online={online} onCompare={async () => {
+            const data = await api(registerKey(parseKey(key).userId, review.request.businessId), { action: "bootstrap", deviceId: review.request.deviceId, till: review.request.till });
+            if (!data.me?.owner || data.business?.id !== review.request.businessId) throw Error("Only the business owner can resolve this change.");
+            const command = review.request.command;
+            const bookingId = (command.booking as { id?: string } | undefined)?.id ?? command.bookingId;
+            const latest = commandBase(String(command.action), data.business, data.menu, data.organizers ?? [], data.bookings?.find((b) => b.id === bookingId));
+            if (latest === undefined) throw Error("Reopen the affected record to review the latest version.");
+            return { before: await digest(latest), latest, saved: command };
+          }} onRetry={async (pin, before) => {
+            await locked("sync-" + key, () => retryCommand(key, review.id, pin, before));
+            await flush(true);
+          }} onDiscard={async () => {
+            await locked("sync-" + key, async () => {
+              const current = await loadRegister(key);
+              if (current.pending[0]?.id !== review.id) return;
+              const opening = review.request.command.action === "open";
+              const desiredTill = opening ? String(review.request.command.bookingId) : review.request.till;
+              const data = await api(registerKey(parseKey(key).userId, review.request.businessId), { action: "bootstrap", deviceId: current.deviceId, till: desiredTill });
+              if (opening && data.shift?.id !== desiredTill && current.pending.slice(1).some((e) => e.shiftId === desiredTill))
+                throw Error("This till has saved activity. Restore its shift assignment or opening details, then retry this change.");
+              if (current.pending.some((e) => e.type === "sale" && e.menuVersion === review.id))
+                throw Error("Saved sales use this menu version. Retry or compare the menu change before syncing those sales.");
+              show(key, await mergeServer(key, data, [review.id]));
+            });
+            await flush(true);
+          }} />}
           {state?.syncIssues?.map((issue) => <Notice key={issue.id} tone="danger" onDismiss={() => {
             void dismissSyncIssue(key, issue.id).then((next) => show(key, next)).catch((error) => setNotice(message(error)));
           }}>{issue.message}</Notice>)}
@@ -1244,7 +1394,6 @@ export function Workspace() {
           <BusinessSwitcher
             state={state}
             demo={demo}
-            online={online}
             onClose={() => setSwitching(null)}
             onAdd={() => navigation.open({ tab: "add-business" }, { from: navigation.current.id })}
             onSwitch={(id) => {

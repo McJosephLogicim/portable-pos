@@ -1,7 +1,9 @@
+import { commandBase, commandLabel, digest, exitsRegister, offlineActions, prepareCommandPhotos, type CommandEvent, type LocalAction, type OfflineRequest } from "./offline-command";
+import { isOnShift, ownerPlanActions } from "./team";
 import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domain";
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
 import { demoPlan } from "./demo-plan";
-import { DEMO, DEMO_PIN, demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
+import { DEMO, DEMO_PIN, demoAction, projectAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
 import { adjustTillCount, applyStockCount, tillStockItems, type TillCount } from "./till-counts";
 import { round } from "./stock";
 import { reversalLabel, sealReversalPin, type ReversalDetails } from "./reversal-approval";
@@ -168,6 +170,30 @@ export async function loadRegister(key: string, { opening = false } = {}): Promi
   });
 }
 
+/** Private downloads are keyed by register and business, outside the public service-worker cache. */
+export async function readDownload<T>(key: string, businessId: string, resource: string): Promise<T | undefined> {
+  const tx = await begin([SETTINGS], "readonly");
+  const request = tx.objectStore(SETTINGS).get([key, businessId, resource]);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(request.result);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+export async function saveDownload(key: string, businessId: string, resource: string, data: unknown) {
+  const tx = await begin([REGISTERS, SETTINGS], "readwrite");
+  const current = tx.objectStore(REGISTERS).get(key);
+  current.onsuccess = () => {
+    const state: RegisterState | undefined = current.result;
+    if (state?.business?.id === businessId && (!resource.startsWith("booking:") || state.me?.owner))
+      tx.objectStore(SETTINGS).put(data, [key, businessId, resource]);
+  };
+  return new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 let tabChannel: BroadcastChannel | undefined;
 function registerChannel() {
   if (typeof window === "undefined" || typeof BroadcastChannel === "undefined")
@@ -204,6 +230,8 @@ async function updateRegister(
       try {
         const next = update(current);
         result = next ?? emptyRegister(id);
+        if (!next || current.business?.id !== next.business?.id || (current.me?.owner && !next.me?.owner))
+          tx.objectStore(SETTINGS).delete(IDBKeyRange.bound([key], [key, []]));
         if (next === null) store.delete(key);
         else store.put(next, key);
         if (businesses) tx.objectStore(SETTINGS).put(businesses, directoryKey(key));
@@ -253,6 +281,89 @@ export function savePracticeAction(key: string, input: OwnerAction): Promise<Reg
   });
 }
 
+/** The workspace holds the business write lock while preparing and committing an edit. */
+export async function queueCommand(key: string, action: LocalAction) {
+  const initial = await loadRegister(key);
+  const { business, me } = initial;
+  checkPendingExit(initial);
+  if (!business || !me || !offlineActions.includes(action.action))
+    throw Error("Connect to your account to complete this action.");
+  if ((["menu", "settings", "mode", "mergeStock", "completeOnboarding", "saveMenuCategory",
+    "removeMenuCategories", "restoreMenuItem", "removeMenuItem", ...ownerPlanActions].includes(action.action)
+    || (action.action === "profile" && action.memberId && action.memberId !== me.memberId)) && !me.owner)
+    throw Error("Only a business owner can change this.");
+  const input = action.action === "close" ? { ...action, shiftId: action.shiftId ?? initial.shift?.id } : action;
+  const { pin, ...body } = { pin: undefined as string | undefined, ...input };
+  const scope = business.id + ":" + initial.deviceId;
+  const { value: command, photos } = await prepareCommandPhotos(body, scope);
+  const bookingId = action.action === "booking" ? action.booking.id : action.action === "deleteBooking" ? action.bookingId : undefined;
+  const base = commandBase(action.action, business, initial.menu, initial.organizers ?? [],
+    bookingId ? initial.bookings?.find((b) => b.id === bookingId) : undefined);
+  const request: OfflineRequest = {
+    id: crypto.randomUUID(), at: new Date().toISOString(), businessId: business.id, memberId: me.memberId,
+    deviceId: initial.deviceId, till: initial.shift?.id ?? null, command,
+    ...(base === undefined ? {} : { before: await digest((await prepareCommandPhotos(base, scope)).value) }),
+  };
+  let approval: string | undefined;
+  if (pin !== undefined && key !== DEMO) {
+    if (!initial.offlineReversalKey) throw Error("Open this business online once to prepare PIN approvals.");
+    approval = await sealReversalPin(initial.offlineReversalKey, pin, commandLabel(request));
+  }
+  const event: CommandEvent = { type: "command", id: request.id, shiftId: request.till ?? "", request,
+    ...(approval && { approval }), ...(Object.keys(photos).length && { photos }) };
+  let deletedRecord: RegisterResponse["deletedRecord"];
+  const state = await updateRegister(key, (current) => {
+    if (current.business?.id !== business.id || current.me?.memberId !== me.memberId || current.shift?.id !== initial.shift?.id)
+      throw Error("The register changed. Open it again and retry.");
+    let next: RegisterResponse;
+    if (input.action === "createBusiness" || exitsRegister(input.action)) {
+      if (key === DEMO) throw Error("Sign in to manage businesses.");
+      if (input.action !== "createBusiness") {
+        if (!("businessId" in input) || input.businessId !== business.id) throw Error("Open the matching business.");
+        if (current.cart.length) throw Error("Finish or clear the current order first.");
+        if (input.action === "deleteBusiness" && current.shifts.some((s) => !s.closedAt)) throw Error("Close all open tills before deleting this business.");
+      }
+      next = current;
+    } else if (input.action === "joinTill") {
+      const shift = current.shifts.find((s) => s.id === input.shiftId && !s.closedAt);
+      if (current.shift || !shift || !isOnShift(current.bookings?.find((b) => b.id === shift.bookingId), me.memberId))
+        throw Error("Choose an open till on a shift you are assigned to.");
+      next = { ...current, shift, soldOut: shift.soldOut ?? [] };
+    } else {
+      const recovering = input.action === "linkBooking" && input.shiftId !== current.shift?.id;
+      const other = (input.action === "close" && input.shiftId !== current.shift?.id) || recovering;
+      const active = other ? current.shifts.find((s) => s.id === input.shiftId && !s.closedAt) : current.shift;
+      if (other && (!me.owner || !active)) throw Error("Choose an open till to close.");
+      if (input.action === "close" && !other && current.cart.length) throw Error("Finish or clear the current order before closing.");
+      const source = other ? { ...current, shift: active ?? null } : current;
+      next = key === DEMO ? demoAction(source, input) : projectAction(source, input, request);
+      if (other && (!recovering || current.shift)) next = { ...next, shift: current.shift, soldOut: current.soldOut };
+    }
+    const { deletedRecord: removed, ...snapshot } = next;
+    deletedRecord = removed;
+    return { ...current, ...snapshot, cart: current.shift?.id === next.shift?.id ? current.cart : [],
+      closingShiftId: undefined, pending: key === DEMO ? current.pending : [...current.pending, event] };
+  });
+  return { state, deletedRecord };
+}
+
+export function pauseCommand(key: string, id: string, failure: string) {
+  return updateRegister(key, (s) => ({ ...s, pending: s.pending.map((e) =>
+    e.type === "command" && e.id === id ? { ...e, failure } : e) }));
+}
+
+export async function retryCommand(key: string, id: string, pin?: string, before?: string) {
+  const current = await loadRegister(key);
+  const first = current.pending[0];
+  if (first?.type !== "command" || first.id !== id) throw Error("This change has already been reviewed.");
+  const request = before ? { ...first.request, before } : first.request;
+  if (before && first.approval && !pin) throw Error("Enter the owner PIN to replace the latest version.");
+  const approval = pin && current.offlineReversalKey
+    ? await sealReversalPin(current.offlineReversalKey, pin, commandLabel(request)) : first.approval;
+  return updateRegister(key, (s) => ({ ...s, pending: s.pending.map((e) =>
+    e.type === "command" && e.id === id ? { ...e, request, failure: undefined, approval } : e) }));
+}
+
 function withAvailability(
   values: string[],
   target: string,
@@ -271,6 +382,7 @@ export function mergeServer(
 ): Promise<RegisterState> {
   return updateRegister(key, (current) => {
     const sameBusiness = data.business?.id === current.business?.id;
+    const sameAccess = sameBusiness && data.me?.memberId === current.me?.memberId && !(current.me?.owner && !data.me?.owner);
     const acknowledged = new Set(ackIds);
     const pending = current.pending.filter(
       (event) => !acknowledged.has(event.id),
@@ -289,8 +401,14 @@ export function mergeServer(
       const label = receipt ? "Receipt #" + receipt.sequence + ". " : event.type === "stockCount" ? event.item.name + ". " : "";
       issues.set(issue.id, { ...issue, message: label + issue.message });
     }
+    // Until all queued commands are replayed the local projection is newer than any
+    // intermediate snapshot. Acknowledge exactly the committed prefix across reloads.
+    if (sameAccess && pending.some((e) => e.type === "command")) {
+      const sales = current.sales.map((sale) => declined.has(sale.id) ? { ...sale, reversedAt: undefined, reason: undefined } : sale);
+      return { ...current, sales, pending, syncIssues: [...issues.values()] };
+    }
     const sales = new Map<string, Sale>();
-    for (const sale of sameBusiness ? current.sales : [])
+    for (const sale of sameAccess ? current.sales : [])
       sales.set(sale.id, declined.has(sale.id) ? { ...sale, reversedAt: undefined, reason: undefined } : sale);
     for (const sale of data.sales) {
       const stored = sales.get(sale.id);
@@ -301,7 +419,7 @@ export function mergeServer(
     }
     let soldOut = data.soldOut;
     const expenses = new Map<string, Expense>();
-    for (const e of sameBusiness ? current.expenses ?? [] : []) expenses.set(e.id, e);
+    for (const e of sameAccess ? current.expenses ?? [] : []) expenses.set(e.id, e);
     for (const e of data.expenses ?? []) expenses.set(e.id, e);
     for (const event of pending) {
       if (event.type === "sale") sales.set(event.sale.id, event.sale);
@@ -319,7 +437,7 @@ export function mergeServer(
       } else if (event.type === "availability") soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
     }
     const shifts = new Map(
-      (sameBusiness ? current.shifts : []).map((shift) => [shift.id, shift]),
+      (sameAccess ? current.shifts : []).map((shift) => [shift.id, shift]),
     );
     for (const shift of data.shifts) shifts.set(shift.id, shift);
     let activeShift = data.shift;
@@ -369,7 +487,13 @@ function activeShift(current: RegisterState) {
   return shift;
 }
 
+function checkPendingExit(current: RegisterState) {
+  if (current.pending.some((e) => e.type === "command" && exitsRegister(e.request.command.action)))
+    throw Error("This business has a pending account change. Reconnect to finish it.");
+}
+
 function writableShift(current: RegisterState) {
+  checkPendingExit(current);
   const shift = activeShift(current);
   if (current.closingShiftId === shift.id) {
     throw new Error(
@@ -578,10 +702,11 @@ export function clearRegister(key: string): Promise<RegisterState> {
 export async function uploadProofs(
   key: string,
   upload: (dataUrl: string) => Promise<string>,
+  eventIds?: Set<string>,
 ): Promise<void> {
   const current = await loadRegister(key);
   for (const event of current.pending) {
-    if (event.type !== "sale" || !event.sale.proofs?.some((p) => p.startsWith("data:"))) continue;
+    if ((eventIds && !eventIds.has(event.id)) || event.type !== "sale" || !event.sale.proofs?.some((p) => p.startsWith("data:"))) continue;
     const proofs: string[] = [];
     for (const p of event.sale.proofs) proofs.push(p.startsWith("data:") ? await upload(p) : p);
     await updateRegister(key, (state) => {

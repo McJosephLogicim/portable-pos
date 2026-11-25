@@ -42,7 +42,8 @@ function assetURL(input, base = ROOT) {
 async function storeAsset(cache, url, visited) {
   if (visited.has(url)) return;
   visited.add(url);
-  const immutable = new URL(url).pathname.startsWith("/_next/static/");
+  const path = new URL(url).pathname;
+  const immutable = path.startsWith("/_next/static/") || path.startsWith("/api/images/");
   const existing = immutable && (await cache.match(url));
   const response =
     existing ||
@@ -129,6 +130,13 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  const shared = request.mode === "navigate" && /^\/(j|i)\/([0-9A-Za-z]+)\/?$/.exec(url.pathname);
+  if (shared && ((shared[1] === "i" && shared[2].length === 8) || (shared[1] === "j" && [3, 9].includes(shared[2].length)))) {
+    const app = new URL(ROOT);
+    app.searchParams.set(shared[1] === "i" ? "invite" : "j", shared[2]);
+    event.respondWith(Response.redirect(app, 307));
+    return;
+  }
   if (request.mode === "navigate" && url.pathname === "/") {
     event.respondWith(
       (async () => {

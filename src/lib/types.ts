@@ -181,6 +181,7 @@ export interface Business {
   settings: Settings;
 }
 export interface Shift {
+  soldOut?: string[];
   id: string;
   number: number;
   businessId: string;
@@ -311,6 +312,7 @@ export interface Member {
 export type TeamRosterMember = Pick<Member, "id" | "name" | "owner" | "primaryOwner">;
 /** Who is using this register. */
 export interface Me {
+  rate?: number;
   memberId: string;
   name: string;
   roles: Role[];
@@ -414,7 +416,7 @@ export interface RegisterState extends Bootstrap {
   syncIssues?: SyncIssue[];
   closingShiftId?: string;
   cart: CartLine[];
-  pending: RegisterEvent[];
+  pending: (RegisterEvent | import("./offline-command").CommandEvent)[];
   deviceId: string;
 }
 

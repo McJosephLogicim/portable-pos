@@ -20,7 +20,7 @@ import {
 import type { OwnerAction } from "@/lib/demo";
 import { RequestFailure } from "@/lib/client";
 import { amountText, parseMoney, shiftTotals } from "@/lib/domain";
-import { blocked, OFFLINE, reject, type Reason } from "@/lib/reject";
+import { blocked, reject, type Reason } from "@/lib/reject";
 import { scheduleText, scheduledShiftText } from "@/lib/report";
 import { shiftKey } from "@/lib/sales-filter";
 import { shiftName } from "@/lib/shift-name";
@@ -85,7 +85,7 @@ export interface ScheduleProps {
   onAction: Act;
   onSaved: (text: string) => void;
   onSales: (focus: SalesFocus) => void;
-  onLoadBookingRecords?: (bookingId: string, kind: BookingRecordKind) => Promise<BookingRecords>;
+  onLoadBookingRecords?: (bookingId: string, kind: BookingRecordKind, amount: number) => Promise<BookingRecords>;
   onEditExpense?: (id: string, input: ExpenseInput) => Promise<void>;
   onUnexpense?: (id: string) => Promise<void>;
   onStart?: (bookingId: string) => void;
@@ -331,13 +331,12 @@ function useBookingHistory(
 ): { records?: BookingRecords; status?: ShiftRecordStatus } {
   const [result, setResult] = useState<{ amount: number; attempt: number; data?: BookingRecords; error?: string }>();
   const [attempt, setAttempt] = useState(0);
-  const request = useRef<{ amount: number; attempt: number; load: typeof load; promise: Promise<BookingRecords> } | null>(null);
+  const request = useRef<{ amount: number; attempt: number; load: typeof load; online: boolean; promise: Promise<BookingRecords> } | null>(null);
   useEffect(() => {
-    if (!online) request.current = null;
-    if (!enabled || !online || !load) return;
+    if (!enabled || !load) return;
     let current = true;
-    if (request.current?.amount !== amount || request.current.attempt !== attempt || request.current.load !== load) {
-      request.current = { amount, attempt, load, promise: load(bookingId, kind) };
+    if (request.current?.amount !== amount || request.current.attempt !== attempt || request.current.load !== load || request.current.online !== online) {
+      request.current = { amount, attempt, online, load, promise: load(bookingId, kind, amount) };
     }
     request.current.promise.then(
       (data) => { if (current) setResult({ amount, attempt, data }); },
@@ -348,7 +347,6 @@ function useBookingHistory(
   if (!enabled || !load) return {};
   const latest = result?.amount === amount && result.attempt === attempt ? result : undefined;
   if (latest?.data) return { records: latest.data };
-  if (!online) return { status: { kind: "unavailable", message: "Connect to see the full shift history." } };
   if (latest?.error) return { status: { kind: "unavailable", message: latest.error, retry: () => setAttempt((n) => n + 1) } };
   return { status: { kind: "loading" } };
 }
@@ -421,14 +419,14 @@ function BookingSheet({
   );
   const localTill = state.shift && !state.shift.closedAt ? state.shift : null;
   const runningTill = till && !till.closedAt ? till : null;
-  const deleteBlock = runningTill ? openTillDeleteReason : !online && OFFLINE;
+  const deleteBlock = runningTill && openTillDeleteReason;
   const tillClosed = !runningTill && (b.tillClosed || Boolean(till?.closedAt));
   const joinable = !mine && open > 0 && !over && !tillClosed;
-  const tillBlock = !online ? OFFLINE : localTill ? "Close the current shift on this phone first." : null;
+  const tillBlock = localTill ? "Close the current shift on this phone first." : null;
   const { onStart, onJoin } = props;
   const tillButton = `btn block${joinable ? " secondary" : ""}`;
   const tillAction = onLinkTill ? (
-    <button type="button" className={tillButton} disabled={busy} {...blocked(!online ? OFFLINE : !mine && "You need to be on this shift to use its till.")} aria-haspopup="dialog" onClick={onLinkTill}>
+    <button type="button" className={tillButton} disabled={busy} {...blocked(!mine && "You need to be on this shift to use its till.")} aria-haspopup="dialog" onClick={onLinkTill}>
       <Link2 size={17} aria-hidden="true" /> Add till
     </button>
   ) : runningTill ? (
@@ -449,16 +447,16 @@ function BookingSheet({
     </button>
   );
   const joinShiftAction = joinable && (
-    <button type="button" className="btn block" disabled={busy} {...blocked(!online && OFFLINE)} aria-haspopup="dialog" onClick={() => setJoining(true)}>
+    <button type="button" className="btn block" disabled={busy} aria-haspopup="dialog" onClick={() => setJoining(true)}>
       {busy ? "Joining…" : "Join shift"}
     </button>
   );
   const staffActions = !onLinkTill && !me.owner && mine && !over && (
     <>
-      <button className={`btn block${tillAction ? " secondary" : ""}`} disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setSwitching(true)}>
+      <button className={`btn block${tillAction ? " secondary" : ""}`} disabled={busy} onClick={() => setSwitching(true)}>
         {busy ? "Updating…" : "Change role"}
       </button>
-      <button className="btn ghost danger block" disabled={busy} {...blocked(!online ? OFFLINE : started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
+      <button className="btn ghost danger block" disabled={busy} {...blocked(started && "You can only leave before the shift starts.")} onClick={() => setLeaving(mine)}>
         Leave
       </button>
     </>
@@ -535,7 +533,7 @@ function BookingSheet({
         onClose={onClose}
         busy={busy}
         action={me.owner && (
-          <button type="button" className="btn small secondary" disabled={busy} {...blocked(!online && OFFLINE)} onClick={onEdit}>
+          <button type="button" className="btn small secondary" disabled={busy} onClick={onEdit}>
             Edit
           </button>
         )}
@@ -585,7 +583,6 @@ function BookingSheet({
                   key={s.memberId}
                   type={me.owner ? "button" : undefined}
                   disabled={me.owner ? busy : undefined}
-                  {...blocked(me.owner && !online && OFFLINE)}
                   aria-haspopup={me.owner ? "dialog" : undefined}
                   onClick={me.owner ? () => setManaging(s) : undefined}
                 >
@@ -611,7 +608,7 @@ function BookingSheet({
                   <button
                     type="button"
                     className="btn small secondary"
-                    disabled={busy} {...blocked(!online && OFFLINE)}
+                    disabled={busy}
                     onClick={() => setPicking({})}
                   >
                     Assign
@@ -620,7 +617,7 @@ function BookingSheet({
               </div>
             ))}
             {me.owner && (tillClosed || !open) && (
-              <button type="button" className="list-row" aria-label="Add someone" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setPicking({})}>
+              <button type="button" className="list-row" aria-label="Add someone" disabled={busy} onClick={() => setPicking({})}>
                 <span className="avatar seat" aria-hidden="true">
                   <Plus size={16} />
                 </span>
@@ -1131,7 +1128,7 @@ export function BookingEditor({
             className="btn block"
             aria-label={bulk ? `Add ${days.length} ${days.length === 1 ? "shift" : "shifts"}` : booking ? "Save shift" : "Add shift"}
             disabled={busy}
-            {...blocked(!props.online ? OFFLINE : !days.length && "Choose at least one date.")}
+            {...blocked(!days.length && "Choose at least one date.")}
             onClick={(e) => void save(e.detail > 0 ? e.currentTarget : undefined)}
           >
             {busy ? "Saving…" : booking ? "Save" : "Add"}
@@ -1530,8 +1527,7 @@ function ShareSchedule({
   );
 }
 
-function AddShiftMenu({ disabled, onAdd, className }: {
-  disabled: boolean;
+function AddShiftMenu({ onAdd, className }: {
   onAdd: (mode: "new" | "bulk") => void;
   className?: string;
 }) {
@@ -1540,7 +1536,6 @@ function AddShiftMenu({ disabled, onAdd, className }: {
       singleLabel="Add a shift"
       onSingle={() => onAdd("new")}
       onBulk={() => onAdd("bulk")}
-      blockedReason={disabled && OFFLINE}
       className={className}
       SingleIcon={CalendarPlus}
       BulkIcon={CalendarRange}
@@ -1556,7 +1551,7 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, practice = false
   onClose: () => void;
   onSchedule: () => void;
 }) {
-  const { state, online, onAction, onSaved } = props;
+  const { state, onAction, onSaved } = props;
   const zone = state.business!.timeZone;
   const now = Date.now();
   const today = dayOf(now, zone);
@@ -1586,7 +1581,7 @@ export function TillShiftsSheet({ shiftId, onClose, onSchedule, practice = false
           state={state}
           showCalendarObject
           onOpen={(bookingId) => setSelection({ bookingId, confirming: practice })}
-          emptyAction={!practice && state.me?.owner ? <AddShiftMenu disabled={!online} onAdd={setAdding} /> : undefined}
+          emptyAction={!practice && state.me?.owner ? <AddShiftMenu onAdd={setAdding} /> : undefined}
         />
       </Sheet>
       {selected && !practice && (
@@ -1794,7 +1789,6 @@ export function ScheduleScreen(props: ScheduleProps & { onLeaderboard: () => voi
         </div>
         {me?.owner && (
           <AddShiftMenu
-            disabled={!props.online}
             onAdd={setEditing}
             className={`btn add-shift responsive-icon ${styles.addShift}`}
           />

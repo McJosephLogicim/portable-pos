@@ -15,7 +15,7 @@ import { matches, RecordNoMatch, RecordSearch, RecordSheet, useRecordSave } from
 import { CopyButton } from "./share";
 import { Popo } from "./popo";
 import { ConfirmSheet, EmptyState, errorText, Explain, formatMoney, GlossyObject, MoneyField, PhotoPicker, Sheet, useFaces, usePin } from "./ui";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 import styles from "./operations.module.css";
 
 export function initials(name: string) {
@@ -96,7 +96,6 @@ function MemberSheet({
   member,
   canChangeName,
   canChangeAccess,
-  online,
   link,
   currency,
   onSave,
@@ -107,7 +106,6 @@ function MemberSheet({
   member?: Member;
   canChangeName: boolean;
   canChangeAccess: boolean;
-  online: boolean;
   /** A pending invite's link. */
   link?: string;
   currency: string;
@@ -138,7 +136,7 @@ function MemberSheet({
   }
   const valid = name.trim() && (member || !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
   const removeButton = onRemove && (
-    <button className="btn ghost danger compact block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => setConfirmRemove(true)}>
+    <button className="btn ghost danger compact block" disabled={busy} onClick={() => setConfirmRemove(true)}>
       <Trash2 size={16} /> {member?.joined ? "Remove" : "Revoke"}
     </button>
   );
@@ -155,7 +153,7 @@ function MemberSheet({
           <button
             className="btn block"
             disabled={busy}
-            {...blocked(!online ? OFFLINE : !name.trim() ? "Enter a name." : !valid && "Enter a valid email address.")}
+            {...blocked(!name.trim() ? "Enter a name." : !valid && "Enter a valid email address.")}
             onClick={() =>
               void run(() =>
                 onSave({
@@ -180,7 +178,7 @@ function MemberSheet({
             />
           )}
           {onResend && (
-            <button className="btn secondary block" disabled={busy} {...blocked(!online && OFFLINE)} onClick={() => void run(onResend)}>
+            <button className="btn secondary block" disabled={busy} onClick={() => void run(onResend)}>
               Resend
             </button>
           )}
@@ -190,7 +188,7 @@ function MemberSheet({
     >
       {member && (
         <div className="card card-pad">
-          <PhotoPicker face value={photo} onChange={setPhoto} label="profile photo" blockedReason={!online && OFFLINE} />
+          <PhotoPicker face value={photo} onChange={setPhoto} label="profile photo" />
         </div>
       )}
       <div className="card card-pad stack gap-14">
@@ -327,7 +325,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
   const inTab = pending ? waiting : sorted;
   const shown = inTab.filter((m) => matches(query, m.name, m.email));
   const invite = (
-    <button className={`btn${props.primaryAction ? " secondary" : ""}`} {...blocked(!props.online && OFFLINE)} onClick={() => setEditing("new")}>
+    <button className={`btn${props.primaryAction ? " secondary" : ""}`} onClick={() => setEditing("new")}>
       <UserPlus size={18} /> Invite
     </button>
   );
@@ -382,7 +380,7 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
           {shown.length > 0 && (
             <div className="card card-list">
               {shown.map((m) => (
-                <button key={m.id} className="list-row" {...blocked(!props.online && OFFLINE)} onClick={() => setEditing(m)}>
+                <button key={m.id} className="list-row" onClick={() => setEditing(m)}>
                   <Avatar id={m.id} name={m.name} dim={!m.joined} />
                   <span className="grow stack">
                     <span className="ellipsis">
@@ -404,7 +402,6 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
             <MemberSheet
               key={editing === "new" ? "new" : editing.id}
               member={editing === "new" ? undefined : editing}
-              online={props.online}
               canChangeName={canChangeName}
               canChangeAccess={editing !== "new" && editing.joined && !editing.primaryOwner && editing.id !== props.state.me?.memberId}
               link={editing !== "new" && editing.inviteCode && !props.demo ? inviteLink(location.origin, editing.inviteCode) : undefined}
@@ -460,14 +457,14 @@ export function TeamPage(props: Pick<SettingsProps, "state" | "online" | "demo" 
         </div>
       )}
       {canLeave && (
-        <button type="button" className="btn ghost danger block" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setConfirmLeave(true)}>
+        <button type="button" className="btn ghost danger block" aria-haspopup="dialog" onClick={() => setConfirmLeave(true)}>
           Leave team
         </button>
       )}
       {confirmLeave && canLeave && (
         <ConfirmSheet
           title="Leave this team?"
-          detail={`You’ll lose access to ${business.name} and be removed from shifts that haven’t started. You’ll need a new invite to rejoin.`}
+          detail={`You’ll lose access to ${business.name} and be removed from shifts that haven’t started. You’ll need a new invite to rejoin.${props.online ? "" : " This will take effect when this phone reconnects."}`}
           confirmLabel="Leave team"
           onClose={() => setConfirmLeave(false)}
           onConfirm={() => props.onAction({ action: "leaveTeam", businessId: business.id, memberId: me.memberId })}

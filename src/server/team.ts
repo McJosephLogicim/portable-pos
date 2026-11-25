@@ -32,7 +32,7 @@ export function presentMember(row: MemberRow, primaryOwnerId: string): Member {
   };
 }
 export function presentMe(row: MemberRow): Me {
-  return { memberId: row.id, name: row.name, roles: row.roles, owner: row.owner, ...(row.photo ? { photo: row.photo } : {}) };
+  return { memberId: row.id, name: row.name, roles: row.roles, owner: row.owner, rate: row.rate, ...(row.photo ? { photo: row.photo } : {}) };
 }
 export function presentBooking(row: typeof bookings.$inferSelect): Booking {
   return {
@@ -204,6 +204,7 @@ export async function runPlan(
   business: BusinessRow,
   me: Me,
   cmd: PlanCommand,
+  inviteId?: string,
 ) {
   const memberRows = await tx.select().from(members).where(eq(members.businessId, business.id));
   const ids = bookingIds(cmd);
@@ -240,7 +241,7 @@ export async function runPlan(
   };
   let after;
   try {
-    after = applyPlan(before, me, cmd);
+    after = applyPlan(before, me, cmd, Date.now(), inviteId);
     if (["booking", "deleteBooking", "assign", "leave", "leaveTeam", "removeMember"].includes(cmd.action)) {
       const openBookings = await tx.select({ id: bookings.id, staff: bookings.staff }).from(shifts)
         .innerJoin(bookings, and(eq(bookings.id, shifts.bookingId), eq(bookings.businessId, shifts.businessId)))

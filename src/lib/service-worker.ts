@@ -3,7 +3,7 @@ import { appIcons, emptyStateObjects, leaderboardCrown, popoLoading, popoPoses }
 
 let preparing: Promise<boolean> | undefined;
 
-async function prepare(): Promise<boolean> {
+async function prepare(publicPhotos: string): Promise<boolean> {
   if (!("serviceWorker" in navigator) || !window.isSecureContext) return false;
   await navigator.serviceWorker.register("/sw.js", {
     scope: "/",
@@ -23,6 +23,7 @@ async function prepare(): Promise<boolean> {
     ...(!matchMedia("(prefers-reduced-motion: reduce)").matches ? [popoLoading.wave] : []),
     "/manifest.webmanifest",
     ...cashPhotos,
+    ...publicPhotos.split(",").filter(Boolean),
     "/payment-icons/gcash.png",
     "/payment-icons/maya.svg",
     ...performance.getEntriesByType("resource").map((entry) => entry.name),
@@ -45,9 +46,9 @@ async function prepare(): Promise<boolean> {
   });
 }
 
-export function prepareOffline(): Promise<boolean> {
+export function prepareOffline(publicPhotos = ""): Promise<boolean> {
   if (!preparing) {
-    preparing = prepare()
+    preparing = prepare(publicPhotos)
       .catch(() => false)
       .finally(() => {
         preparing = undefined;

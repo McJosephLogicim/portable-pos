@@ -32,7 +32,7 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 
 /* ---------- shared pieces ---------- */
 
@@ -778,7 +778,7 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
   const addItems = (
     <AddMenu
       singleLabel="Add an item"
-      blockedReason={!props.online ? OFFLINE : menu.length >= 1000 && "The menu can hold up to 1,000 items."}
+      blockedReason={menu.length >= 1000 && "The menu can hold up to 1,000 items."}
       onSingle={() => setEditing("new")}
       onBulk={() => setAdding(true)}
     />
@@ -786,7 +786,7 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
   return (
     <SubPage
       title={costingView ? "Menu costing" : "Menu items"}
-      action={costingView || menu.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
+      action={costingView || menu.length < 2 ? undefined : <RecordSelectToggle select={select} />}
       help={costingView ? undefined : (
         <>
           <p>Changes go live on Sell right away. Completed sales keep their original prices and ingredient quantities.</p>
@@ -806,7 +806,6 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
         <MenuCostingOverview
           business={business}
           menu={menu}
-          online={props.online}
           onEdit={setEditing}
           onPricing={() => props.onPage("pricing")}
           onMenu={() => props.onPage("menu")}
@@ -829,7 +828,6 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
               value: tab,
               onChange: setTab,
               onNew: () => setNewCategory(true),
-              newDisabled: !props.online,
             }}
           />
           {!menu.length && (
@@ -862,7 +860,6 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
                 {g.items.map((p) => (
                   <RecordRow
                     key={p.id}
-                    disabled={!props.online}
                     onClick={() => setEditing(p)}
                     select={select.row(p.id)}
                     lead={<ItemPreview name={p.name} image={p.image} size={40} />}
@@ -888,11 +885,9 @@ export function MenuPage({ costingView = false, onPreview, ...props }: RecipesPr
               onRemove={(ids) => commit.menu(menu.filter((p) => !ids.includes(p.id)), "Removed " + plural(ids.length, "item"))}
             />
           )}
-          {(!props.online || !live) && (
+          {!live && (
             <p className="label">
-              {!props.online
-                ? "Connect to edit the menu."
-                : props.state.shift
+              {props.state.shift
                   ? "Changes reach the register when the next shift opens."
                   : "Changes reach the register when you open the next shift."}
             </p>
@@ -1367,12 +1362,12 @@ export function CategoriesPage(props: RecipesProps) {
   const loose = menu.filter((p) => !p.category.trim()).length;
   const select = useRecordSelect(list.map((c) => c.name));
   const addCategory = !select.on && (
-    <AddButton blockedReason={!props.online && OFFLINE} onClick={() => setEditing("new")} />
+    <AddButton onClick={() => setEditing("new")} />
   );
   return (
     <SubPage
       title="Categories"
-      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} />}
       help={<p>Save categories ahead of time. They appear on Sell when they contain items. Items with no category show last.</p>}
       backLabel={props.backLabel}
       sentence={list.length > 0 && (
@@ -1391,7 +1386,6 @@ export function CategoriesPage(props: RecipesProps) {
           {shown.map((c) => (
             <RecordRow
               key={c.name}
-              disabled={!props.online}
               onClick={() => setEditing(c)}
               select={select.row(c.name)}
               lead={
@@ -1433,10 +1427,9 @@ export function CategoriesPage(props: RecipesProps) {
           }
         />
       )}
-      {(loose > 0 || !props.online) && (
+      {loose > 0 && (
         <p className="label">
           {loose ? plural(loose, "item") + " with no category show last. " : ""}
-          {props.online ? "" : "Connect to edit categories."}
         </p>
       )}
       {editing && (
@@ -1619,7 +1612,6 @@ export function ChoicesPage(props: RecipesProps) {
   const select = useRecordSelect(list.map((c) => c.key));
   const addButton = !select.on && menu.length > 0 && (
     <AddButton
-      blockedReason={!props.online && OFFLINE}
       onClick={() => setEditing("new")}
     />
   );
@@ -1627,7 +1619,7 @@ export function ChoicesPage(props: RecipesProps) {
   return (
     <SubPage
       title="Choices"
-      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} />}
       help={
         <>
           <p><strong>Pick one</strong> choices, like Size, make the cashier choose. <strong>Add-ons</strong>, like an extra shot, are optional.</p>
@@ -1661,7 +1653,6 @@ export function ChoicesPage(props: RecipesProps) {
           {k.items.map((c) => (
             <RecordRow
               key={c.key}
-              disabled={!props.online}
               onClick={() => setEditing(c)}
               select={select.row(c.key)}
               lead={
@@ -1709,7 +1700,6 @@ export function ChoicesPage(props: RecipesProps) {
           }
         />
       )}
-      {!props.online && <p className="label">Connect to edit choices.</p>}
       {editing && (
         <ChoiceSheet
           choice={editing === "new" ? undefined : editing}

@@ -55,7 +55,7 @@ import {
   usePin,
 } from "./ui";
 import styles from "./settings.module.css";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 
 export type SettingsInput = {
   name: string;
@@ -244,18 +244,17 @@ export function useDraft(props: SettingsProps, { savedLabel = "Saved", hasAddAct
   }
 
   useEffect(() => {
-    if (!dirty || busy || !props.online) return;
+    if (!dirty || busy) return;
     const timer = setTimeout(() => void commit(), 450);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, dirty, busy, props.online]);
+  }, [draft, dirty, busy]);
 
   const bar = error ? (
     <Notice tone="danger" live="assertive" action={<button className={`btn small${hasAddAction ? " secondary" : ""}`} onClick={() => void commit()}>Try again</button>}>
       {error}
     </Notice>
-  ) : dirty && !props.online ? (
-    <Notice tone="warn">Changes save when you're back online.</Notice>
+
   ) : null;
   return { draft, setDraft, bar, business };
 }
@@ -318,7 +317,6 @@ function ModeCard(props: SettingsProps) {
         <Switch
           checked={!simple}
           label="Advanced mode"
-          blockedReason={!props.online && !props.demo && OFFLINE}
           onChange={() => setAsking(true)}
         />
       </div>
@@ -344,7 +342,7 @@ function ModeSheet({ turnOn, onClose, ...props }: SettingsProps & { turnOn: bool
       footer={
         <>
           {error && <p className="alert" role="alert">{error}</p>}
-          <button className="btn block" disabled={busy} {...blocked(!props.online && !props.demo && OFFLINE)} onClick={() => void save()}>
+          <button className="btn block" disabled={busy} onClick={() => void save()}>
             {busy ? "Saving…" : turnOn ? "Turn on Advanced" : "Switch to Simple"}
           </button>
           <button className="btn ghost compact block" disabled={busy} onClick={onClose}>
@@ -415,7 +413,6 @@ function BusinessPage(props: SettingsProps) {
       value={draft.settings.logo}
       onChange={(logo) => setDraft((current) => ({ ...current, settings: { ...current.settings, logo } }))}
       label="logo"
-      blockedReason={!props.online && !props.demo && OFFLINE}
     />
   );
   const brand = draft.settings.brand ?? defaultBrand;
@@ -618,7 +615,7 @@ function BusinessPage(props: SettingsProps) {
         <div className="stack gap-10">
           <h2 className="group-title">Danger zone</h2>
           <div className="row">
-            <button type="button" className="btn secondary danger-text" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setConfirmDelete(true)}>
+            <button type="button" className="btn secondary danger-text" aria-haspopup="dialog" onClick={() => setConfirmDelete(true)}>
               <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" /> Delete business
             </button>
           </div>
@@ -627,7 +624,7 @@ function BusinessPage(props: SettingsProps) {
       {confirmDelete && primaryOwner && (
         <ConfirmSheet
           title={`Delete ${business.name}?`}
-          detail="This permanently deletes the business, including its sales, shifts and menu. Everyone on the team will lose access."
+          detail={`This permanently deletes the business, including its sales, shifts and menu. Everyone on the team will lose access.${props.online ? "" : " Deletion will take effect when this phone reconnects."}`}
           confirmLabel="Delete business"
           onClose={() => setConfirmDelete(false)}
           onConfirm={() => withPin(
@@ -646,7 +643,6 @@ function BusinessPage(props: SettingsProps) {
 function MethodSheet({
   method,
   taken,
-  offline,
   onSave,
   onRemove,
   onClose,
@@ -654,7 +650,6 @@ function MethodSheet({
 }: {
   method?: PaymentMethod;
   taken: PaymentMethod[];
-  offline: boolean;
   onSave: (m: PaymentMethod) => void;
   onRemove?: () => void;
   onClose: () => void;
@@ -768,7 +763,7 @@ function MethodSheet({
       </>}
       {(preset || mode === "custom") && (
         <PhotoPicker icon label="payment icon" value={icon} onChange={setIcon} onBusyChange={setUploading}
-          blockedReason={offline && OFFLINE} />
+          />
       )}
       {kind && <p className="label">
         {kind === "cash"
@@ -876,7 +871,6 @@ function PaymentsPage(props: SettingsProps) {
         <MethodSheet
           method={editing === "new" ? undefined : editing}
           taken={list}
-          offline={!props.online && !props.demo}
           canRemove={list.length > 1 && !(editing !== "new" && editing.on && on === 1)}
           onClose={() => setEditing(null)}
           onSave={(m) =>
@@ -1280,7 +1274,6 @@ function ProfileCard(props: SettingsProps) {
           size="small"
           value={me.photo}
           label="your profile photo"
-          blockedReason={!props.online && !props.demo && OFFLINE}
           onError={setError}
           onChange={async (photo) => {
             setError("");
@@ -1296,7 +1289,7 @@ function ProfileCard(props: SettingsProps) {
             enterKeyHint="done"
             autoComplete="name"
             value={name}
-            disabled={(!props.online && !props.demo) || saving}
+            disabled={saving}
             onChange={(e) => setName(e.target.value)}
             onBlur={() => void saveName()}
             onKeyDown={(e) => {
@@ -1345,9 +1338,9 @@ function PhoneSettings({ connection, offlineReady }: Pick<SettingsProps, "connec
           <span className="grow row gap-6">
             Works offline
             <Explain title="Works offline">
-              <p>On an open till, you can take sales, attach receipt photos, mark items sold out, adjust stock, and add or edit expenses.</p>
-              <p>Sale reversals update this phone immediately. The owner PIN is checked when you reconnect.</p>
-              <p>You can also review saved receipts and switch between downloaded businesses.</p>
+              <p>Open or close a till, take and reverse sales, adjust float and stock, and log expenses on this phone.</p>
+              <p>Shift, recipe and settings changes are saved here too. PIN approvals, team invitations and account changes finish when you reconnect.</p>
+              <p>Open a business online first to download its register.</p>
             </Explain>
           </span>
           <span className="record-end">{offlineReady ? "Ready" : "Getting ready"}</span>

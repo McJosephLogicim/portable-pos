@@ -10,7 +10,6 @@ import { BulkNamesSheet } from "./bulk-add";
 import { matches, namesText, plural, RecordGroup, RecordNoMatch, RecordRow, RecordSearch, RecordSheet, useRecordSave } from "./records";
 import { SubPage, useCommit } from "./settings";
 import { EmptyState } from "./ui";
-import { OFFLINE } from "@/lib/reject";
 
 const groups = [
   { field: "category", Icon: Tag },
@@ -97,7 +96,6 @@ export function StockListsPage(props: RecipesProps) {
     return (
       <AddMenu
         singleLabel={field ? `Add a ${stockListFields[field].noun}` : "Add a list entry"}
-        blockedReason={!props.online && OFFLINE}
         onSingle={() => setEditing({ field: field ?? "category" })}
         onBulk={() => setBulkField(field ?? "category")}
       />
@@ -155,7 +153,6 @@ export function StockListsPage(props: RecipesProps) {
             {shown.map(({ name, items }) => (
               <RecordRow
                 key={stockListKey(name)}
-                disabled={!props.online}
                 onClick={() => setEditing({ field, name })}
                 lead={<span className="well"><Icon size={18} strokeWidth={1.8} /></span>}
                 title={name}
@@ -166,7 +163,6 @@ export function StockListsPage(props: RecipesProps) {
           </RecordGroup>
         );
       })}
-      {!props.online && <p className="label">Connect to edit stock lists.</p>}
       {bulkField && (
         <BulkNamesSheet
           noun="list entry"

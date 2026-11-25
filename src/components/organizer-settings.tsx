@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Ticket, Trash2 } from "lucide-react";
 import type { Organizer, Tag } from "@/lib/types";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 import { slugId } from "@/lib/settings";
 import { SubPage, useCommit, type SettingsProps } from "./settings";
 import { buzz, EmptyState } from "./ui";
@@ -162,11 +162,10 @@ export function OrganizersPage(props: SettingsProps) {
   const save = (next: Organizer[], label: string) =>
     commit.run((pin) => props.onAction({ action: "organizers", organizers: next, pin }), label);
   const select = useRecordSelect(list.map((o) => o.id));
-  const canEdit = props.online || Boolean(props.demo);
   const addOrganizer = !select.on && (
     <AddMenu
       singleLabel="Add an organizer"
-      blockedReason={!canEdit ? OFFLINE : list.length >= 200 && "The list can hold up to 200 organizers."}
+      blockedReason={list.length >= 200 && "The list can hold up to 200 organizers."}
       onSingle={() => setEditing("new")}
       onBulk={() => setAddingBulk(true)}
     />
@@ -174,7 +173,7 @@ export function OrganizersPage(props: SettingsProps) {
   return (
     <SubPage
       title="Organizers"
-      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!canEdit} />}
+      action={list.length < 2 ? undefined : <RecordSelectToggle select={select} />}
       help={<p>The bazaars and markets you join, and their events. You pick them when you schedule a shift, and the leaderboard ranks them. Add or remove them here.</p>}
       sentence={list.length > 0 && (
         <>
@@ -193,7 +192,6 @@ export function OrganizersPage(props: SettingsProps) {
           {shown.map((o) => (
             <RecordRow
               key={o.id}
-              disabled={!props.online && !props.demo}
               onClick={() => setEditing(o)}
               select={select.row(o.id)}
               lead={

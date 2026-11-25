@@ -11,15 +11,14 @@ import { Row, SubPage, useCommit } from "./settings";
 import { useRecordSave } from "./records";
 import { CategoryTabs, EmptyState, Explain, formatMoney, MoneyField } from "./ui";
 import styles from "./settings.module.css";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 
 const percent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 });
 const asPercent = (value: number | undefined) => value === undefined ? "—" : percent.format(value);
 
-export function MenuCostingOverview({ business, menu, online, onEdit, onPricing, onMenu }: {
+export function MenuCostingOverview({ business, menu, onEdit, onPricing, onMenu }: {
   business: Business;
   menu: Product[];
-  online: boolean;
   onEdit: (item: Product) => void;
   onPricing: () => void;
   onMenu: () => void;
@@ -60,7 +59,7 @@ export function MenuCostingOverview({ business, menu, online, onEdit, onPricing,
           <div className="card card-list">
             {overview.rows.map(({ item, cost, suggested }) => (
               <article className="costing-entry" key={item.id}>
-                <button className="costing-title between gap-8" {...blocked(!online && OFFLINE)} onClick={() => onEdit(item)}>
+                <button className="costing-title between gap-8" onClick={() => onEdit(item)}>
                   <ItemPreview name={item.name} image={item.image} />
                   <span className="stack grow gap-4">
                     <span className="strong">{item.name}</span>
@@ -110,7 +109,7 @@ export function PricingRulesPage(props: RecipesProps) {
     <SubPage title="Pricing rules" backLabel={props.backLabel} onBack={back}>
       <form className="stack gap-14" aria-busy={busy} onSubmit={(event) => {
         event.preventDefault();
-        if (busy || !props.online || !dirty) return;
+        if (busy || !dirty) return;
         void run(() => {
           const targetMargin = readTargetMargin(target);
           const roundingIncrement = parseMoney(increment, currency);
@@ -129,8 +128,8 @@ export function PricingRulesPage(props: RecipesProps) {
           <MoneyField label="Round suggested prices up to" value={increment} onChange={setIncrement} currency={currency} />
         </div>
         {error && <p className="alert" role="alert">{error}</p>}
-        <button type="submit" className="btn block" disabled={busy} {...blocked(!props.online ? OFFLINE : !dirty && "Change a pricing rule before saving.")}>
-          {busy ? "Saving…" : props.online ? "Save" : "Connect to save"}
+        <button type="submit" className="btn block" disabled={busy} {...blocked(!dirty && "Change a pricing rule before saving.")}>
+          {busy ? "Saving…" : "Save"}
         </button>
       </form>
     </SubPage>

@@ -32,7 +32,7 @@ import {
   useRecordSave,
   useRecordSelect,
 } from "./records";
-import { blocked, OFFLINE } from "@/lib/reject";
+import { blocked } from "@/lib/reject";
 
 /** A stock item's details: its name and the unit it's counted in. */
 /** Units already used, then the usual ones, so a unit is picked once and reused. */
@@ -598,14 +598,14 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
     : <>{plural(count, "thing")} <span className="g">you buy, taken from on every sale.</span></>);
   const addButton = !select.on && (
     <AddButton
-      blockedReason={!props.online ? OFFLINE : list.length >= 100 && "A list holds up to 100 items."}
+      blockedReason={list.length >= 100 && "A list holds up to 100 items."}
       onClick={() => setEditing("new")}
     />
   );
   return (
     <SubPage
       title={prepOnly ? "Prep" : "Stock items"}
-      action={rows.length < 2 ? undefined : <RecordSelectToggle select={select} disabled={!props.online} />}
+      action={rows.length < 2 ? undefined : <RecordSelectToggle select={select} />}
       help={prepOnly ? (
         <>
           <p>Things you make ahead in batches, like syrups and creams. Enter what goes in and how much one batch makes, and you'll see what each unit costs.</p>
@@ -631,7 +631,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       )}
       {!select.on && props.onMergeStock && mergeable.length > 0 && (
         <div className="row gap-8">
-          <button type="button" className="btn secondary compact" {...blocked(!props.online && OFFLINE)} aria-haspopup="dialog" onClick={() => setMerging(true)}>
+          <button type="button" className="btn secondary compact" aria-haspopup="dialog" onClick={() => setMerging(true)}>
             <Merge size={18} strokeWidth={1.8} aria-hidden="true" /> Merge leftovers
           </button>
           <span className="label">{plural(mergeable.length, "finished shift")}</span>
@@ -640,7 +640,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
       {merging && props.onMergeStock && (
         <MergeLeftoversSheet
           state={props.state}
-          online={props.online}
           onMerge={props.onMergeStock}
           onSaved={props.onSaved}
           onClose={() => setMerging(false)}
@@ -684,7 +683,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             return (
               <RecordRow
                 key={item.id}
-                disabled={!props.online}
                 onClick={() => setEditing(item)}
                 select={select.row(item.id)}
                 lead={<ItemPreview name={item.name} size={40} />}
@@ -719,7 +717,7 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
             return (
               <RecordRow
                 key={i.id}
-                disabled={!props.online || (!product && "This menu item was removed.")}
+                disabled={!product && "This menu item was removed."}
                 onClick={() => props.onPage("menu")}
                 lead={<ItemPreview name={i.name} image={product?.image} size={40} />}
                 title={i.name}
@@ -764,7 +762,6 @@ export function StockPage({ prepOnly = false, ...props }: RecipesProps & { prepO
           }}
         />
       )}
-      {!props.online && <p className="label">Connect to edit {prepOnly ? "prep" : "stock items"}.</p>}
       {editing && (
         <StockSheet
           stockItems={list}
