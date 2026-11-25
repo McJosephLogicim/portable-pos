@@ -1,5 +1,6 @@
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
+import { databaseTlsOptions } from "../src/server/database-tls";
 
 async function main() {
   const deployment = process.argv.includes("--deployment");
@@ -19,7 +20,12 @@ async function main() {
   }
 
   const migrations = readMigrationFiles({ migrationsFolder: "drizzle" });
-  const db = postgres(url, { max: 1, prepare: false, connect_timeout: 10 });
+  const db = postgres(url, {
+    ...databaseTlsOptions(),
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+  });
   try {
     const applied = await db.begin(async (tx) => {
       await tx`set local lock_timeout = '15s'`;

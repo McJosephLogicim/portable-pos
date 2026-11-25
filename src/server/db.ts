@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { databaseTlsOptions } from "./database-tls";
 
 function connect() {
   const url = process.env.DATABASE_URL;
@@ -7,6 +8,7 @@ function connect() {
   // Supavisor's transaction pool can assign a different connection per transaction.
   return drizzle(
     postgres(url, {
+      ...databaseTlsOptions(),
       prepare: false,
       max: 2,
       idle_timeout: 20,
