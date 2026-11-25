@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   beginClose,
+  cacheBusinessRegister,
   cancelClose,
   checkout,
   clearRegister,
@@ -112,6 +113,22 @@ test("failed local writes preserve the cart and sequence number", async () => {
   assert.equal(before.pending.length, 0);
   assert.equal(before.sales.length, 0);
   assert.equal((await checkout(key, "cash", 500)).sale.sequence, 1);
+});
+
+test("offline registers share the account's latest business list and keep other accounts separate", async () => {
+  const { key, data } = await start();
+  const first = { id: data.business!.id, name: "Counter", owner: true };
+  const second = { id: crypto.randomUUID(), name: "Booth", owner: false };
+  const otherKey = key + "@" + second.id;
+  const secondSnapshot = { ...data, shift: null, shifts: [], business: { ...data.business!, ...second } };
+  await mergeServer(key, { ...data, businesses: [first, second] });
+  await cacheBusinessRegister(otherKey, { ...secondSnapshot, businesses: [second] });
+  assert.deepEqual((await loadRegister(otherKey)).businesses, [first, second]);
+  await mergeServer(otherKey, { ...secondSnapshot, businesses: [second] });
+  assert.deepEqual((await loadRegister(key)).businesses, [second]);
+  assert.deepEqual((await saveCart(key, cart)).businesses, [second]);
+  assert.equal((await loadRegister(crypto.randomUUID() + "@" + second.id)).business, null);
+  assert.equal((await loadRegister(crypto.randomUUID())).businesses, undefined);
 });
 
 test("stale carts and sold-out items are guarded, and any phone can sell on the open shift", async () => {

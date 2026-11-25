@@ -105,7 +105,6 @@ export function BusinessSwitcher({
             type="button"
             className="list-row"
             aria-current={b.id === current}
-            {...blocked(b.id !== current && !online && "Connect to the internet to switch business.")}
             onClick={() => (b.id === current ? onClose() : onSwitch(b.id))}
           >
             <BusinessMark name={b.name} logo={b.logo} brand={b.brand} ink={b.id === current ? state.business!.settings.ink : undefined} />

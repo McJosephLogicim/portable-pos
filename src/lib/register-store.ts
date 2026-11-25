@@ -2,8 +2,10 @@ import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domai
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
 import { demoPlan } from "./demo-plan";
 import { demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
+import { parseKey } from "./client";
 import type {
   Bootstrap,
+  BusinessSummary,
   CartLine,
   RegisterEvent,
   RegisterState,
@@ -74,7 +76,7 @@ function openDatabase(): Promise<IDBDatabase> {
  * connection behind our back ("The database connection is closing" in Safari).
  */
 async function begin(
-  stores: string,
+  stores: string | string[],
   mode: IDBTransactionMode = "readonly",
   options?: IDBTransactionOptions,
 ): Promise<IDBTransaction> {
@@ -135,14 +137,29 @@ function deviceId(): Promise<string> {
   return thisDevice;
 }
 
-export async function loadRegister(key: string): Promise<RegisterState> {
+function directoryKey(key: string) {
+  return "businesses:" + parseKey(key).userId;
+}
+
+// Membership is account-wide. An older register may predate another business being added or removed.
+function readStoredRegister(tx: IDBTransaction, key: string, id: string, read: (state: RegisterState) => void) {
+  const directory = tx.objectStore(SETTINGS).get(directoryKey(key));
+  const register = tx.objectStore(REGISTERS).get(key);
+  register.onsuccess = () => {
+    const state = register.result ? upgrade(register.result) : emptyRegister(id);
+    if (directory.result) state.businesses = directory.result;
+    else if (state.businesses && tx.mode === "readwrite")
+      tx.objectStore(SETTINGS).put(state.businesses, directoryKey(key));
+    read(state);
+  };
+}
+
+export async function loadRegister(key: string, { opening = false } = {}): Promise<RegisterState> {
   const id = await deviceId();
-  const tx = await begin(REGISTERS);
+  const tx = await begin([REGISTERS, SETTINGS], opening ? "readwrite" : "readonly");
   return new Promise((resolve, reject) => {
-    const request = tx.objectStore(REGISTERS).get(key);
-    request.onsuccess = () =>
-      resolve(request.result ? upgrade(request.result) : emptyRegister(id));
-    request.onerror = () => reject(request.error);
+    readStoredRegister(tx, key, id, resolve);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
@@ -170,27 +187,26 @@ export function subscribeRegister(
 async function updateRegister(
   key: string,
   update: (current: RegisterState) => RegisterState | null,
+  businesses?: BusinessSummary[],
 ): Promise<RegisterState> {
   const id = await deviceId();
-  const tx = await begin(REGISTERS, "readwrite", { durability: "strict" });
+  const tx = await begin([REGISTERS, SETTINGS], "readwrite", { durability: "strict" });
   return new Promise((resolve, reject) => {
     const store = tx.objectStore(REGISTERS);
-    const request = store.get(key);
     let result: RegisterState;
     let failure: unknown;
-    request.onsuccess = () => {
+    readStoredRegister(tx, key, id, (current) => {
       try {
-        const next = update(
-          request.result ? upgrade(request.result) : emptyRegister(id),
-        );
+        const next = update(current);
         result = next ?? emptyRegister(id);
         if (next === null) store.delete(key);
         else store.put(next, key);
+        if (businesses) tx.objectStore(SETTINGS).put(businesses, directoryKey(key));
       } catch (error) {
         failure = error;
         tx.abort();
       }
-    };
+    });
     tx.oncomplete = () => {
       resolve(result);
       registerChannel()?.postMessage(key);
@@ -306,6 +322,16 @@ export function mergeServer(
       ),
       expenses: [...expenses.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     };
+  }, data.businesses);
+}
+
+/** Save an unopened register without replacing newer account membership or touching its queue. */
+export function cacheBusinessRegister(key: string, data: Bootstrap) {
+  return updateRegister(key, (current) => {
+    if (current.business) return current;
+    if (!data.business || (current.businesses && !current.businesses.some((b) => b.id === data.business!.id)))
+      throw Error("This business is no longer available to your account.");
+    return { ...current, ...data, businesses: current.businesses ?? data.businesses };
   });
 }
 

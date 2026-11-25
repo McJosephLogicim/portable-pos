@@ -22,6 +22,7 @@ import { blobToDataUrl, compressPhoto, dataUrlToBlob } from "@/lib/photo";
 import { accountSession, accountsEnabled, api, authClient, authForUser, checkSavedLogin, forgetAccount, loadBookingRecords, parseKey, proofBlob, registerKey, rememberAccount, RequestFailure, savedAccounts, uploadImage, type SavedAccount } from "@/lib/client";
 import {
   beginClose,
+  cacheBusinessRegister,
   cancelClose,
   checkout,
   clearRegister,
@@ -122,6 +123,23 @@ function clearLinkParams(...params: string[]) {
 async function keyForBusiness(userId: string, businessId: string) {
   const first = await loadRegister(userId);
   return first.business?.id === businessId ? userId : registerKey(userId, businessId);
+}
+
+async function prepareBusiness(userId: string, businessId: string, isCurrent: () => boolean) {
+  const id = await keyForBusiness(userId, businessId);
+  const saved = await loadRegister(id);
+  if (saved.business?.id === businessId) return { id, downloaded: false };
+  if (!navigator.onLine) throw Error("Connect once to download this business to this device.");
+  return locked("sync-" + id, async () => {
+    if (!isCurrent()) return;
+    const current = await loadRegister(id);
+    if (current.business?.id === businessId) return { id, downloaded: false };
+    const data = await api(id, { action: "bootstrap", deviceId: current.deviceId, till: null });
+    if (!isCurrent()) return;
+    if (data.business?.id !== businessId) throw Error("This business is no longer available to your account.");
+    await cacheBusinessRegister(id, data);
+    return { id, downloaded: true };
+  });
 }
 async function locked<T>(name: string, action: () => Promise<T>): Promise<T> {
   if (navigator.locks)
@@ -274,7 +292,7 @@ export function Workspace() {
     }
   }, []);
   const connect = useCallback(
-    async (id: string) => {
+    async (id: string, refresh = true) => {
       active.current = id;
       setKey(id);
       setState(null);
@@ -314,7 +332,7 @@ export function Workspace() {
           clearLinkParams("invite");
         }
         if (id !== DEMO) localStorage.setItem(ACTIVE, id);
-        let local = await loadRegister(id);
+        let local = await loadRegister(id, { opening: true });
         if (id === DEMO && !local.business)
           local = await locked("write-" + id, async () => {
             const current = await loadRegister(id);
@@ -324,7 +342,7 @@ export function Workspace() {
           });
         // Wait for current membership before opening a shared destination.
         if (local.business && !linked) show(id, local);
-        if (id !== DEMO && navigator.onLine) {
+        if (id !== DEMO && navigator.onLine && refresh) {
           try {
             local = await sync(id, true);
           } catch (e) {
@@ -529,6 +547,23 @@ export function Workspace() {
       alive = false;
     };
   }, [state?.business?.id, state?.shift?.id, online]);
+
+  const otherBusinessIds = state?.businesses?.filter((b) => b.id !== state.business?.id).map((b) => b.id).join(",") ?? "";
+  useEffect(() => {
+    if (!key || key === DEMO || !online || !otherBusinessIds) return;
+    let cancelled = false;
+    const isCurrent = () => !cancelled && active.current === key && navigator.onLine;
+    const { userId } = parseKey(key);
+    async function downloadMissing() {
+      for (const businessId of otherBusinessIds.split(",")) {
+        if (!isCurrent()) return;
+        // One unavailable business mustn't prevent the others from being ready offline.
+        await prepareBusiness(userId, businessId, isCurrent).catch(() => {});
+      }
+    }
+    void downloadMissing();
+    return () => { cancelled = true; };
+  }, [key, online, otherBusinessIds]);
 
   // Another phone can close the shift this one is selling on. Say so instead of
   // silently swapping the till for the opening screen.
@@ -774,9 +809,22 @@ export function Workspace() {
   async function switchBusiness(businessId: string) {
     if (!key || key === DEMO || state?.business?.id === businessId) return;
     const { userId } = parseKey(key);
+    try {
+      checkSavedLogin(userId);
+    } catch (error) {
+      if (error instanceof LoginExpired) openLogin();
+      throw error;
+    }
     if (navigator.onLine) await flush();
+    const isCurrent = () => active.current === key;
+    if (!isCurrent()) return;
+    const source = await loadRegister(key);
+    if (!source.businesses?.some((business) => business.id === businessId))
+      throw Error("This business is no longer available to your account.");
+    const destination = await prepareBusiness(userId, businessId, isCurrent);
+    if (!destination || !isCurrent()) return;
     buzz.tick();
-    await connect(await keyForBusiness(userId, businessId));
+    await connect(destination.id, !destination.downloaded);
   }
   async function addBusiness(input: OwnerAction) {
     if (!key || key === DEMO) throw Error("Sign in to add a business.");
@@ -1177,8 +1225,10 @@ export function Workspace() {
             onClose={() => setSwitching(null)}
             onAdd={() => navigation.open({ tab: "add-business" }, { from: navigation.current.id })}
             onSwitch={(id) => {
-              setSwitching(null);
-              void switchBusiness(id).catch((e) => setNotice(message(e)));
+              void switchBusiness(id).catch((e) => {
+                setToast(message(e));
+                setToastStamp((n) => n + 1);
+              });
             }}
           />
         </Activity>

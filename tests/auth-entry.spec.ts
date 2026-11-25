@@ -332,6 +332,86 @@ for (const [path, title] of [
   });
 }
 
+test("businesses download ahead of time and keep their own orders when switching offline", async ({ page, context }) => {
+  test.skip(!process.env.POS_TEST_MOCK_AUTH, "Requires mock Auth and register responses.");
+  await mockAuth(page);
+  const market = { id: teamId, name: "Market Counter", owner: true };
+  const bakery = { id: "bc361fc6-c133-45d8-a62d-d93d275313c5", name: "Bakery Counter", owner: false };
+  const kiosk = { id: "b7b1fc77-e29e-47d1-95ff-edde536b209b", name: "Kiosk", owner: true };
+  const snapshots = [market, bakery].map((summary, index) => {
+    const snapshot = teamSnapshot();
+    const business = { ...snapshot.business!, ...summary };
+    const menu = [{ id: summary.id, name: index ? "Bread" : "Tea", category: "Menu", groups: [], price: 500 }];
+    const shift = newShift("offline-test", summary.id, 1, 0, menu, { ...business.settings, currency: business.currency });
+    return { ...snapshot, business, businesses: [market, bakery, kiosk], menu, shift, shifts: [shift] };
+  });
+  let offline = false;
+  let triedKiosk = false;
+  const offlineRequests: string[] = [];
+  const synced: string[] = [];
+  await page.route("**/api/pos", async (route) => {
+    const id = route.request().headers()["x-business-id"] ?? teamId;
+    if (offline) {
+      offlineRequests.push(id);
+      return route.abort("internetdisconnected");
+    }
+    const snapshot = snapshots.find((s) => s.business.id === id);
+    if (!snapshot) {
+      triedKiosk = id === kiosk.id;
+      return route.fulfill({ status: 503, json: { error: "Unavailable" } });
+    }
+    const command = route.request().postDataJSON();
+    if (command.action === "sync") {
+      expect(command.events.map((event: RegisterEvent) => event.shiftId)).toEqual([snapshot.shift.id]);
+      synced.push(id);
+    }
+    return route.fulfill({ json: snapshot });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  const switcher = page.getByRole("dialog", { name: "Your businesses" });
+  const marketButton = page.getByRole("button", { name: "Switch business, now Market Counter" });
+  const bakeryButton = page.getByRole("button", { name: "Switch business, now Bakery Counter" });
+  await expect(marketButton).toBeVisible();
+  // The failed third download follows the completed second one.
+  await expect.poll(() => triedKiosk).toBe(true);
+  await expect.poll(() => page.evaluate(async () => Boolean(navigator.serviceWorker.controller && await caches.match("/", { cacheName: "portable-pos-shell-v1" }))), { timeout: 30000 }).toBe(true);
+  offline = true;
+  await context.setOffline(true);
+  const tea = page.getByRole("button", { name: /^Add Tea,/ });
+  await tea.click();
+  await expect(tea).toHaveAccessibleName(/1 in order/);
+  await marketButton.click();
+  await switcher.getByRole("button", { name: /Kiosk/ }).click();
+  await expect(page.getByRole("button", { name: /Dismiss notification: Connect once to download/ })).toBeVisible();
+  await expect(switcher).toBeVisible();
+  await switcher.getByRole("button", { name: /Bakery Counter/ }).click();
+  await expect(bakeryButton).toBeVisible();
+  await page.reload();
+  await expect(bakeryButton).toBeVisible();
+  await expect(tea).toHaveCount(0);
+  await page.getByRole("button", { name: /^Add Bread,/ }).click();
+  await page.locator(".charge-bar").click();
+  const charge = page.getByRole("dialog", { name: "Charge", exact: true });
+  await charge.getByRole("button", { name: "Cash", exact: true }).click();
+  await charge.getByRole("button", { name: "Exact", exact: true }).click();
+  await page.getByRole("button", { name: "Slide to confirm sale", exact: true }).press("Enter");
+  await page.getByRole("dialog", { name: "Sale complete" }).getByRole("button", { name: "New sale" }).click();
+  await page.getByRole("button", { name: "Account and settings" }).click();
+  await page.getByRole("main").getByRole("button", { name: /^Switch business/ }).click();
+  await switcher.getByRole("button", { name: /Market Counter/ }).click();
+  await expect(tea).toHaveAccessibleName(/1 in order/);
+  await expect(page.getByRole("region", { name: "Register sync" })).toHaveCount(0);
+  await marketButton.click();
+  await switcher.getByRole("button", { name: /Bakery Counter/ }).click();
+  await expect(page.getByRole("region", { name: "Register sync" })).toContainText("1 sale");
+  expect(offlineRequests).toEqual([]);
+  offline = false;
+  await context.setOffline(false);
+  await expect.poll(() => synced).toEqual([bakery.id]);
+});
+
 test.describe("account-enabled link entry", () => {
   test.skip(
     !process.env.POS_TEST_MOCK_AUTH,
@@ -904,7 +984,8 @@ test.describe("account-enabled link entry", () => {
       const expense = page.getByRole("dialog", { name: "Log an expense" });
       await expense.getByRole("combobox", { name: "What for" }).fill("Ice");
       await expense.getByRole("textbox", { name: "Amount" }).fill("20");
-      await expense.getByRole("button", { name: "Cash from the till" }).click();
+      await expense.getByRole("button", { name: "From till", exact: true }).click();
+      await expect(expense.getByRole("combobox", { name: "Payment method" })).toHaveValue("Cash");
       await expense.getByRole("button", { name: /^Log ₱/ }).click();
       await page.getByRole("button", { name: "Sell", exact: true }).click();
       await expect(page.locator(".sell-head .lucide-cloud-off")).toBeVisible();
