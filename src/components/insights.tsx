@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { itemPhotos } from "@/lib/item-photos";
 import { ItemPreview, ReceiptItemPreviews } from "./item-preview";
+import { paymentAmounts } from "@/lib/report";
+import type { MethodTotal } from "@/lib/domain";
 import { bestSellers, salesByHour } from "@/lib/insights";
 import type { Product, RegisterState } from "@/lib/types";
 import { ShiftRecordList, type ShiftRecordStatus } from "./shift-record-list";
@@ -151,7 +153,7 @@ export function SalesSheet({
 }: {
   state: RegisterState;
   title: string;
-  amount: number;
+  amount: number | ReactElement;
   summary: string;
   status?: ShiftRecordStatus;
   sales: Receipts;
@@ -178,7 +180,7 @@ export function SalesSheet({
       }
     >
       <div className="stack gap-4">
-        <Money value={amount} currency={currency} className="big-num" />
+        {typeof amount === "number" ? <Money value={amount} currency={currency} className="big-num" /> : amount}
         <p className="muted">{summary}</p>
       </div>
       <ShiftRecordList
@@ -246,6 +248,21 @@ export function ItemSales({
   );
 }
 
+export function PaymentEquation({ method, currency, header = false }: {
+  method: MethodTotal;
+  currency: string;
+  header?: boolean;
+}) {
+  const { sale, deduction, result } = paymentAmounts(method, (value) => formatMoney(value, currency));
+  return (
+    <span className={`${styles.paymentAmounts} ${header ? styles.paymentHeader : ""}`}>
+      <span><span className="sr-only">Sales </span>{sale}</span>
+      <span className={styles.expenseAmount}>{deduction}<span className="sr-only"> expenses</span></span>
+      <strong>{result}<span className="sr-only"> total</span></strong>
+    </span>
+  );
+}
+
 /** One payment method over the till: what came in that way and the receipts. */
 export function PaymentSales({
   state,
@@ -258,24 +275,23 @@ export function PaymentSales({
 }: {
   state: RegisterState;
   shiftIds: string[];
-  method: { id: string; name: string };
+  method: MethodTotal;
   title: string;
   currency: string;
   onClose: () => void;
   onSales?: () => void;
 }) {
   const sales = shiftReceipts(state, shiftIds).filter((s) => s.payment.id === method.id);
-  if (!sales.length) return null;
   return (
     <SalesSheet
       state={state}
       title={method.name}
-      amount={sales.reduce((t, s) => t + s.total, 0)}
+      amount={<PaymentEquation method={method} currency={currency} header />}
       summary={`${sales.length} ${sales.length === 1 ? "sale" : "sales"} at ${title}`}
       sales={sales}
       currency={currency}
       onClose={onClose}
-      onSales={onSales}
+      onSales={sales.length ? onSales : undefined}
     />
   );
 }

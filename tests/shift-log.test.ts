@@ -304,8 +304,8 @@ test(
     assert.deepEqual(done.settings.stockItems?.map((i) => i.name), ["Strawberry pack", "Ice", "Cups"]);
     const report = shiftReport(done, closed.sales, closed.expenses!, closed.business!);
     assert.equal(report.stock.find((i) => i.id === cup.stockId)?.expected, 3);
-    assert.match(reportText(report, fmt), /^Cash ₱300 − ₱200$/m);
-    assert.match(reportText(report, fmt), /^GCash ₱0 − ₱45$/m);
+    assert.match(reportText(report, fmt), /^Cash ₱300 − ₱200 = ₱100$/m);
+    assert.match(reportText(report, fmt), /^GCash ₱0 − ₱45 = −₱45$/m);
   },
 );
 

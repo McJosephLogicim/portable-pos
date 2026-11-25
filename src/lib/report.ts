@@ -211,9 +211,14 @@ export function countText(count: CashCount | undefined, fmt: Format) {
     .join(", ");
 }
 
-/** Keep the sale and its deduction on a single line in every report format. */
+/** Format the same payment equation for the till, its detail sheet, and exports. */
 export function paymentAmounts(method: { amount: number; expenses: number }, fmt: Format) {
-  return { sale: fmt(method.amount), deduction: method.expenses ? " − " + fmt(method.expenses) : "" };
+  const net = method.amount - method.expenses;
+  return {
+    sale: fmt(method.amount),
+    deduction: " − " + fmt(method.expenses),
+    result: " = " + (net < 0 ? "−" + fmt(-net) : fmt(net)),
+  };
 }
 
 type ReportLine = string | { lead: string; expense: string; tail?: string };
@@ -227,8 +232,8 @@ export function reportLines(r: ShiftReport, fmt: Format): ReportLine[] {
   out.push("");
   out.push(`SALES ${fmt(r.sales.total)} (${r.sales.count} ${r.sales.count === 1 ? "sale" : "sales"})`);
   for (const m of r.methods) {
-    const { sale, deduction } = paymentAmounts(m, fmt);
-    out.push({ lead: m.name + " " + sale, expense: deduction });
+    const { sale, deduction, result } = paymentAmounts(m, fmt);
+    out.push({ lead: m.name + " " + sale, expense: deduction, tail: result });
   }
   if (r.sales.discounts) out.push(`Discounts given ${fmt(r.sales.discounts)}`);
   if (r.sales.reversed) out.push(`${r.sales.reversed} reversed`);

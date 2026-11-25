@@ -10,7 +10,7 @@ type StaffAccess = "member" | "co-owner" | "owner";
 async function seedTill(
   page: Page,
   withShifts: boolean,
-  withPastSale: boolean | "unscheduled" = false,
+  withSale: boolean | "unscheduled" | "current" = false,
   { opening = false, rankedAs, withExpenses = false, staffAs, linked = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
@@ -19,12 +19,12 @@ async function seedTill(
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
   const demo = demoBootstrap("test-device");
   const espresso = demo.menu.find((item) => item.name === "Espresso")!;
-  const sales = withPastSale ? [makeSale({
-    id: "past-sale", shift: { ...demo.shift!, id: withPastSale === "unscheduled" ? "unscheduled" : "past" }, sequence: 1, soldOut: [],
+  const sales = withSale ? [makeSale({
+    id: "fixture-sale", shift: { ...demo.shift!, id: withSale === "unscheduled" ? "unscheduled" : "past" }, sequence: 1, soldOut: [],
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, opening, rankedAs, withExpenses, staffAs, linked }) => {
+  await page.evaluate(async ({ withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -81,7 +81,7 @@ async function seedTill(
             state.business!.settings.stockItems!.find((i) => i.id === "milk")!.onHand = 5;
             state.menu.find((item) => item.name === "Espresso")!.stock = true;
           }
-          state.sales = sales;
+          state.sales = withSale === "current" ? sales.map((sale) => ({ ...sale, shiftId: shift.id })) : sales;
           if (withExpenses) {
             const entry = { shiftId: past.id, createdAt: past.openedAt, source: "till" as const };
             state.expenses = [
@@ -97,7 +97,7 @@ async function seedTill(
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, opening, rankedAs, withExpenses, staffAs, linked });
+  }, { withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked });
   await page.reload();
 }
 
@@ -310,15 +310,19 @@ test("an open till can add and correct stock and float, then share each payment 
   const till = page.getByRole("button", { name: "Till", exact: true });
   await till.click();
   const stock = page.getByRole("dialog", { name: "Adjust stock" });
-  await page.getByRole("button", { name: "Adjust stock" }).click();
+  const stockSection = page.getByRole("region", { name: "Stock left" });
+  const add = stockSection.getByRole("button", { name: "Add", exact: true });
+  const expenseAdd = page.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add", exact: true });
+  expect(await add.getAttribute("class")).toBe(await expenseAdd.getAttribute("class"));
+  await add.click();
   await stock.getByLabel("Stock item").selectOption({ label: "New item for this till" });
   await stock.getByLabel("Item name").fill("Paper cups");
   await stock.getByLabel("Quantity to add").fill("8");
   await stock.getByRole("button", { name: "Save changes" }).click();
   await expect(stock).toBeHidden();
-  await page.getByRole("button", { name: "Adjust stock" }).click();
-  await stock.getByLabel("Stock item").selectOption({ label: "Paper cups" });
-  await stock.getByRole("button", { name: "Set total" }).click();
+  await stockSection.getByRole("button", { name: /Show .* more/ }).click();
+  await stockSection.getByRole("button", { name: /Paper cups/ }).click();
+  await expect(stock.getByRole("button", { name: "Set total" })).toHaveAttribute("aria-pressed", "true");
   await expect(stock.getByLabel("New count")).toHaveValue("8");
   await stock.getByLabel("New count").fill("5");
   await stock.getByRole("button", { name: "Save changes" }).click();
@@ -338,34 +342,57 @@ test("an open till can add and correct stock and float, then share each payment 
   await page.reload();
   await till.click();
   await expect(page.getByText("₱3,000 float", { exact: false })).toBeVisible();
-  const deduction = page.locator(".list-row").filter({ hasText: "0 sales" }).getByText("− ₱50", { exact: false }).last();
+  const cashRow = page.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash/ });
+  await expect(cashRow.locator("strong")).toContainText("= −₱50");
+  const deduction = cashRow.getByText("− ₱50", { exact: false }).last();
   await expect(deduction).toBeVisible();
   const red = await deduction.evaluate((node) => getComputedStyle(node).color);
   expect(red).toMatch(/^rgb\(\d+, /);
   const [r, g, b] = red.match(/\d+/g)!.map(Number);
   expect(r).toBeGreaterThan(g);
   expect(r).toBeGreaterThan(b);
+  await cashRow.click();
+  const cashSheet = page.getByRole("dialog", { name: "Cash", exact: true });
+  await expect(cashSheet.locator("strong").filter({ hasText: "= −₱50" })).toBeVisible();
+  await expect(cashSheet.getByText("− ₱50", { exact: false }).last()).toHaveCSS("color", red);
+  await cashSheet.getByRole("button", { name: "Close", exact: true }).click();
   // The shareable report draws onto a canvas. Capture the ink used for this deduction.
   await page.evaluate(() => {
     const drawText = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (...args) {
       if (args[0].trim() === "− ₱50") document.body.dataset.reportExpenseInk = String(this.fillStyle);
+      if (args[0].trim() === "= −₱50") document.body.dataset.reportPaymentTotal = args[0].trim();
       drawText.apply(this, args);
     };
   });
   await page.getByRole("button", { name: "Report so far" }).click();
   const report = page.getByRole("dialog", { name: /report$/i });
   await expect(report.locator(".report-preview img")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-report-payment-total", "= −₱50");
   expect(await page.locator("body").getAttribute("data-report-expense-ink")).toBe(
     "#" + [r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join(""),
   );
   await report.getByText("Show as text").click();
   const text = report.locator("pre");
-  await expect(text).toContainText("Cash ₱0 − ₱50");
-  expect((await text.innerText()).match(/^Cash ₱0 − ₱50$/gm)).toHaveLength(1);
+  await expect(text).toContainText("Cash ₱0 − ₱50 = −₱50");
+  expect((await text.innerText()).match(/^Cash ₱0 − ₱50 = −₱50$/gm)).toHaveLength(1);
   await expect(text.getByText("− ₱50", { exact: true })).toHaveCSS("color", red);
   await expect(text).toContainText("Paper cups 8 / 0 / 5");
   await expect(text).toContainText("= Expected ₱2,950");
+});
+
+test("payment rows and sheet headers show the same net total with the receipt below", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 780 });
+  await seedTill(page, true, "current", { linked: true, withExpenses: true });
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  const row = page.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash/ });
+  await expect(row).toHaveAccessibleName(/Sales ₱110.*− ₱50.*= ₱60/);
+  await row.click();
+  const sheet = page.getByRole("dialog", { name: "Cash", exact: true });
+  await expect(sheet).toContainText(/Sales ₱110.*− ₱50.*= ₱60/);
+  await expect(sheet.getByText("Espresso", { exact: true })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "See in Sales" })).toBeVisible();
+  expect(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 test("Delete shakes and shows an error for an open till on both Shifts and Till", async ({ page }) => {

@@ -393,23 +393,23 @@ export async function reportImage(r: ShiftReport, fmt: Format): Promise<Blob> {
   /* ---------- how they paid ---------- */
   // One way of paying needs no card: the sentence already has the total.
   if (r.methods.length > 1 || r.methods.some((method) => method.expenses)) {
-    const row = 54;
+    const row = 74;
     const total = r.methods.reduce((n, x) => n + x.amount, 0) || 1;
     card(r.methods.length * row - 10, (ctx, top) => {
       r.methods.forEach((x, i) => {
         const ty = top + i * row;
-        const { sale, deduction } = paymentAmounts(x, fmt);
-        let size = 15;
-        while (size > 11 && width(sale + deduction, font(size, 500)) > (R - L) * 0.72) size--;
-        const f = font(size, 500);
-        const rightWidth = width(sale + deduction, f);
         const count = `${x.count} ${x.count === 1 ? "sale" : "sales"}`;
-        const countX = R - rightWidth - 12;
-        text(ctx, fit(x.name, f, countX - width(count, font(13)) - L - 10), L, ty, f, ink);
-        text(ctx, count, countX, ty + 1, font(13), ink2, "right");
-        text(ctx, sale, R - width(deduction, f), ty, f, ink, "right");
-        if (deduction) text(ctx, deduction, R, ty, f, danger, "right");
-        bar(ctx, L, ty + 28, R - L, x.amount / total);
+        text(ctx, fit(x.name, font(15, 500), R - L - width(count, font(13)) - 12), L, ty, font(15, 500), ink);
+        text(ctx, count, R, ty, font(13), ink2, "right");
+        const { sale, deduction, result } = paymentAmounts(x, fmt);
+        let size = 16;
+        while (size > 10 && width(sale + deduction + result, font(size, 600)) > R - L) size--;
+        const f = font(size, 500);
+        const expenseX = L + width(sale, f);
+        text(ctx, sale, L, ty + 22, f, ink);
+        text(ctx, deduction, expenseX, ty + 22, f, danger);
+        text(ctx, result, expenseX + width(deduction, f), ty + 22, font(size, 600), ink);
+        bar(ctx, L, ty + 48, R - L, x.amount / total);
       });
     }, "By payment");
   }

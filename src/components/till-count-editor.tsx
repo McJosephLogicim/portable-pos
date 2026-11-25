@@ -11,8 +11,9 @@ import { useRecordSave } from "./records";
 import { countOf, StockQuantityInput } from "./stock-count";
 import { formatMoney, MoneyField, Sheet } from "./ui";
 
-export function TillCountEditor({ kind, shift, state, currency, onSave, onClose }: {
+export function TillCountEditor({ kind, stockId, shift, state, currency, onSave, onClose }: {
   kind: TillCount["kind"];
+  stockId?: string;
   shift: Shift;
   state: RegisterState;
   currency: string;
@@ -27,12 +28,12 @@ export function TillCountEditor({ kind, shift, state, currency, onSave, onClose 
     left: stockLeft(shift, state.sales),
     newId: crypto.randomUUID(),
   }));
-  const [itemId, setItemId] = useState(initial.items[0]?.id ?? initial.newId);
+  const [itemId, setItemId] = useState(stockId ?? initial.items[0]?.id ?? initial.newId);
   const item = initial.items.find((entry) => entry.id === itemId);
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("piece");
-  const [mode, setMode] = useState<"add" | "set">(kind === "float" ? "set" : "add");
-  const [quantity, setQuantity] = useState("");
+  const [mode, setMode] = useState<"add" | "set">(kind === "float" || stockId ? "set" : "add");
+  const [quantity, setQuantity] = useState(() => stockId ? String(round(Math.max(0, initial.left[stockId]))) : "");
   const [cash, setCash] = useState<CashValue>({});
   const { busy, error, run } = useRecordSave(onClose);
   const isCash = kind === "float";
