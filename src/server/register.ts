@@ -289,7 +289,8 @@ export async function runCommand(
           .where(eq(shifts.id, open.id));
       }
     } else if (cmd.action === "sync") {
-      await applyEvents(tx, business.id, business.currency, cmd.events, { memberId: member.id, deviceId: cmd.deviceId, primaryOwner });
+      const syncIssues = await applyEvents(tx, business.id, business.currency, cmd.events, { memberId: member.id, deviceId: cmd.deviceId, primaryOwner });
+      return { ...(await snapshot(access)), ...(syncIssues.length ? { syncIssues } : {}) };
     } else if (cmd.action === "open") {
       const { bookingId } = cmd;
       // Booths run side by side, each on its own phone. A shift already open on another

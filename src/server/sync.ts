@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { makeSale, priceLines, shiftTotals, stockReplay, totalLines } from "../lib/domain";
-import type { Shift } from "../lib/types";
+import { makeSale, priceLines, shiftTotals, stockReplay, totalLines, validCount } from "../lib/domain";
+import { reversalLabel } from "../lib/reversal-approval";
+import { applyStockCount, tillStockItems } from "../lib/till-counts";
+import type { ReversalEvent, Shift, StockCountEvent, SyncIssue } from "../lib/types";
 import { isOnShift } from "../lib/team";
 import type { Transaction } from "./db";
 import { ensure, RegisterError } from "./errors";
 import type { InputEvent } from "./input";
-import { bookings, expenses, sales, shifts, syncedEvents } from "./schema";
-import { presentExpense, presentSale, presentShift } from "./snapshot";
+import { checkPin, openReversalPin } from "./pin";
+import { bookings, businesses, expenses, members, sales, shifts, syncedEvents } from "./schema";
+import { activeTill, presentExpense, presentSale, presentShift } from "./snapshot";
 
 /** Price offline receipts using the menu the device had when it checked out. */
 function receiptMenu(shift: typeof shifts.$inferSelect, event: Extract<InputEvent, { type: "sale" }>) {
@@ -41,10 +44,14 @@ function eventForFingerprint(event: InputEvent) {
   return { ...event, sale };
 }
 
+function fingerprintOf(payload: object) {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
 /** A repeated write on the same till must match the first committed request. */
-export async function claimRegisterEvent(tx: Transaction, shiftId: string, id: string, payload: object) {
-  const fingerprint = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-  const inserted = await tx.insert(syncedEvents).values({ id, shiftId, fingerprint })
+export async function claimRegisterEvent(tx: Transaction, shiftId: string, id: string, payload: object, rejection?: string) {
+  const fingerprint = fingerprintOf(payload);
+  const inserted = await tx.insert(syncedEvents).values({ id, shiftId, fingerprint, rejection })
     .onConflictDoNothing().returning({ id: syncedEvents.id });
   if (inserted.length) return true;
   const [prior] = await tx.select({ fingerprint: syncedEvents.fingerprint }).from(syncedEvents)
@@ -71,6 +78,42 @@ export async function closingFigures(tx: Transaction, shift: Shift, countedCash:
   return { difference: countedCash - expectedCash, usedStock, leftStock };
 }
 
+async function checkStockMovement(tx: Transaction, current: Shift, event: StockCountEvent) {
+  if (current.mergedAt) return "This till’s leftovers have already been merged.";
+  const [business] = await tx.select({ settings: businesses.settings }).from(businesses).where(eq(businesses.id, current.businessId));
+  const items = tillStockItems(current, business.settings?.stockItems);
+  if (!items.some((item) => item.id === event.item.id)) {
+    if (items.some((item) => item.name.toLowerCase() === event.item.name.toLowerCase()))
+      return "This item was added on another device. Select the existing item to adjust its count.";
+    if (!/^[0-9a-f-]{36}$/i.test(event.item.id)) return "Reopen the stock item to check its count.";
+  }
+  const at = Date.parse(event.at);
+  const prior = { ...current, stockSets: current.stockSets?.filter((count) => Date.parse(count.at) <= at) };
+  const sold = (await tx.select().from(sales).where(eq(sales.shiftId, current.id))).map(presentSale)
+    .filter((sale) => Date.parse(sale.createdAt) <= at);
+  const left = stockReplay(prior, sold).left[event.item.id] ?? null;
+  if (!event.addition && left !== event.previous) return "Stock changed on another device. Reopen the item to check its count.";
+  if (event.addition && (!event.amount || !validCount((left ?? 0) + event.amount))) return "Reopen the item to check the quantity added.";
+}
+
+async function reverseSavedSale(tx: Transaction, shift: typeof shifts.$inferSelect, event: ReversalEvent,
+  recorder: { memberId: string; deviceId: string; primaryOwner: boolean }) {
+  const [sale] = await tx.select().from(sales).where(and(eq(sales.id, event.targetId), eq(sales.shiftId, shift.id)));
+  if (!sale) return "Receipt unavailable on this till.";
+  if (sale.reversedAt) return;
+  if (shift.closedAt) return "The till closed before the reversal synced.";
+  const [member] = await tx.select({ owner: members.owner }).from(members).where(eq(members.id, recorder.memberId));
+  if (!member?.owner && !await activeTill(tx, [shift], { till: shift.id, deviceId: recorder.deviceId },
+    { id: recorder.memberId, primaryOwner: recorder.primaryOwner })) return "You no longer have access to reverse sales on this till.";
+  const [business] = await tx.select().from(businesses).where(eq(businesses.id, shift.businessId)).for("update");
+  const pin = openReversalPin(business.reversalPrivateKey, event.approval, reversalLabel(business.id, recorder.memberId, recorder.deviceId, event));
+  if (!pin || !/^\d{4,8}$/.test(pin)) return "Reopen the receipt and enter the owner PIN again.";
+  const result = await checkPin(tx, business, pin);
+  if (result === "locked") return "Too many PIN attempts. Try again in 15 minutes.";
+  if (result !== "ok") return "Incorrect owner PIN. Open the receipt to try again.";
+  await tx.update(sales).set({ reason: event.reason, reversedAt: event.at }).where(eq(sales.id, sale.id));
+}
+
 /**
  * Record what a phone did on a shift. Any phone on the team can sell on the open shift,
  * so receipts are numbered here as they arrive. Sales and expenses that reach a shift
@@ -84,7 +127,8 @@ export async function applyEvents(
   events: InputEvent[],
   recorder: { memberId: string; deviceId: string; primaryOwner: boolean },
 ) {
-  if (!events.length) return;
+  const issues: SyncIssue[] = [];
+  if (!events.length) return issues;
   const shiftId = events[0].shiftId;
   ensure(
     events.every((event) => event.shiftId === shiftId),
@@ -105,7 +149,7 @@ export async function applyEvents(
     ensure(isOnShift(booking, recorder.memberId) || legacyOwner,
       "This phone couldn’t verify till access. Unsynced records are still saved here. Ask an owner to restore your shift assignment, then retry sync.", 403);
   }
-  const current = presentShift(shift, currency);
+  let current = presentShift(shift, currency);
   const closed = Boolean(current.closedAt);
   const unavailable = new Set(shift.soldOut);
   const targets = new Set(
@@ -125,8 +169,34 @@ export async function applyEvents(
   let recorded = false;
 
   for (const event of events) {
-    if (!await claimRegisterEvent(tx, shiftId, event.id, eventForFingerprint(event))) continue;
+    if (event.type === "reversal" || event.type === "stockCount") {
+      // The business lock serializes corrections. Store the outcome with the event on first insert,
+      // including a refusal, so a lost response can be replayed without another PIN attempt.
+      const [prior] = await tx.select().from(syncedEvents).where(eq(syncedEvents.id, event.id));
+      if (prior) {
+        ensure(prior.shiftId === shiftId && prior.fingerprint === fingerprintOf(event), "This correction differs from the saved one.", 409);
+        if (prior.rejection) issues.push({ id: event.id, message: prior.rejection });
+        continue;
+      }
+      let rejection: string | undefined;
+      if (event.type === "reversal") {
+        const problem = await reverseSavedSale(tx, shift, event, recorder);
+        if (problem) rejection = "Reversal declined. " + problem;
+      } else {
+        const problem = await checkStockMovement(tx, current, event);
+        if (problem) rejection = "Stock count declined. " + problem;
+        else {
+          current = applyStockCount(current, event);
+          await tx.update(shifts).set({ stockSets: current.stockSets, settings: current.settings }).where(eq(shifts.id, shift.id));
+        }
+      }
+      await claimRegisterEvent(tx, shiftId, event.id, event, rejection);
+      if (rejection) issues.push({ id: event.id, message: rejection });
+      else recorded = true;
+      continue;
+    }
 
+    if (!await claimRegisterEvent(tx, shiftId, event.id, eventForFingerprint(event))) continue;
     if (event.type === "availability") {
       // Sold-out marks only matter while the shift is open.
       if (closed || !targets.has(event.targetId)) continue;
@@ -215,4 +285,5 @@ export async function applyEvents(
       .update(shifts)
       .set(await closingFigures(tx, current, shift.countedCash))
       .where(eq(shifts.id, shift.id));
+  return issues;
 }

@@ -110,7 +110,10 @@ export function SalesScreen({
   const options = useMemo(() => filterOptions(all, filter, shiftFacets), [all, filter, shiftFacets]);
   const pending = new Set(state.pending.map((e) => e.id));
   const mine = Boolean(shift);
-  const canReverse = Boolean(online && mine && state.pending.length === 0);
+  const deferred = !online || state.pending.length > 0;
+  const approvalReady = !deferred || Boolean(state.offlineReversalKey) || state.business?.id === "demo";
+  const canReverse = mine && !state.closingShiftId && approvalReady;
+  const reversals = new Set(state.pending.filter((e) => e.type === "reversal").map((e) => e.targetId));
   const q = query.trim().toLowerCase();
   const sales = all
     .filter((x) => matchesFilter(x.facets, filter))
@@ -273,7 +276,7 @@ export function SalesScreen({
                   </span>
                   <span className="label ellipsis sale-meta">
                     {sale.reversedAt ? (
-                      <span className="danger">Reversed · </span>
+                      <span className="danger">{reversals.has(sale.id) ? "Reversal pending" : "Reversed"} · </span>
                     ) : pending.has(sale.id) ? (
                       <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-label="Not synced" role="img" />
                     ) : null}
@@ -329,6 +332,7 @@ export function SalesScreen({
           business={business}
           photos={new Map([...photos, ...(shiftPhotos.get(open.shiftId) ?? [])])}
           pending={pending.has(open.id)}
+          pendingReversal={reversals.has(open.id)} deferredApproval={deferred}
           pastReasons={Array.from(
             new Set(
               state.sales
@@ -343,11 +347,8 @@ export function SalesScreen({
               ? undefined
               : !mine
                 ? "Reverse it on the phone running this shift."
-                : !online
-                  ? "Connect to reverse a sale."
-                  : state.pending.length
-                    ? "Waiting for sales to sync first."
-                    : undefined
+                : state.closingShiftId ? "This till is closing."
+                : !approvalReady ? "Open this till online once to prepare offline reversals." : undefined
           }
           onReverse={(reason, pin) => onReverse(open.id, reason, pin)}
           onClose={() => setOpenId(null)}

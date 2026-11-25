@@ -63,7 +63,7 @@ export function TillCountEditor({ kind, stockId, shift, state, currency, onSave,
         if (amount === undefined) return false;
         await onSave(isCash
           ? { kind: "float", previous: initial.shift.openingCash, previousCount: initial.shift.openingCount, amount, count: mode === "set" ? cash.count : undefined }
-          : { kind: "stock", stockId: itemId, previous, amount, ...(!item ? { newItem: { name: name.trim(), unit: unit.trim() } } : {}) }, initial.requestId);
+          : { kind: "stock", stockId: itemId, previous, amount, addition: mode === "add", ...(!item ? { newItem: { name: name.trim(), unit: unit.trim() } } : {}) }, initial.requestId);
         return true;
       })}>{busy ? "Saving…" : "Save changes"}</button>}
     >

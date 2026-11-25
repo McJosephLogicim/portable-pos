@@ -19,6 +19,8 @@ export function OfflineBanner({ checked, onRefresh }: { checked: boolean; onRefr
 
 const eventLabels = [
   ["sale", "sale", "sales"],
+  ["reversal", "sale reversal", "sale reversals"],
+  ["stockCount", "stock adjustment", "stock adjustments"],
   ["expense", "expense", "expenses"],
   ["editExpense", "expense edit", "expense edits"],
   ["unexpense", "expense removal", "expense removals"],
@@ -32,7 +34,7 @@ export function SyncBanner({ events, online, syncing, failed, action }: {
   failed: boolean;
   action?: ReactNode;
 }) {
-  const counts: Record<RegisterEvent["type"], number> = { sale: 0, expense: 0, editExpense: 0, unexpense: 0, availability: 0 };
+  const counts: Record<RegisterEvent["type"], number> = { sale: 0, reversal: 0, stockCount: 0, expense: 0, editExpense: 0, unexpense: 0, availability: 0 };
   for (const event of events) counts[event.type]++;
   const title = syncing ? "Syncing changes" : failed ? "Sync paused" : "Waiting to sync";
   const detail = !online ? "Saved on this device. Sync starts when you’re back online."

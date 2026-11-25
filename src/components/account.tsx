@@ -136,8 +136,8 @@ function ShiftCard({ data }: { data: LinkPreview }) {
       <p className={styles.hours}>{hours}</p>
       {(shift.place || shift.event) && (
         <div className={styles.where}>
-          {shift.place && <p>{shift.place}</p>}
-          {shift.event && <p className={styles.quiet}>{shift.event}</p>}
+          {shift.place && <p className="ellipsis" title={shift.place}>{shift.place}</p>}
+          {shift.event && <p className={`${styles.quiet} ellipsis`} title={shift.event}>{shift.event}</p>}
         </div>
       )}
       <p className={styles.seats}>

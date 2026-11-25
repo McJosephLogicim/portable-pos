@@ -103,6 +103,14 @@ const expense = z.object({
   by: z.string().trim().max(80).optional(),
 });
 const event = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("stockCount"), id: z.uuid(), shiftId: z.uuid(), at: z.iso.datetime({ offset: true }),
+    item: z.object({ id: key, name: z.string().trim().min(1).max(120), unit: z.string().trim().min(1).max(32) }),
+    amount: z.number().min(0).max(1000000), addition: z.boolean(), previous: z.number().finite().nullable(),
+  }),
+  z.object({ type: z.literal("reversal"), id: z.uuid(), shiftId: z.uuid(), targetId: z.uuid(),
+    at: z.iso.datetime({ offset: true }), reason: z.string().trim().min(1).max(500),
+    approval: z.string().regex(/^[A-Za-z0-9+/]{342}==$/),
+  }),
   z.object({ type: z.literal("sale"), id: z.uuid(), shiftId: z.uuid(), sale, menuVersion: z.union([z.literal("opening"), z.uuid()]).optional() }),
   z.object({ type: z.literal("expense"), id: z.uuid(), shiftId: z.uuid(), expense }),
   z.object({

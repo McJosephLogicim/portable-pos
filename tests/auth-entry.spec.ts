@@ -332,6 +332,98 @@ for (const [path, title] of [
   });
 }
 
+test("offline stock, expenses and a PIN-protected reversal survive reload and a lost sync response", async ({ page, context }) => {
+  test.skip(!process.env.POS_TEST_DATABASE_URL || !process.env.POS_TEST_MOCK_AUTH, "Requires a migrated disposable database and mock sign-in.");
+  test.setTimeout(90000);
+  process.env.DATABASE_URL = process.env.POS_TEST_DATABASE_URL;
+  const { runCommand } = await import("../src/server/register");
+  const { stockLeft, shiftTotals } = await import("../src/lib/domain");
+  const { shiftNow } = await import("./schedule");
+  const owner = crypto.randomUUID();
+  const pin = "2916";
+  const call = (command: object) => runCommand(owner, command);
+  await call({ action: "setup", pin, name: "Offline Counter", currency: "PHP", timeZone: "Asia/Manila" });
+  await call({ action: "completeOnboarding" });
+  await call({ action: "menu", menu: [{ id: "tea", name: "Tea", price: 500, category: "Drinks", groups: [], stock: true }], pin });
+  const bookingId = await shiftNow(call, pin);
+  await mockAuth(page);
+  let till = "", deviceId = "", lost = false, offline = false;
+  const syncs: RegisterEvent[][] = [];
+  await page.route("**/api/pos", async (route) => {
+    if (offline) throw Error("Register made an API request while offline.");
+    const command = route.request().postDataJSON();
+    if (!till && command.action === "bootstrap") {
+      deviceId = command.deviceId;
+      const result = await call({ action: "open", deviceId, bookingId, openingCash: 10000, stock: { tea: 2 } });
+      till = result.shift!.id;
+      return route.fulfill({ json: result });
+    }
+    const result = await call(command);
+    if (command.action === "sync") {
+      syncs.push(command.events);
+      if (!lost) {
+        lost = true;
+        return route.abort("connectionreset");
+      }
+    }
+    return route.fulfill({ json: result });
+  });
+  await page.goto(appUrl);
+  await enterCredentials(page);
+  await page.locator("button[type=submit]").click();
+  const tea = page.getByRole("button", { name: /^Add Tea,/ });
+  await expect(tea).toBeVisible();
+  await expect.poll(() => page.evaluate(async () => Boolean(navigator.serviceWorker.controller &&
+    await caches.match("/", { cacheName: "portable-pos-shell-v1" }))), { timeout: 30000 }).toBe(true);
+  offline = true;
+  await context.setOffline(true);
+  await tea.click();
+  await page.locator(".charge-bar").click();
+  const charge = page.getByRole("dialog", { name: "Charge", exact: true });
+  await charge.getByRole("button", { name: "Cash", exact: true }).click();
+  await charge.getByRole("button", { name: "Exact", exact: true }).click();
+  await page.getByRole("button", { name: "Slide to confirm sale" }).press("Enter");
+  await page.getByRole("button", { name: "View receipt" }).click();
+  await page.getByRole("button", { name: "Reverse sale", exact: true }).click();
+  const reversal = page.getByRole("dialog", { name: /^Reverse #/ });
+  await reversal.getByRole("textbox", { name: "Reason" }).fill("Duplicate sale");
+  await reversal.getByRole("button", { name: /^Reverse ₱/ }).click();
+  const pinDialog = page.getByRole("dialog", { name: "Owner PIN" });
+  for (const digit of pin) await pinDialog.getByRole("button", { name: digit, exact: true }).click();
+  await pinDialog.getByRole("button", { name: "Confirm" }).click();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  const stock = page.getByRole("region", { name: "Stock left" });
+  await stock.getByRole("button", { name: "Add", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Adjust stock" });
+  await editor.getByLabel("Stock item").selectOption("tea");
+  await editor.getByLabel("Quantity to add").fill("3");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  await expect(stock.getByRole("button", { name: /Tea/ })).toContainText("5 pieces left");
+  await page.getByRole("region", { name: "Expenses" }).getByRole("button", { name: "Add" }).click();
+  const expense = page.getByRole("dialog", { name: "Log an expense" });
+  await expense.getByRole("combobox", { name: "What for" }).fill("Ice");
+  await expense.getByRole("textbox", { name: "Amount" }).fill("20");
+  await expense.getByRole("button", { name: /^Log ₱/ }).click();
+  await expect(expense).toBeHidden();
+  await page.reload();
+  const waiting = page.getByRole("region", { name: "Register sync" });
+  await expect(waiting.getByRole("listitem")).toHaveText(["1 sale", "1 sale reversal", "1 stock adjustment", "1 expense"]);
+  await page.getByRole("button", { name: "Sales", exact: true }).click();
+  await expect(page.getByText("Reversal pending", { exact: false })).toBeVisible();
+  offline = false;
+  await context.setOffline(false);
+  await waiting.getByRole("button", { name: "Retry sync" }).click();
+  await expect(waiting).toHaveCount(0);
+  expect(syncs).toHaveLength(2);
+  expect(syncs[0]).toEqual(syncs[1]);
+  const saved = await call({ action: "bootstrap", deviceId, till });
+  expect(saved.sales).toHaveLength(1);
+  expect(saved.sales[0].reason).toBe("Duplicate sale");
+  expect(saved.expenses).toHaveLength(1);
+  expect(stockLeft(saved.shift!, saved.sales).tea).toBe(5);
+  expect(shiftTotals(saved.shift!, saved.sales, saved.expenses).expectedCash).toBe(8000);
+});
+
 test("businesses download ahead of time and keep their own orders when switching offline", async ({ page, context }) => {
   test.skip(!process.env.POS_TEST_MOCK_AUTH, "Requires mock Auth and register responses.");
   await mockAuth(page);

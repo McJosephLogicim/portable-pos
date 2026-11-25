@@ -110,7 +110,7 @@ export function MergeLeftoversSheet({
                   }}
                 >
                   <span className="grow stack">
-                    <span>{shiftName(s, state)}</span>
+                    <span className="ellipsis">{shiftName(s, state)}</span>
                     {s.openedBy && <span className="label ellipsis">{s.openedBy}</span>}
                   </span>
                   <span className={"tick" + (on ? " on" : "")} aria-hidden="true">

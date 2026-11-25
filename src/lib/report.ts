@@ -214,10 +214,12 @@ export function countText(count: CashCount | undefined, fmt: Format) {
 /** Format the same payment equation for the till, its detail sheet, and exports. */
 export function paymentAmounts(method: { amount: number; expenses: number }, fmt: Format) {
   const net = method.amount - method.expenses;
+  const total = net < 0 ? "−" + fmt(-net) : fmt(net);
   return {
     sale: fmt(method.amount),
     deduction: " − " + fmt(method.expenses),
-    result: " = " + (net < 0 ? "−" + fmt(-net) : fmt(net)),
+    total,
+    result: " = " + total,
   };
 }
 

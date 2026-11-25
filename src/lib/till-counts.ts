@@ -1,11 +1,11 @@
 import { checkCount, type CashCount } from "./cash";
 import { setShiftStock, stockLeft, validCount } from "./domain";
 import { shiftStock } from "./stock";
-import type { Sale, Shift, StockItem } from "./types";
+import type { Sale, Shift, StockCountEvent, StockItem } from "./types";
 
 export type TillCount =
   | { kind: "float"; previous: number; previousCount?: CashCount; amount: number; count?: CashCount }
-  | { kind: "stock"; stockId: string; previous: number | null; amount: number; newItem?: { name: string; unit: string } };
+  | { kind: "stock"; stockId: string; previous: number | null; amount: number; addition?: boolean; newItem?: { name: string; unit: string } };
 
 export function tillStockItems(shift: Shift, catalog: StockItem[] = []) {
   const items = shiftStock(shift).items;
@@ -35,4 +35,18 @@ export function adjustTillCount(shift: Shift, sales: Sale[], catalog: StockItem[
   const current = stockLeft(shift, sales)[item.id] ?? null;
   if (current !== change.previous) throw Error("Stock changed. Reopen the editor for the latest count.");
   return setShiftStock(shift, [item], { [item.id]: change.amount });
+}
+
+/** Replay a physical stock movement at the time it happened, including after a retry. */
+export function applyStockCount(shift: Shift, event: StockCountEvent): Shift {
+  if (shift.stockSets?.some((set) => set.eventId === event.id)) return shift;
+  const items = shift.settings.stockItems ?? [];
+  return {
+    ...shift,
+    stockSets: [...(shift.stockSets ?? []), {
+      stockId: event.item.id, amount: event.amount, at: event.at, addition: event.addition, eventId: event.id,
+    }],
+    settings: items.some((item) => item.id === event.item.id) ? shift.settings
+      : { ...shift.settings, stockItems: [...items, event.item] },
+  };
 }

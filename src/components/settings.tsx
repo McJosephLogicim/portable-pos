@@ -1345,7 +1345,9 @@ function PhoneSettings({ connection, offlineReady }: Pick<SettingsProps, "connec
           <span className="grow row gap-6">
             Works offline
             <Explain title="Works offline">
-              Sales save on this phone first and sync when you're back online.
+              <p>On an open till, you can take sales, attach receipt photos, mark items sold out, adjust stock, and add or edit expenses.</p>
+              <p>Sale reversals update this phone immediately. The owner PIN is checked when you reconnect.</p>
+              <p>You can also review saved receipts and switch between downloaded businesses.</p>
             </Explain>
           </span>
           <span className="record-end">{offlineReady ? "Ready" : "Getting ready"}</span>

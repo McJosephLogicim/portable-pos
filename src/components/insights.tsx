@@ -253,12 +253,12 @@ export function PaymentEquation({ method, currency, header = false }: {
   currency: string;
   header?: boolean;
 }) {
-  const { sale, deduction, result } = paymentAmounts(method, (value) => formatMoney(value, currency));
+  const { sale, deduction, total } = paymentAmounts(method, (value) => formatMoney(value, currency));
   return (
     <span className={`${styles.paymentAmounts} ${header ? styles.paymentHeader : ""}`}>
       <span><span className="sr-only">Sales </span>{sale}</span>
       <span className={styles.expenseAmount}>{deduction}<span className="sr-only"> expenses</span></span>
-      <strong>{result}<span className="sr-only"> total</span></strong>
+      <strong><span className={styles.equals}> = </span>{total}<span className="sr-only"> total</span></strong>
     </span>
   );
 }

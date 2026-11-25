@@ -21,7 +21,7 @@ export function useShiftFormats(timeZone: string) {
 export function useBookingSales(state: RegisterState, demo: boolean) {
   const local = useMemo(() => salesByBooking(state.shifts, state.sales), [state.shifts, state.sales]);
   const pendingSales = useMemo(
-    () => new Set(state.pending.filter((e) => e.type === "sale").map((e) => e.shiftId)),
+    () => new Set(state.pending.filter((e) => e.type === "sale" || e.type === "reversal").map((e) => e.shiftId)),
     [state.pending],
   );
   const pendingBookings = useMemo(
@@ -105,7 +105,7 @@ function ShiftCard({ entry, booking, till, state, sales, expenses, onOpen }: {
           {end && <span className="label">{time.format(new Date(end))}</span>}
         </span>
         <span className="grow stack gap-4">
-          <span className="strong" style={{ overflowWrap: "anywhere" }}>{title}</span>
+          <span className="strong ellipsis" title={title}>{title}</span>
           {booking && (
             <span className="label ellipsis">
               {[booking.place && booking.event ? booking.place.name : "", booking.organizer?.name].filter(Boolean).join(" · ") || "No location yet"}

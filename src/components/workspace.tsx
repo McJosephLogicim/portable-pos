@@ -27,6 +27,9 @@ import {
   checkout,
   clearRegister,
   editExpense,
+  dismissSyncIssue,
+  queueReversal,
+  saveStockCount,
   loadRegister,
   logExpense,
   mergeServer,
@@ -594,6 +597,12 @@ export function Workspace() {
 
   async function owner(input: OwnerAction) {
     if (!key) throw Error("Register unavailable.");
+    if (input.action === "adjustTill" && input.change.kind === "stock") {
+      const change = input.change;
+      await locked("write-" + key, async () => show(key, await saveStockCount(key, input.shiftId, input.requestId, change)));
+      void flush();
+      return;
+    }
     if (!navigator.onLine)
       throw Error("Connect to the internet to complete this action.");
     if (input.action === "open" && !(await prepareOffline()))
@@ -891,8 +900,19 @@ export function Workspace() {
     (url: string) => (!key || key === DEMO || url.startsWith("data:") ? Promise.resolve(url) : proofBlob(key, url)),
     [key],
   );
-  const reverse = (saleId: string, reason: string, pin: string) =>
-    owner({ action: "reverse", saleId, reason, pin });
+  async function reverse(saleId: string, reason: string, pin: string) {
+    if (!key) throw Error("Register unavailable.");
+    if (navigator.onLine && !state?.pending.length) {
+      try {
+        return await owner({ action: "reverse", saleId, reason, pin });
+      } catch (error) {
+        // Wi-Fi can remain connected after internet access drops. Keep this approval on the till.
+        if (!state?.offlineReversalKey || !(error instanceof Error) || !error.cause || error instanceof RequestFailure) throw error;
+      }
+    }
+    await locked("write-" + key, async () => show(key, await queueReversal(key, saleId, reason, pin)));
+    void flush();
+  }
 
   function refreshConnection() {
     const connected = navigator.onLine;
@@ -1115,7 +1135,7 @@ export function Workspace() {
           </button>
         </header>
       )}
-      {(offlineBanner || queued.length > 0 || notice || visibleSyncError) && (
+      {(offlineBanner || queued.length > 0 || Boolean(state?.syncIssues?.length) || notice || visibleSyncError) && (
         <div className="page-notices">
           {offlineBanner}
           {queued.length > 0 && (
@@ -1128,6 +1148,9 @@ export function Workspace() {
               )}
             />
           )}
+          {state?.syncIssues?.map((issue) => <Notice key={issue.id} tone="danger" onDismiss={() => {
+            void dismissSyncIssue(key, issue.id).then((next) => show(key, next)).catch((error) => setNotice(message(error)));
+          }}>{issue.message}</Notice>)}
           {notice && <Notice onDismiss={() => setNotice("")}>{notice}</Notice>}
           {visibleSyncError && queued.length === 0 && (
             <Notice

@@ -474,7 +474,7 @@ function BookingSheet({
   const cachedSalesAmount = cachedSales.reduce((sum, entry) => sum + entry.total, 0);
   const salesAmount = p?.sales ?? cachedSalesAmount;
   const recent = till && (!till.closedAt || state.shifts.filter((s) => s.closedAt && s.number > till.number).length < 30);
-  const pendingSales = state.pending.some((event) => event.type === "sale" && tills.includes(event.shiftId));
+  const pendingSales = state.pending.some((event) => (event.type === "sale" || event.type === "reversal") && tills.includes(event.shiftId));
   const pendingExpenses = state.pending.some((event) =>
     (event.type === "expense" || event.type === "editExpense" || event.type === "unexpense") && tills.includes(event.shiftId));
   const hasHistory = me.owner && Boolean(till || started || salesAmount || expenses);
@@ -531,7 +531,7 @@ function BookingSheet({
   return (
     <>
       <Sheet
-        title={title}
+        title={title} truncateTitle
         onClose={onClose}
         busy={busy}
         action={me.owner && (
@@ -1470,7 +1470,7 @@ function ShiftSheetActions({ state, title, till, shareText, busy, onDelete, dele
       {action === "report" && (till ? (
         <ReportSheet shift={till} state={state} business={state.business!} onDismiss={() => setAction(null)} />
       ) : (
-        <Sheet title={`${title} report`} onClose={() => setAction(null)}>
+        <Sheet truncateTitle title={`${title} report`} onClose={() => setAction(null)}>
           <EmptyState pose="close" object="checklistClipboard" title="No till report is available for this shift." text="A report appears once a till is linked to the shift." />
         </Sheet>
       ))}
@@ -1672,7 +1672,7 @@ function TillDetailsSheet({ till, props, onClose }: { till: Shift; props: Schedu
   const total = shiftTotals(till, state.sales, state.expenses).total;
   return (
     <>
-      <Sheet title={title} onClose={onClose}>
+      <Sheet title={title} truncateTitle onClose={onClose}>
         <div className="stack gap-4">
           <p className="strong">{date}</p>
           <p className="label">{hours}{till.openedBy ? ` · ${till.openedBy}` : ""}</p>

@@ -435,6 +435,7 @@ function restoreSheet(order: number, show: () => void) {
 
 export function Sheet({
   title,
+  truncateTitle,
   onClose,
   children,
   footer,
@@ -445,6 +446,7 @@ export function Sheet({
   className,
 }: {
   title: string;
+  truncateTitle?: boolean;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -611,13 +613,13 @@ export function Sheet({
         />
         {help ? (
           <div className="sheet-title">
-            <h2 id={id}>{title}</h2>
+            <h2 id={id} className={truncateTitle ? "ellipsis" : undefined} title={truncateTitle ? title : undefined}>{title}</h2>
             <Explain title={title} label={"About " + title.toLowerCase()}>
               {help}
             </Explain>
           </div>
         ) : (
-          <h2 id={id}>{title}</h2>
+          <h2 id={id} className={truncateTitle ? "ellipsis" : undefined} title={truncateTitle ? title : undefined}>{title}</h2>
         )}
         {action}
         <button
@@ -909,7 +911,7 @@ export function MoneyField({
 
 /* ---------- owner PIN ---------- */
 
-type PinRequest = (run: (pin: string) => Promise<void>, options?: { fresh?: boolean }) => Promise<boolean>;
+type PinRequest = (run: (pin: string) => Promise<void>, options?: { fresh?: boolean; remember?: boolean }) => Promise<boolean>;
 const PinContext = createContext<PinRequest>(async () => false);
 
 /** Owner actions ask for the PIN once, then reuse it for five minutes on this screen. */
@@ -960,7 +962,7 @@ export function PinProvider({
         if (pin === null) return false;
         try {
           await run(pin);
-          cached.current = { pin, at: Date.now() };
+          if (options?.remember !== false) cached.current = { pin, at: Date.now() };
           return true;
         } catch (error) {
           if (

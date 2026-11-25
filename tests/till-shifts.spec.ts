@@ -11,7 +11,7 @@ async function seedTill(
   page: Page,
   withShifts: boolean,
   withSale: boolean | "unscheduled" | "current" = false,
-  { opening = false, rankedAs, withExpenses = false, staffAs, linked = false, emptyStock = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean; emptyStock?: boolean } = {},
+  { opening = false, rankedAs, withExpenses = false, staffAs, linked = false, emptyStock = false, eventName }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean; emptyStock?: boolean; eventName?: string } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
@@ -24,7 +24,7 @@ async function seedTill(
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock }) => {
+  await page.evaluate(async ({ withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock, eventName }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -50,6 +50,7 @@ async function seedTill(
           const future = booking("Evening", "2026-11-21T07:00:00Z", "2026-11-21T12:00:00Z");
           const yesterday = booking("Overnight", "2026-11-20T15:30:00Z", "2026-11-21T05:00:00Z");
           const closed = booking("Closed market", "2026-11-21T01:00:00Z", "2026-11-21T03:00:00Z");
+          if (eventName) first.event = closed.event = { id: "bazaar", name: eventName };
           const past = { ...shift, id: "past", number: 2, bookingId: closed.id, openedAt: closed.startsAt, closedAt: "2026-11-21T02:00:00Z", difference: 0 };
           const unscheduled = { ...past, id: "unscheduled", number: 1, bookingId: undefined, openedAt: "2026-11-20T03:00:00Z", closedAt: "2026-11-20T09:00:00Z" };
           state.shift = opening ? null : shift;
@@ -101,7 +102,7 @@ async function seedTill(
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock });
+  }, { withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock, eventName });
   await page.reload();
 }
 
@@ -373,6 +374,8 @@ test("an open till can add and correct stock and float, then share each payment 
   await till.click();
   await expect(page.getByText("₱3,000 float", { exact: false })).toBeVisible();
   const cashRow = page.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash/ });
+  await expect(cashRow).toHaveAccessibleName(/−₱50 total/);
+  await page.setViewportSize({ width: 768, height: 844 });
   await expect(cashRow.locator("strong")).toContainText("= −₱50");
   const deduction = cashRow.getByText("− ₱50", { exact: false }).last();
   await expect(deduction).toBeVisible();
@@ -411,18 +414,56 @@ test("an open till can add and correct stock and float, then share each payment 
   await expect(text).toContainText("= Expected ₱2,950");
 });
 
-test("payment rows and sheet headers show the same net total with the receipt below", async ({ page }) => {
+test("phone payment rows show only net, with the calculation in the sheet and on desktop", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 780 });
   await seedTill(page, true, "current", { linked: true, withExpenses: true });
   await page.getByRole("button", { name: "Till", exact: true }).click();
   const row = page.getByRole("region", { name: "By payment" }).getByRole("button", { name: /Cash/ });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(row).toHaveAccessibleName(/Cash.*₱60 total/);
+    await expect(row).not.toHaveAccessibleName(/₱110|₱50|=/);
+    await expect(row.getByText("Cash", { exact: true })).toBeVisible();
+    if (width === 390) await row.screenshot({ path: testInfo.outputPath("payment-phone.png") });
+  }
+  await page.setViewportSize({ width: 768, height: 844 });
   await expect(row).toHaveAccessibleName(/Sales ₱110.*− ₱50.*= ₱60/);
+  await page.setViewportSize({ width: 320, height: 780 });
   await row.click();
   const sheet = page.getByRole("dialog", { name: "Cash", exact: true });
   await expect(sheet).toContainText(/Sales ₱110.*− ₱50.*= ₱60/);
   await expect(sheet.getByText("Espresso", { exact: true })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "See in Sales" })).toBeVisible();
   expect(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+});
+
+test("long shift names fit the schedule cards, till strip and sheets", async ({ page }, testInfo) => {
+  const eventName = "Christmas Bazaar at Gateway Mall North Entrance and Festival Hall";
+  await seedTill(page, true, false, { linked: true, eventName });
+  await page.getByRole("button", { name: "Shifts", exact: true }).click();
+  const card = page.locator("article.booking").filter({ hasText: "Started" });
+  const checkTitle = async (title: Locator) => {
+    await expect(title).toHaveCSS("text-overflow", "ellipsis");
+    await expect(title).toHaveCSS("white-space", "nowrap");
+    expect(await title.evaluate((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth)).toBe(true);
+  };
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await card.screenshot({ path: testInfo.outputPath("shift-card-" + width + ".png") });
+    await checkTitle(card.getByText(eventName, { exact: false }));
+    expect(await card.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await card.getByRole("button").click();
+  const details = page.getByRole("dialog", { name: new RegExp(eventName) });
+  await checkTitle(details.getByRole("heading", { level: 2 }).first());
+  await details.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  await checkTitle(page.getByRole("button", { name: /^Selling for/ }).getByText(eventName, { exact: false }));
+  await page.getByRole("button", { name: /^Past shifts/ }).click();
+  const history = page.getByRole("dialog", { name: "Past shifts" });
+  await checkTitle(history.locator("article.booking").getByText(eventName, { exact: false }));
+  await page.setViewportSize({ width: 1024, height: 800 });
+  expect(await history.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 test("Delete shakes and shows an error for an open till on both Shifts and Till", async ({ page }) => {

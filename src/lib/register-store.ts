@@ -1,13 +1,18 @@
 import { checkStock, makeSale, priceLines, stockLeft, totalLines } from "./domain";
 import { defaultSettings, legacyPayment, legacyShiftSettings } from "./settings";
 import { demoPlan } from "./demo-plan";
-import { demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
+import { DEMO, DEMO_PIN, demoAction, isPracticeKey, practiceBootstrap, practiceMenu, type OwnerAction } from "./demo";
+import { adjustTillCount, applyStockCount, tillStockItems, type TillCount } from "./till-counts";
+import { round } from "./stock";
+import { reversalLabel, sealReversalPin, type ReversalDetails } from "./reversal-approval";
 import { parseKey } from "./client";
 import type {
   Bootstrap,
   BusinessSummary,
   CartLine,
   RegisterEvent,
+  RegisterResponse,
+  StockCountEvent,
   RegisterState,
   Sale,
   Shift,
@@ -261,7 +266,7 @@ function withAvailability(
 
 export function mergeServer(
   key: string,
-  data: Bootstrap,
+  data: RegisterResponse,
   ackIds: string[] = [],
 ): Promise<RegisterState> {
   return updateRegister(key, (current) => {
@@ -274,14 +279,24 @@ export function mergeServer(
     // shift, which works its closing figures out again.
     if (pending.length && !sameBusiness)
       throw new Error("This phone has unsynced sales for another business. They're still saved here.");
+    const issues = new Map((sameBusiness ? current.syncIssues ?? [] : []).map((issue) => [issue.id, issue]));
+    const declined = new Set<string>();
+    for (const issue of data.syncIssues ?? []) {
+      const event = current.pending.find((e) => e.id === issue.id);
+      if (!event) continue;
+      if (event.type === "reversal") declined.add(event.targetId);
+      const receipt = event.type === "reversal" && current.sales.find((sale) => sale.id === event.targetId);
+      const label = receipt ? "Receipt #" + receipt.sequence + ". " : event.type === "stockCount" ? event.item.name + ". " : "";
+      issues.set(issue.id, { ...issue, message: label + issue.message });
+    }
     const sales = new Map<string, Sale>();
     for (const sale of sameBusiness ? current.sales : [])
-      sales.set(sale.id, sale);
+      sales.set(sale.id, declined.has(sale.id) ? { ...sale, reversedAt: undefined, reason: undefined } : sale);
     for (const sale of data.sales) {
       const stored = sales.get(sale.id);
       sales.set(
         sale.id,
-        stored?.reversedAt && !sale.reversedAt ? stored : sale,
+        stored?.reversedAt && !sale.reversedAt ? { ...sale, reversedAt: stored.reversedAt, reason: stored.reason } : sale,
       );
     }
     let soldOut = data.soldOut;
@@ -298,12 +313,22 @@ export function mergeServer(
       } else if (event.type === "unexpense") {
         const e = expenses.get(event.targetId);
         if (e) expenses.set(e.id, { ...e, voidedAt: e.voidedAt ?? new Date().toISOString() });
-      } else soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
+      } else if (event.type === "reversal") {
+        const sale = sales.get(event.targetId);
+        if (sale && !sale.reversedAt) sales.set(sale.id, { ...sale, reversedAt: event.at, reason: event.reason });
+      } else if (event.type === "availability") soldOut = withAvailability(soldOut, event.targetId, event.soldOut);
     }
     const shifts = new Map(
       (sameBusiness ? current.shifts : []).map((shift) => [shift.id, shift]),
     );
     for (const shift of data.shifts) shifts.set(shift.id, shift);
+    let activeShift = data.shift;
+    for (const event of pending) {
+      if (event.type !== "stockCount") continue;
+      if (activeShift?.id === event.shiftId) activeShift = applyStockCount(activeShift, event);
+      const record = shifts.get(event.shiftId);
+      if (record) shifts.set(record.id, applyStockCount(record, event));
+    }
     const sameTill = sameBusiness && current.shift?.id === data.shift?.id;
     const unlinked = data.shift && data.bookings && !data.bookings.some((booking) => booking.id === data.shift?.bookingId);
     return {
@@ -313,6 +338,8 @@ export function mergeServer(
       closingShiftId:
         sameTill && !data.shift?.closedAt && !unlinked ? current.closingShiftId : undefined,
       pending,
+      shift: activeShift,
+      syncIssues: [...issues.values()],
       soldOut,
       sales: [...sales.values()].sort((a, b) =>
         b.createdAt.localeCompare(a.createdAt),
@@ -350,6 +377,52 @@ function writableShift(current: RegisterState) {
     );
   }
   return shift;
+}
+
+export function saveStockCount(key: string, shiftId: string, id: string, change: Extract<TillCount, { kind: "stock" }>) {
+  return updateRegister(key, (current) => {
+    const shift = writableShift(current);
+    if (shift.id !== shiftId) throw Error("Reopen the active till to adjust stock.");
+    if (shift.stockSets?.some((set) => set.eventId === id)) return current;
+    const catalog = current.business?.settings.stockItems;
+    const checked = adjustTillCount(shift, current.sales, catalog, change);
+    const item = tillStockItems(checked, catalog).find((entry) => entry.id === change.stockId)!;
+    const amount = change.addition ? round(change.amount - (change.previous ?? 0)) : change.amount;
+    if (change.addition && amount <= 0) throw Error("Enter a positive quantity to add.");
+    const event: StockCountEvent = { id, shiftId, type: "stockCount", at: new Date().toISOString(),
+      item: { id: item.id, name: item.name, unit: item.unit }, amount, previous: change.previous, addition: Boolean(change.addition) };
+    const next = applyStockCount(shift, event);
+    return { ...current, shift: next, shifts: current.shifts.map((s) => s.id === shiftId ? next : s), pending: [...current.pending, event] };
+  });
+}
+
+export async function queueReversal(key: string, saleId: string, reason: string, pin: string) {
+  const initial = await loadRegister(key);
+  const shift = writableShift(initial);
+  const details: ReversalDetails = { id: crypto.randomUUID(), shiftId: shift.id, targetId: saleId,
+    type: "reversal", reason: reason.trim(), at: new Date().toISOString() };
+  if (!details.reason || details.reason.length > 500) throw Error("Enter a reversal reason of up to 500 characters.");
+  let approval = "";
+  if (key === DEMO) {
+    if (pin !== DEMO_PIN) throw Error("Incorrect owner PIN.");
+  } else {
+    if (!initial.offlineReversalKey || !initial.me || !initial.business)
+      throw Error("Open this till online once to prepare offline reversals.");
+    approval = await sealReversalPin(initial.offlineReversalKey, pin,
+      reversalLabel(initial.business.id, initial.me.memberId, initial.deviceId, details));
+  }
+  return updateRegister(key, (current) => {
+    const active = writableShift(current);
+    const sale = current.sales.find((s) => s.id === saleId && s.shiftId === active.id);
+    if (active.id !== shift.id || !sale) throw Error("Open the receipt on its active till.");
+    if (sale.reversedAt) return current;
+    return { ...current, sales: current.sales.map((s) => s.id === saleId ? { ...s, reversedAt: details.at, reason: details.reason } : s),
+      pending: [...current.pending, { ...details, approval }] };
+  });
+}
+
+export function dismissSyncIssue(key: string, id: string) {
+  return updateRegister(key, (current) => ({ ...current, syncIssues: current.syncIssues?.filter((issue) => issue.id !== id) }));
 }
 
 export function beginClose(

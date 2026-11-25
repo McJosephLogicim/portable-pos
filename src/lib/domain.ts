@@ -184,7 +184,7 @@ export function stockReplay(shift: Shift, sales: Sale[]) {
   };
   for (const event of events) {
     if ("set" in event) {
-      left[event.set.stockId] = event.set.amount;
+      left[event.set.stockId] = event.set.addition ? snap((left[event.set.stockId] ?? 0) + event.set.amount) : event.set.amount;
       used[event.set.stockId] ??= 0;
       start[event.set.stockId] ??= event.set.amount;
       short.delete(event.set.stockId);

@@ -2101,6 +2101,28 @@ button.booking-body:active {
   margin-left: 4px;
 }
 
+@media (max-width: 639px) {
+  .booking-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "time status" "details details";
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .booking-body > .booking-time {
+    grid-area: time;
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  .booking-time > span { white-space: nowrap; }
+  .booking-time > .label::before { content: "– "; }
+  .booking-body > .grow { grid-area: details; }
+  .booking-body > .pill { grid-area: status; justify-self: end; }
+}
+
 /* places */
 .place-card {
   display: block;

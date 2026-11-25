@@ -70,12 +70,14 @@ export function ReceiptBody({
   business,
   photos,
   pending,
+  pendingReversal,
 }: {
   sale: Sale;
   shift: Shift;
   business: Business;
   photos: ReadonlyMap<string, string>;
   pending?: boolean;
+  pendingReversal?: boolean;
 }) {
   const currency = shiftCurrency(shift, business);
   const created = new Intl.DateTimeFormat("en", {
@@ -92,14 +94,14 @@ export function ReceiptBody({
         <p className="label">
           {receiptNumber(shift.number, sale.sequence)} · {created}
         </p>
-        {pending && (
+        {pending && !pendingReversal && (
           <p className="label">
             <CloudOff size={13} strokeWidth={2} className="sync-mark" aria-hidden="true" /> Not synced
           </p>
         )}
         {sale.reversedAt && (
           <p className="row gap-6 danger" style={{ justifyContent: "center" }}>
-            <span className="dot danger" /> Reversed · {sale.reason}
+            <span className="dot danger" /> {pendingReversal ? "Reversal pending approval" : "Reversed"} · {sale.reason}
           </p>
         )}
       </div>
@@ -201,7 +203,9 @@ export function ReceiptSheet({
   preview = false,
   photos,
   pending,
+  pendingReversal,
   canReverse,
+  deferredApproval,
   reverseBlocked,
   pastReasons = [],
   onReverse,
@@ -213,7 +217,9 @@ export function ReceiptSheet({
   preview?: boolean;
   photos: ReadonlyMap<string, string>;
   pending?: boolean;
+  pendingReversal?: boolean;
   canReverse: boolean;
+  deferredApproval?: boolean;
   reverseBlocked?: string;
   /** Reasons typed on earlier reversals, offered again as chips. */
   pastReasons?: string[];
@@ -242,8 +248,7 @@ export function ReceiptSheet({
               setError("");
               try {
                 const done = await withPin((pin) =>
-                  onReverse(reason.trim(), pin),
-                );
+                  onReverse(reason.trim(), pin), { fresh: deferredApproval, remember: !deferredApproval });
                 if (done) onClose();
               } catch (e) {
                 setError(errorText(e));
@@ -262,6 +267,7 @@ export function ReceiptSheet({
             ? "Hand back the cash, then record it here. It comes off the drawer total."
             : `Refund it in ${sale.payment.name} first, then record it here.`}
         </p>
+        {deferredApproval && <p className="label">This reversal updates the till now. The owner PIN is checked when it syncs.</p>}
         <div className="chips" role="group" aria-label="Reason">
           {Array.from(new Set([...pastReasons, ...reasons])).slice(0, 6).map((r) => (
             <button
@@ -319,7 +325,7 @@ export function ReceiptSheet({
         shift={shift}
         business={business}
         photos={photos}
-        pending={pending}
+        pending={pending} pendingReversal={pendingReversal}
       />
       {sale.proofs?.length ? <Proofs urls={sale.proofs} /> : null}
     </Sheet>

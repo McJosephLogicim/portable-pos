@@ -142,6 +142,8 @@ export interface StockPrep {
   extraBatchCost?: number;
 }
 export interface StockSet {
+  eventId?: string;
+  addition?: boolean;
   stockId: string;
   amount: number;
   /** ISO time it was set. */
@@ -252,7 +254,29 @@ export interface Sale {
   /** Photos of the payment or discount ID. Data URLs until they sync. */
   proofs?: string[];
 }
+export interface StockCountEvent {
+  type: "stockCount";
+  id: string;
+  shiftId: string;
+  at: string;
+  item: Pick<StockItem, "id" | "name" | "unit">;
+  amount: number;
+  addition: boolean;
+  previous: number | null;
+}
+export interface ReversalEvent {
+  type: "reversal";
+  id: string;
+  shiftId: string;
+  targetId: string;
+  at: string;
+  reason: string;
+  approval: string;
+}
+export type SyncIssue = { id: string; message: string };
 export type RegisterEvent =
+  | StockCountEvent
+  | ReversalEvent
   | { id: string; shiftId: string; type: "sale"; sale: Sale; menuVersion?: string }
   | { id: string; shiftId: string; type: "expense"; expense: Expense }
   | { id: string; shiftId: string; type: "editExpense"; targetId: string; changes: ExpenseInput }
@@ -353,6 +377,7 @@ export interface BusinessSummary {
   brand?: string;
 }
 export interface Bootstrap {
+  offlineReversalKey?: string;
   /** Scoped to the signed-in account, across its businesses and devices. */
   onboardingComplete?: boolean;
   businesses?: BusinessSummary[];
@@ -379,12 +404,14 @@ export type DeletedRecord =
   | { kind: "booking"; booking: Booking };
 
 export type RegisterResponse = Bootstrap & {
+  syncIssues?: SyncIssue[];
   joinedExistingTill?: boolean;
   inviteDelivery?: "sent" | "failed" | "unavailable";
   deletedRecord?: DeletedRecord;
 };
 
 export interface RegisterState extends Bootstrap {
+  syncIssues?: SyncIssue[];
   closingShiftId?: string;
   cart: CartLine[];
   pending: RegisterEvent[];

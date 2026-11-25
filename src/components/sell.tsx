@@ -965,10 +965,10 @@ export function ShiftStrip({ state, onTill, onTillPage = false }: { state: Regis
   return (
     <button type="button" className="shift-strip" onClick={onTill} aria-label={`Selling for ${name}. ${onTillPage ? "Open the shift." : "Open the Till."}`}>
       <CalendarDays size={16} strokeWidth={1.9} />
-      <span className="grow" style={{ paddingBlock: 6, overflowWrap: "anywhere" }}>
-        <span className="strong">{name}</span>
-        <span className="g">
-          {" · "}until {time.format(new Date(booking.endsAt))}
+      <span className="grow stack" style={{ paddingBlock: 6 }}>
+        <span className="strong ellipsis" title={name}>{name}</span>
+        <span className="g ellipsis">
+          Until {time.format(new Date(booking.endsAt))}
           {people ? " · " + people : ""}
         </span>
       </span>
@@ -1456,7 +1456,9 @@ export function SellScreen({
           business={business}
           photos={itemPhotos(shift.menu, state.menu)}
           pending={state.pending.some((e) => e.id === receipt.id)}
-          canReverse={false}
+          pendingReversal={state.pending.some((e) => e.type === "reversal" && e.targetId === receipt.id)}
+          deferredApproval={!online || state.pending.length > 0}
+          canReverse={!preview && !onPracticeDone && !state.closingShiftId && (Boolean(online && !state.pending.length) || Boolean(state.offlineReversalKey) || business.id === "demo")}
           onReverse={(reason, pin) => onReverse(receipt.id, reason, pin)}
           onClose={() => {
             setReceipt(null);

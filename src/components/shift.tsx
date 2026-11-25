@@ -59,7 +59,7 @@ function BookingRow({ booking: b, state, note, onClick, refuse }: {
         <CalendarDays size={18} strokeWidth={1.8} />
       </span>
       <span className="grow stack">
-        <span>{shiftName(b, state)}</span>
+        <span className="ellipsis">{shiftName(b, state)}</span>
         <span className="label ellipsis">
           {time.format(new Date(b.startsAt))} to {time.format(new Date(b.endsAt))}
           {b.place && b.event ? " · " + b.place.name : ""}
@@ -475,7 +475,7 @@ export function CloseSheet({
         </div>
       }
     >
-      <p className="strong">{shiftName(shift, state)}</p>
+      <p className="strong ellipsis">{shiftName(shift, state)}</p>
       <div className="tile">
         <span className="label">Expected in the drawer</span>
         <Money value={expected} sign={expected < 0} currency={currency} className="big-num" />
@@ -581,7 +581,7 @@ export function ShiftScreen({
     onEditExpense,
     onUnexpense,
   };
-  const countBlocked = !online ? OFFLINE : state.closingShiftId ? "This till is closing." : false;
+  const countBlocked = state.closingShiftId ? "This till is closing." : false;
   const canClose = online && !state.pending.length;
   const closeReason = !canClose && (online ? "Wait for sales to sync, then close." : "Connect to the internet to close the till.");
   const needsShift = "Link this till to a shift before closing.";
@@ -638,7 +638,7 @@ export function ShiftScreen({
                 {formatMoney(shift.openingCash, currency)} float + {formatMoney(totals.cash, currency)} cash sales
                 {totals.cashExpenses ? ` − ${formatMoney(totals.cashExpenses, currency)} expenses` : ""}
               </span>
-              <button type="button" className={styles.editFloat} aria-haspopup="dialog" {...blocked(countBlocked)}
+              <button type="button" className={styles.editFloat} aria-haspopup="dialog" {...blocked(countBlocked || (!online && OFFLINE))}
                 onClick={() => setEditingCount({ kind: "float", shiftId: shift.id })}>Edit cash float</button>
             </div>
             <Popo key={shift.id} motion="curiousPeek" size={212} className={styles.drawerMascot} />
@@ -808,7 +808,7 @@ export function ShiftScreen({
                   onClick={() => linked ? setClosing(record.id) : setLinking(record.id)}>
                   <Wallet size={17} aria-hidden="true" />
                   <span className="grow stack">
-                    <span>{shiftName(record, state)}</span>
+                    <span className="ellipsis">{shiftName(record, state)}</span>
                     {!linked && <span className="label">No shift. Tap to link this till.</span>}
                   </span>
                   <ChevronRight size={16} className="chev" />

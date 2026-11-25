@@ -1,3 +1,4 @@
+import { reversalPublicKey } from "./pin";
 import { and, asc, between, desc, eq, gte, inArray, isNotNull, isNull, lt, notExists, or, sql, sum } from "drizzle-orm";
 import { legacyStockUses } from "../lib/domain";
 import type { Bootstrap, Expense, Sale, Shift } from "../lib/types";
@@ -397,6 +398,7 @@ export async function snapshot(
     business: { id, name, currency, timeZone, settings },
     menu: me.owner ? menu : withoutMenuCosts(menu),
     shift: active ? presentShift(active, currency) : null,
+    ...(active ? { offlineReversalKey: await reversalPublicKey(tx, business) } : {}),
     soldOut: active?.soldOut ?? [],
     recoveryTillIds,
     shifts: recent.map((row) =>

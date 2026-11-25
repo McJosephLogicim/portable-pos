@@ -49,6 +49,7 @@ export const businesses = register
     currency: text().notNull(),
     timeZone: text("time_zone").notNull(),
     pinHash: text("pin_hash").notNull(),
+    reversalPrivateKey: text("reversal_private_key"),
     failedPins: integer("failed_pins").default(0).notNull(),
     lastFailedAt: date("last_failed_at"),
     menu: jsonb().$type<Product[]>().default([]).notNull(),
@@ -138,6 +139,7 @@ export const syncedEvents = register
         .references(() => shifts.id)
         .notNull(),
       fingerprint: text().notNull(),
+      rejection: text(),
     },
     (t) => [index().on(t.shiftId)],
   )
