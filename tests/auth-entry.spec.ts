@@ -80,6 +80,10 @@ async function mockAuth(page: Page, { unconfirmed = false } = {}) {
 }
 
 async function enterCredentials(page: Page) {
+  const method = page.getByRole("button", { name: "Continue with email" });
+  const field = page.getByLabel("Email", { exact: true });
+  await field.or(method).first().waitFor();
+  if (!(await field.isVisible())) await method.click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("test-password");
 }
@@ -306,7 +310,8 @@ test("an owner can close a stranded till linked to a shift without joining it", 
 test("a fresh visit and a stale register selection both show sign-in", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("portable-pos-account", id), accountId);
   await page.goto(appUrl);
-  await expect(page.getByRole("heading", { name: "Sign in to your Pop-up" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "POP POS sign in" })).toBeVisible();
+  await expect(page.getByLabel("Email", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(0);
   await page.getByRole("button", { name: "Try the demo" }).click();
   await expect(page.getByRole("button", { name: "Account and settings" })).toBeVisible();
@@ -421,7 +426,7 @@ test.describe("account-enabled link entry", () => {
     });
     await page.route("**/api/pos", (route) => route.fulfill({ json: teamSnapshot() }));
     const register = page.getByRole("button", { name: "Switch business, now Market Counter" });
-    const signIn = page.getByRole("heading", { name: "Sign in to your Pop-up" });
+    const signIn = page.getByRole("heading", { name: "POP POS sign in" });
     await page.goto(appUrl);
     await enterCredentials(page);
     await page.locator("button[type=submit]").click();
@@ -536,7 +541,7 @@ test.describe("account-enabled link entry", () => {
     await page.getByRole("button", { name: "Create account", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
     await page.getByRole("button", { name: "Back to sign in" }).click();
-    await expect(page.getByRole("heading", { name: "Sign in to your Pop-up" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "POP POS sign in" })).toBeVisible();
     await page.getByRole("button", { name: "Create account", exact: true }).click();
     await enterCredentials(page);
     await page.locator("button[type=submit]").click();
@@ -559,6 +564,7 @@ test.describe("account-enabled link entry", () => {
     }));
 
     await page.goto(appUrl);
+    await page.getByRole("button", { name: "Continue with email" }).click();
     const emailField = page.getByLabel("Email", { exact: true });
     await expect(emailField).toBeVisible();
     await expect(emailField).not.toHaveCSS("box-shadow", "none");
@@ -631,7 +637,7 @@ test.describe("account-enabled link entry", () => {
     await enterCredentials(page);
     await page.locator("button[type=submit]").click();
     const practice = page.getByRole("button", { name: "Try Sell", exact: true });
-    await practice.scrollIntoViewIfNeeded();
+    await practice.evaluate((button) => button.scrollIntoView({ block: "center", behavior: "instant" }));
     const scroll = await page.evaluate(() => window.scrollY);
     expect(scroll).toBeGreaterThan(0);
     await practice.click();
@@ -724,7 +730,7 @@ test.describe("account-enabled link entry", () => {
     await expect(code).toBeEditable();
     expect(attempts).toEqual([]);
     await code.press("6");
-    await expect(page.getByRole("region", { name: "Check your email" }).getByRole("alert"))
+    await expect(page.getByRole("dialog", { name: "Check your email" }).getByRole("alert"))
       .toContainText("incorrect or expired");
     expect(attempts).toEqual(["123456"]);
     await expect(code).toBeEmpty();
@@ -978,6 +984,7 @@ test("creates an account from Settings and switches without mixing saved registe
     } });
   });
   await page.goto(appUrl);
+  await page.getByRole("button", { name: "Continue with email" }).click();
   const fieldOutline = await page.getByLabel("Email", { exact: true })
     .evaluate((input) => getComputedStyle(input).boxShadow);
   await enterCredentials(page);

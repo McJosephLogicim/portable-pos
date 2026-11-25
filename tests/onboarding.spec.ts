@@ -7,8 +7,9 @@ test.skip(!process.env.POS_TEST_ONBOARDING, "Use an isolated database and test a
 
 async function signIn(page: Page, email: string) {
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
-  await expect(page.getByRole("heading", { name: "Sign in to your Pop-up" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "POP POS sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Practice with POP POS/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue with email" }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("test-onboarding-password");
   await page.locator("button[type=submit]").click();

@@ -3,8 +3,8 @@
 import { Check, ChevronRight, Eye, EyeOff, Mail, UserRound, UserRoundPlus } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
 import Image from "next/image";
-import { APP_NAME, appIcons } from "@/lib/app-brand";
-import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { APP_NAME, appIcons, emptyStateObjects, popoPoses } from "@/lib/app-brand";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { loginDeadline } from "@/lib/login-session";
 import { accountsEnabled, authClient, rememberAccount, savedAccounts, type SavedAccount } from "@/lib/client";
 import type { OwnerAction } from "@/lib/demo";
@@ -17,7 +17,6 @@ import { Popo } from "./popo";
 import { CurrencyOptions } from "./settings";
 import { DoneCheck, errorText, Explain, GlossyObject, Sheet } from "./ui";
 import styles from "./account.module.css";
-import { captureScreen, restoreScreen } from "./screen-history";
 
 export type AccountEntry = {
   kind: "register" | "invite" | "business" | "shift";
@@ -242,16 +241,7 @@ export function Account(props: AccountProps) {
   const codeErrorId = useId();
   const codeInput = useRef<HTMLInputElement>(null);
   const verifyingCode = useRef(false);
-  const entryRoot = useRef<HTMLElement>(null);
-  const signInPosition = useRef<ReturnType<typeof captureScreen>>(undefined);
-  useLayoutEffect(() => {
-    if (!entryRoot.current) return;
-    if (mode === "create" && signInPosition.current) restoreScreen();
-    if (mode === "signin" && signInPosition.current) {
-      restoreScreen(signInPosition.current);
-      signInPosition.current = undefined;
-    }
-  }, [mode]);
+  const [emailOpen, setEmailOpen] = useState(false);
   const busy = request !== null;
   const checking = request === "verify";
   const verificationTitle = emailVerified ? "Email verified" : "Check your email";
@@ -263,9 +253,6 @@ export function Account(props: AccountProps) {
   }, [sentTo, emailVerified]);
 
   function switchMode(next: Mode) {
-    if (mode === "signin" && next === "create" && entryRoot.current) {
-      signInPosition.current = captureScreen(entryRoot.current);
-    }
     setMode(next);
     setShowPassword(false);
     setPassword("");
@@ -532,45 +519,57 @@ export function Account(props: AccountProps) {
   );
 
   if (kind === "register") {
+    function closeEmail() {
+      setEmailOpen(false);
+      switchMode("signin");
+    }
+
     return (
-      <main className={styles.entry} ref={entryRoot}>
-        <section className={styles.entryShell} aria-labelledby="entry-title">
-          <AppMark />
-          <div className={sentTo ? styles.verificationIntro : styles.entryIntro}>
-            {sentTo && verificationMark}
-            <h1 id="entry-title" className={styles.title}>
-              {sentTo ? verificationTitle : create ? "Create your account" : "Sign in to your Pop-up"}
-            </h1>
-            {!sentTo && <div aria-hidden="true" className={styles.entryPopo}>
-              <Popo pose="welcome" size={118} />
-            </div>}
+      <main className={styles.entry}>
+        <div className={styles.entryStage} aria-hidden="true">
+          <div className={styles.marketScene}>
+            <Image className={styles.marketStall} src={emptyStateObjects.marketStall} alt="" width={280} height={280} priority unoptimized />
+            <Image className={styles.marketMascot} src={popoPoses.welcome} alt="" width={160} height={160} priority unoptimized />
           </div>
-          {sentTo ? verification : (
-            <>
-              {!accountsEnabled && <p className={styles.lede}>Live accounts are unavailable on this server.</p>}
-              {props.notice && <p role="alert" className="alert">{props.notice}</p>}
-              {fields}
-              {accountsEnabled && (
-                <button type="button" className={styles.modeLink} disabled={busy}
-                  onClick={() => switchMode(create ? "signin" : "create")}>
+        </div>
+        <section className={styles.entryShell} aria-labelledby="entry-title">
+          <h1 id="entry-title" className={styles.entryBrand} aria-label={`${APP_NAME} sign in`}>
+            {APP_NAME}
+          </h1>
+          {props.notice && <p role="alert" className="alert">{props.notice}</p>}
+          {!accountsEnabled && <p className={styles.entryNote}>Live accounts are unavailable on this server.</p>}
+          <div className={styles.entryActions}>
+            <button type="button" className={styles.entryPrimary} disabled={!accountsEnabled} onClick={() => setEmailOpen(true)}>
+              <Mail size={18} aria-hidden="true" /> Continue with email
+            </button>
+            <button type="button" className={styles.entrySecondary} onClick={props.onDemo} aria-describedby="demo-hint">
+              Try the demo
+            </button>
+          </div>
+          <p className={styles.entryNote} id="demo-hint">Sample register · PIN 1234</p>
+          <div className={styles.entryLinks}>
+            {accountsEnabled && (
+              <button type="button" onClick={() => { switchMode("create"); setEmailOpen(true); }}>
+                Create account
+              </button>
+            )}
+            {props.onChooseAccount && <button type="button" onClick={props.onChooseAccount}>Switch account</button>}
+          </div>
+        </section>
+        {emailOpen && (
+          <Sheet title={sentTo ? verificationTitle : create ? "Create your account" : "Sign in with email"}
+            onClose={closeEmail} busy={busy}>
+            <div className="stack gap-14">
+              {sentTo ? <>{verificationMark}{verification}</> : <>
+                {fields}
+                <button type="button" className={styles.plain} disabled={busy}
+                  onClick={create ? closeEmail : () => switchMode("create")}>
                   {create ? "Back to sign in" : "Create account"}
                 </button>
-              )}
-              {props.onChooseAccount && (
-                <button type="button" className={styles.modeLink} disabled={busy} onClick={props.onChooseAccount}>
-                  Switch account
-                </button>
-              )}
-              <button type="button" className={styles.demo} disabled={busy} onClick={props.onDemo}>
-                <span>
-                  <strong>Try the demo</strong>
-                  <span>Sample register · PIN 1234</span>
-                </span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            </>
-          )}
-        </section>
+              </>}
+            </div>
+          </Sheet>
+        )}
       </main>
     );
   }

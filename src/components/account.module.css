@@ -51,84 +51,123 @@
   height: 20px;
 }
 
-/* The register entry uses the same single column on phone and desktop. */
+/* The register opens on the same studio canvas as the till and its glossy objects. */
 .entry {
   display: grid;
-  align-items: start;
   justify-items: center;
-  min-height: 100dvh;
-  padding: max(38px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-  background: #fff;
-  color: #14171c;
+  grid-template-rows: minmax(155px, 1fr) auto;
+  min-height: 100svh;
+  padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(clamp(24px, 6svh, 72px), env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: radial-gradient(ellipse at 50% 30%, var(--surface) 5%, transparent 68%), var(--canvas);
 }
+
+.entryStage {
+  align-self: stretch;
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.marketScene {
+  position: relative;
+  width: min(90%, 49svh, 450px);
+  aspect-ratio: 1.5;
+}
+
+.marketScene::before {
+  content: "";
+  position: absolute;
+  inset: 73% 1% 4%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #69769340, transparent 70%);
+}
+
+.marketScene img {
+  position: absolute;
+  height: auto;
+  object-fit: contain;
+}
+
+.marketStall { width: 77%; left: 1%; bottom: 0; }
+.marketMascot { width: 38%; right: 2%; bottom: 3%; }
 
 .entryShell {
-  width: min(100%, 426px);
-  min-width: 0;
+  width: min(100%, 352px);
+  color: var(--ink);
+  text-align: center;
 }
 
-.entryShell > .app {
-  gap: 5px;
-  padding: 0;
-  font-weight: 700;
-}
-
-.entryIntro {
-  position: relative;
+.entryBrand {
   display: flex;
-  align-items: end;
-  isolation: isolate;
-  min-height: 154px;
-  padding: 12px 100px 20px 0;
-  margin: 15px -1px 25px;
-  background: radial-gradient(ellipse 68px 60px at calc(100% - 69px) calc(100% - 65px), #e9f0ff, transparent);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 clamp(24px, 5svh, 48px);
+  font-size: clamp(32px, 5vw, 42px);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -.055em;
 }
 
-.entryIntro .title {
-  position: relative;
-  z-index: 1;
-  font-size: clamp(31px, 9.3vw, 43px);
-  line-height: .99;
-  font-weight: 640;
-  letter-spacing: -.065em;
-}
-
-.entryPopo {
-  --popo-wave-scale: 132%;
-  --popo-wave-start: -12.3%;
-  --popo-wave-top: -20%;
-  position: absolute;
-  inset: auto 0 6px auto;
+.entryActions {
   display: grid;
-  place-items: end center;
-  width: 138px;
-  height: 126px;
+  gap: 10px;
 }
 
-.entry button[type="submit"] {
-  margin-block-start: 4px;
-  min-height: 52px;
-  border-radius: 14px;
-  font-weight: 620;
-}
-
-.modeLink {
-  display: block;
-  min-height: 44px;
-  margin: 9px auto 0;
-  padding-inline: 18px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+.entryPrimary, .entrySecondary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 15px;
   font-weight: 600;
 }
 
-.verificationIntro {
-  display: grid;
+.entryPrimary {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.entryPrimary:disabled { opacity: .6; }
+
+.entrySecondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.entryShell button:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 4px;
+}
+
+.entryNote {
+  margin: 12px 0;
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.entryLinks {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
-  margin-block: 24px 12px;
-  text-align: center;
+}
+
+.entryLinks button {
+  min-height: 44px;
+  padding-inline: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 550;
 }
 
 .verificationCard {
@@ -165,41 +204,6 @@
 .verification .field {
   margin-block-start: 8px;
   text-align: start;
-}
-
-@media (max-width: 360px) {
-  .entry {
-    padding-block-start: max(24px, env(safe-area-inset-top));
-    padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right));
-  }
-
-  .entryIntro {
-    min-height: 135px;
-    padding-inline-end: 82px;
-    margin-block-end: 20px;
-  }
-
-  .entryPopo {
-    --popo-width: 96px;
-    width: 112px;
-  }
-}
-
-@media (min-width: 720px) {
-  .entry {
-    align-items: center;
-    padding: 32px;
-    background: #f5f6f7;
-  }
-
-  .entryShell {
-    width: min(100%, 440px);
-    padding: 26px 32px 28px;
-    border: 1px solid #e1e4e8;
-    border-radius: 24px;
-    background: #fff;
-    box-shadow: 0 12px 44px #1b2f4810;
-  }
 }
 
 /* ---------- white objects ---------- */
@@ -571,43 +575,6 @@
   color: var(--ink);
   font-size: 15px;
   font-weight: 550;
-}
-
-/* A secondary entry below the sign-in form. */
-.demo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  min-height: 56px;
-  margin-block-start: 20px;
-  padding: 13px 0 0;
-  border: 0;
-  border-top: 1px solid #e4e8ee;
-  background: transparent;
-  color: var(--ink-tertiary);
-  text-align: start;
-}
-
-.demo > span {
-  display: grid;
-  gap: 2px;
-}
-
-.demo strong {
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 550;
-}
-
-.demo span span {
-  color: var(--ink-secondary);
-  font-size: 13.5px;
-}
-
-.demo:active:not(:disabled):not([aria-disabled="true"]) {
-  background: var(--surface-muted);
 }
 
 /* Only the submit button carries the color; the mode switch stays neutral. */
