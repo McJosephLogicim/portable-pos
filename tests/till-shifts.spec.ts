@@ -11,7 +11,7 @@ async function seedTill(
   page: Page,
   withShifts: boolean,
   withSale: boolean | "unscheduled" | "current" = false,
-  { opening = false, rankedAs, withExpenses = false, staffAs, linked = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean } = {},
+  { opening = false, rankedAs, withExpenses = false, staffAs, linked = false, emptyStock = false }: { opening?: boolean; rankedAs?: "owner" | "member"; withExpenses?: boolean; staffAs?: StaffAccess; linked?: boolean; emptyStock?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-21T04:00:00Z"));
   await page.goto(process.env.POS_TEST_APP_URL ?? "http://localhost:3000");
@@ -24,7 +24,7 @@ async function seedTill(
     tender: "cash", received: espresso.price, createdAt: "2026-11-21T01:30:00Z",
     cart: [{ productId: espresso.id, quantity: 1, optionIds: [] }],
   })] : [];
-  await page.evaluate(async ({ withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked }) => {
+  await page.evaluate(async ({ withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock }) => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("portable-pos-register", 1);
       request.onerror = () => reject(request.error);
@@ -37,6 +37,10 @@ async function seedTill(
           const state = get.result as RegisterState;
           state.business!.timeZone = "Asia/Manila";
           const shift = { ...state.shift!, number: 3, bookingId: linked ? "booking-1" : undefined };
+          if (emptyStock) {
+            delete shift.stock;
+            delete shift.stockSets;
+          }
           const booking = (name: string, startsAt: string, endsAt: string): Booking => ({
             id: name, place: { name }, startsAt, endsAt, organizer: null, event: null,
             seats: 1, staff: [], quota: 0, incentive: 0,
@@ -97,7 +101,7 @@ async function seedTill(
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
     });
-  }, { withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked });
+  }, { withShifts, sales, withSale, opening, rankedAs, withExpenses, staffAs, linked, emptyStock });
   await page.reload();
 }
 
@@ -303,6 +307,32 @@ test("Opening and closing tills can review stock, with expenses available after 
   await expect(report.locator("pre")).toContainText("from till · GCash");
   await expect(report.locator("pre")).toContainText("Pay back Bea Santos ₱25.50");
   await expect(report.locator("pre")).not.toContainText("Closing fare");
+});
+
+test("Stock left replaces its illustrated empty state with the first count and keeps a zero-count row", async ({ page }) => {
+  await seedTill(page, true, false, { linked: true, emptyStock: true });
+  await page.getByRole("button", { name: "Till", exact: true }).click();
+  const stock = page.getByRole("region", { name: "Stock left" });
+  const empty = stock.locator(".card-list .empty-row");
+  await expect(empty).toContainText("No stock tracked yet");
+  const art = empty.locator("img");
+  await expect(art).toHaveAttribute("src", "/empty-states/supply-box.webp");
+  await expect.poll(() => art.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+
+  await stock.getByRole("button", { name: "Add", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Adjust stock" });
+  await editor.getByLabel("Stock item").selectOption({ label: "Fresh milk" });
+  await editor.getByLabel("Quantity to add").fill("2");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  const milk = stock.getByRole("button", { name: /Fresh milk/ });
+  await expect(milk).toContainText("2 L left");
+  await expect(empty).toHaveCount(0);
+
+  await milk.click();
+  await editor.getByLabel("New count").fill("0");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  await expect(milk).toContainText("Ran out");
+  await expect(empty).toHaveCount(0);
 });
 
 test("an open till can add and correct stock and float, then share each payment deduction once", async ({ page }) => {

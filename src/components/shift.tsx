@@ -672,7 +672,10 @@ export function ShiftScreen({
               <p className="group-title">Stock left</p>
               <AddButton secondary blockedReason={countBlocked} onClick={() => setEditingCount({ kind: "stock", shiftId: shift.id })} />
             </div>
-            {remainingStock.length > 0 && <div className="card card-list">
+            <div className="card card-list">
+              {!remainingStock.length && (
+                <EmptyRow object="supplyBox" title="No stock tracked yet" detail="Add your first stock count for this shift." />
+              )}
               {(allStock ? remainingStock : remainingStock.slice(0, 5)).map(([id, left]) => {
                 const item = stockItems.find((i) => i.id === id);
                 const name = item?.name ?? "Stock item";
@@ -701,7 +704,7 @@ export function ShiftScreen({
                   <ChevronDown size={18} className={`chev ${styles.disclosure}`} />
                 </button>
               )}
-            </div>}
+            </div>
           </section>
           {editingCount?.shiftId === shift.id && (
             <TillCountEditor
